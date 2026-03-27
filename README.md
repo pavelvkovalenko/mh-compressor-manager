@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![C++ Standard](https://img.shields.io/badge/C%2B%2B-23-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux%20(Fedora%2038%2B)-orange.svg)
-![License](https://img.shields.io/badge/license-Proprietary-red.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
 **Автоматическое сжатие статического контента для nginx**
@@ -416,12 +416,10 @@ mh-compressor-manager/
 │   ├── logger.cpp/h              # Система логирования
 │   ├── threadpool.h              # Пул потоков
 │   ├── compressor-manager.conf   # Пример конфигурации
-│   ├── mh-compressor-manager.service  # Systemd юнит
-│   ├── README.md                 # Документация (Markdown)
-│   └── README.html               # Документация (HTML)
+│   └── mh-compressor-manager.service  # Systemd юнит
 ├── build-rpm.sh                  # Скрипт сборки RPM
 ├── mh-compressor-manager.spec    # SPEC файл для RPM
-├── LICENSE                       # Лицензионное соглашение
+├── LICENSE                       # Лицензия MIT
 ├── README.md                     # Этот файл
 └── TECHNICAL_SPECIFICATION.html  # Техническое задание
 ```
@@ -452,7 +450,31 @@ mh-compressor-manager/
 
 ## 📄 Лицензия
 
-Программное обеспечение предоставляется "как есть" без каких-либо гарантий. Использование, копирование и распространение данного ПО разрешается только в соответствии с условиями лицензионного соглашения с правообладателем.
+Этот проект распространяется под лицензией **MIT**. См. файл [LICENSE](LICENSE) для получения дополнительной информации.
+
+```
+MIT License
+
+Copyright (c) 2026 MediaHive.ru
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
@@ -468,7 +490,7 @@ mh-compressor-manager/
 
 **Автор:** Коваленко Павел
 
-*Все права защищены.*
+**Лицензия:** [MIT](LICENSE)
 
 </div>
 
@@ -481,6 +503,7 @@ mh-compressor-manager/
 | **Компилятор** | GCC 13+ или Clang 16+ |
 | **Система сборки** | CMake 3.20+ |
 | **Год разработки** | 2026 |
+| **Лицензия** | MIT |
 
 ---
 
@@ -489,9 +512,10 @@ mh-compressor-manager/
 | Тип | Информация |
 |-----|------------|
 | **Проект** | mh-compressor-manager |
-| **Документация** | [README.md](README.md), [README.html](src/README.html), [TECHNICAL_SPECIFICATION.html](TECHNICAL_SPECIFICATION.html) |
+| **Документация** | [README.md](README.md), [README.html](README.html), [TECHNICAL_SPECIFICATION.html](TECHNICAL_SPECIFICATION.html) |
 | **Репозиторий** | (внутренний) |
 | **Техническое задание** | ТЗ версия 2 |
+| **Лицензия** | [MIT](LICENSE) |
 
 ---
 
@@ -499,6 +523,6 @@ mh-compressor-manager/
 
 **mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 2
 
-© 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Все права защищены.
+© 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Лицензия MIT.
 
 </div>
