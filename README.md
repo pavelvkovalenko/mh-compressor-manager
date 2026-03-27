@@ -159,10 +159,10 @@ list=txt js css svg json html htm map
 algorithms=all
 
 # Уровень сжатия Gzip (1-9)
-gzip_level=6
+gzip_level=9
 
 # Уровень сжатия Brotli (1-11)
-brotli_level=4
+brotli_level=11
 
 # Задержка перед сжатием после изменения файла (сек)
 debounce_delay=2
@@ -177,8 +177,8 @@ debounce_delay=2
 | `threads` | integer | `0` (авто) | Количество потоков пула |
 | `list` | string | `txt js css...` | Список расширений файлов |
 | `algorithms` | string | `all` | Алгоритмы: `gzip`, `brotli`, `all` |
-| `gzip_level` | integer | `6` | Уровень сжатия Gzip (1-9) |
-| `brotli_level` | integer | `4` | Уровень сжатия Brotli (1-11) |
+| `gzip_level` | integer | `9` | Уровень сжатия Gzip (1-9) |
+| `brotli_level` | integer | `11` | Уровень сжатия Brotli (1-11) |
 | `debounce_delay` | integer | `2` | Задержка перед сжатием (сек) |
 
 > ⚠️ **Важно:** Аргументы командной строки имеют приоритет над настройками в файле конфигурации.
