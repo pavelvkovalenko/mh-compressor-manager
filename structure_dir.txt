@@ -1,0 +1,17 @@
+mh-compressor-manager/
+├── src/                          # Исходный код
+│   ├── CMakeLists.txt
+│   ├── main.cpp
+│   ├── config.cpp/h
+│   ├── compressor.cpp/h
+│   ├── monitor.cpp/h
+│   ├── logger.cpp/h
+│   ├── threadpool.h
+│   ├── compressor-manager.conf   # Пример конфига
+│   ├── mh-compressor-manager.service
+│   ├── README.md
+│   └── README.html
+├── mh-compressor-manager.spec    # SPEC-файл для RPM
+├── build-rpm.sh                  # Скрипт сборки
+├── LICENSE                       # Лицензия
+└── compressor-manager.conf       # Копия конфига в корне

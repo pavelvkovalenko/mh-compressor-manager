@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Техническое задание на разработку программного обеспечения mh-compressor-manager">
+    <title>Техническое Задание — mh-compressor-manager v1.0.0</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --accent-color: #3b82f6;
+            --bg-color: #f8fafc;
+            --text-color: #1e293b;
+            --heading-color: #0f172a;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --border-color: #e2e8f0;
+            --success-color: #16a34a;
+            --warning-color: #ca8a04;
+            --error-color: #dc2626;
+            --info-bg: #eff6ff;
+            --info-border: #3b82f6;
+            --section-bg: #ffffff;
+            --table-header-bg: #2563eb;
+            --table-header-text: #ffffff;
+            --table-row-alt: #f8fafc;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+            line-height: 1.7;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            padding: 0;
+        }
+
+        .document-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--section-bg);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 40px;
+            text-align: center;
+            border-bottom: 4px solid var(--accent-color);
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        header .version {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 1em;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        header .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+            margin-top: 15px;
+            font-weight: 300;
+        }
+
+        /* Meta Info Bar */
+        .meta-info {
+            background: var(--info-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .meta-label {
+            font-size: 0.85em;
+            color: #64748b;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .meta-value {
+            font-size: 1em;
+            color: var(--heading-color);
+            font-weight: 500;
+        }
+
+        /* Table of Contents */
+        .toc {
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border-color);
+            padding: 30px 40px;
+        }
+
+        .toc h2 {
+            color: var(--primary-color);
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 15px;
+        }
+
+        .toc ol {
+            margin-left: 20px;
+        }
+
+        .toc li {
+            margin-bottom: 8px;
+        }
+
+        .toc a {
+            color: var(--primary-color);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .toc a:hover {
+            color: var(--secondary-color);
+            text-decoration: underline;
+        }
+
+        .toc ol ol {
+            margin-left: 20px;
+            margin-top: 5px;
+            font-size: 0.95em;
+        }
+
+        /* Main Content */
+        main {
+            padding: 40px;
+        }
+
+        section {
+            margin-bottom: 50px;
+            scroll-margin-top: 20px;
+        }
+
+        h2 {
+            color: var(--heading-color);
+            font-size: 1.8em;
+            border-left: 5px solid var(--primary-color);
+            padding-left: 15px;
+            margin: 40px 0 25px 0;
+            font-weight: 700;
+        }
+
+        h3 {
+            color: var(--secondary-color);
+            font-size: 1.4em;
+            margin: 30px 0 15px 0;
+            font-weight: 600;
+        }
+
+        h4 {
+            color: var(--heading-color);
+            font-size: 1.1em;
+            margin: 20px 0 10px 0;
+            font-weight: 600;
+        }
+
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 20px;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            background: white;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        th {
+            background: var(--table-header-bg);
+            color: var(--table-header-text);
+            padding: 14px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+
+        tr:nth-child(even) {
+            background: var(--table-row-alt);
+        }
+
+        tr:hover {
+            background: #f1f5f9;
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 20px 0;
+            border-left: 4px solid var(--accent-color);
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        pre code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.95em;
+            color: #c7254e;
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        /* Info Boxes */
+        .info-box {
+            background: var(--info-bg);
+            border-left: 4px solid var(--info-border);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .info-box strong {
+            color: var(--primary-color);
+        }
+
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid var(--warning-color);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .warning-box strong {
+            color: var(--warning-color);
+        }
+
+        .success-box {
+            background: #dcfce7;
+            border-left: 4px solid var(--success-color);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .success-box strong {
+            color: var(--success-color);
+        }
+
+        .history-box {
+            background: #f5f3ff;
+            border-left: 4px solid #8b5cf6;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+            font-style: italic;
+        }
+
+        .history-box strong {
+            color: #7c3aed;
+            font-style: normal;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--heading-color);
+            color: #94a3b8;
+            padding: 40px;
+            text-align: center;
+            border-top: 4px solid var(--primary-color);
+        }
+
+        footer .copyright {
+            margin-bottom: 15px;
+        }
+
+        footer .copyright strong {
+            color: white;
+        }
+
+        footer .meta {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        footer .document-info {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #334155;
+            font-size: 0.85em;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .badge-required {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .badge-optional {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .badge-info {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header {
+                padding: 30px 20px;
+            }
+
+            header h1 {
+                font-size: 1.8em;
+            }
+
+            .meta-info {
+                padding: 20px;
+                grid-template-columns: 1fr;
+            }
+
+            .toc {
+                padding: 20px;
+            }
+
+            main {
+                padding: 20px;
+            }
+
+            h2 {
+                font-size: 1.5em;
+            }
+
+            h3 {
+                font-size: 1.2em;
+            }
+
+            table {
+                font-size: 0.9em;
+            }
+
+            th, td {
+                padding: 10px 8px;
+            }
+
+            pre {
+                padding: 15px;
+                font-size: 0.85em;
+            }
+
+            footer {
+                padding: 30px 20px;
+            }
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .document-container {
+                box-shadow: none;
+                max-width: 100%;
+            }
+
+            header {
+                background: white;
+                color: black;
+                border-bottom: 2px solid black;
+            }
+
+            a {
+                text-decoration: none;
+                color: black;
+            }
+
+            .toc {
+                page-break-after: always;
+            }
+
+            pre {
+                border: 1px solid #ccc;
+                background: #f5f5f5;
+                color: black;
+            }
+
+            table {
+                page-break-inside: avoid;
+            }
+
+            section {
+                page-break-inside: avoid;
+            }
+        }
+
+        /* Section Numbers */
+        .section-number {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-right: 8px;
+        }
+
+        /* Highlight */
+        .highlight {
+            background: #fef3c7;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="document-container">
+        <!-- Header -->
+        <header>
+            <h1>ТЕХНИЧЕСКОЕ ЗАДАНИЕ</h1>
+            <p class="subtitle">На разработку программного обеспечения «mh-compressor-manager»</p>
+            <span class="version">Версия 2.0</span>
+        </header>
+
+        <!-- Meta Info -->
+        <div class="meta-info">
+            <div class="meta-item">
+                <span class="meta-label">Проект</span>
+                <span class="meta-value">mh-compressor-manager</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Версия документа</span>
+                <span class="meta-value">2.0</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Стандарт C++</span>
+                <span class="meta-value">C++23</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Платформа</span>
+                <span class="meta-value">Linux (Fedora 38+)</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Статус</span>
+                <span class="meta-value">Утверждено</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Год</span>
+                <span class="meta-value">2026</span>
+            </div>
+        </div>
+
+        <!-- Table of Contents -->
+        <div class="toc">
+            <h2>📑 Содержание</h2>
+            <ol>
+                <li><a href="#section1">Общие сведения</a></li>
+                <li><a href="#section2">Назначение и принципы работы</a></li>
+                <li><a href="#section3">Требования к функциональности</a>
+                    <ol>
+                        <li><a href="#section3-1">Мониторинг файловой системы</a></li>
+                        <li><a href="#section3-2">Алгоритмы сжатия</a></li>
+                        <li><a href="#section3-3">Расширения файлов</a></li>
+                    </ol>
+                </li>
+                <li><a href="#section4">Требования к конфигурации</a></li>
+                <li><a href="#section5">Интерфейс командной строки (CLI)</a></li>
+                <li><a href="#section6">Требования к надежности и производительности</a></li>
+                <li><a href="#section7">Требования к безопасности</a></li>
+                <li><a href="#section8">Интеграция с системой (Systemd)</a></li>
+                <li><a href="#section9">Логирование и отчетность</a></li>
+                <li><a href="#section10">Требования к разработке и поставке</a></li>
+                <li><a href="#section11">Критерии приемки</a></li>
+                <li><a href="#section12">История разработки</a></li>
+                <li><a href="#section13">Правообладатель</a></li>
+            </ol>
+        </div>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Section 1 -->
+            <section id="section1">
+                <h2><span class="section-number">1.</span>Общие сведения</h2>
+                
+                <table>
+                    <tr>
+                        <th style="width: 40%;">Параметр</th>
+                        <th>Значение</th>
+                    </tr>
+                    <tr>
+                        <td><strong>1.1. Наименование программы</strong></td>
+                        <td><code>mh-compressor-manager</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>1.2. Язык программирования</strong></td>
+                        <td>C++ (стандарт не ниже <span class="highlight">C++23</span>)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>1.3. Компилятор</strong></td>
+                        <td>GCC 9+ или Clang 10+</td>
+                    </tr>
+                    <tr>
+                        <td><strong>1.4. Целевая платформа</strong></td>
+                        <td>Операционная система Linux (приоритет: <span class="highlight">Fedora 38+</span>, также поддержка CentOS, Ubuntu)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>1.5. Тип приложения</strong></td>
+                        <td>Консольная утилита / Фоновая служба (Daemon)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>1.6. Миссия программы</strong></td>
+                        <td>Автоматическое сжатие статического контента для веб-сервера nginx с целью снижения сетевого трафика и ускорения загрузки страниц</td>
+                    </tr>
+                </table>
+            </section>
+
+            <!-- Section 2 -->
+            <section id="section2">
+                <h2><span class="section-number">2.</span>Назначение и принципы работы</h2>
+
+                <div class="success-box">
+                    <strong>✅ Основная цель:</strong> Автоматизация процесса сжатия статических файлов для оптимизации работы веб-сервера.
+                </div>
+
+                <h3>2.1. Мониторинг</h3>
+                <p>Программа отслеживает изменения в файловой системе в режиме реального времени (мониторинг).</p>
+
+                <h3>2.2. Обработка файлов</h3>
+                <p>При обнаружении новых или измененных файлов с подходящими расширениями программа создает их сжатые копии в той же директории.</p>
+
+                <h3>2.3. Алгоритмы сжатия</h3>
+                <table>
+                    <tr>
+                        <th>Алгоритм</th>
+                        <th>Расширение</th>
+                        <th>Библиотека</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Gzip</strong></td>
+                        <td><code>.gz</code></td>
+                        <td><code>zlib</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Brotli</strong></td>
+                        <td><code>.br</code></td>
+                        <td><code>libbrotli</code></td>
+                    </tr>
+                </table>
+
+                <h3>2.4. Сохранность данных</h3>
+                <p>Исходные файлы <strong>не удаляются</strong> и <strong>не модифицируются</strong>.</p>
+
+                <h3>2.5. Метаданные</h3>
+                <p>Сжатые копии должны наследовать от оригинала:</p>
+                <ul>
+                    <li>Время создания</li>
+                    <li>Права доступа (permissions)</li>
+                    <li>Контекст безопасности SELinux</li>
+                    <li>Владельца и группу (UID/GID)</li>
+                </ul>
+
+                <h3>2.6. Архитектура</h3>
+                <table>
+                    <tr>
+                        <th>Компонент</th>
+                        <th>Назначение</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Основной процесс</strong></td>
+                        <td>Демон, работающий в фоне</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Поток-диспетчер</strong></td>
+                        <td>Обрабатывает события файловой системы (inotify)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Пул потоков</strong></td>
+                        <td>Выполняет операции сжатия асинхронно</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Systemd-интеграция</strong></td>
+                        <td>Взаимодействие через уведомления о готовности (<code>sd_notify</code>)</td>
+                    </tr>
+                </table>
+            </section>
+
+            <!-- Section 3 -->
+            <section id="section3">
+                <h2><span class="section-number">3.</span>Требования к функциональности</h2>
+
+                <h3 id="section3-1">3.1. Мониторинг файловой системы</h3>
+
+                <h4>3.1.1. Рекурсивное сканирование</h4>
+                <p>Программа должна рекурсивно сканировать указанные целевые директорию(ии).</p>
+
+                <h4>3.1.2. Механизм отслеживания</h4>
+                <p>Используется механизм <code>inotify</code> (API или библиотека) для отслеживания событий:</p>
+                <ul>
+                    <li>Создание файлов</li>
+                    <li>Модификация файлов</li>
+                    <li>Удаление файлов</li>
+                </ul>
+
+                <h4>3.1.3. Обработка событий</h4>
+                <table>
+                    <tr>
+                        <th>Событие</th>
+                        <th>Действие</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Создание/Изменение</strong></td>
+                        <td>Если файл имеет подходящее расширение, планируется задача на сжатие</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Удаление</strong></td>
+                        <td>Если удаляется исходный файл, соответствующие сжатые копии (<code>.gz</code>, <code>.br</code>) также должны быть удалены</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Игнорирование</strong></td>
+                        <td>Программа не должна следовать за символическими ссылками (symlinks)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Фильтрация</strong></td>
+                        <td>Не обрабатывать файлы, которые уже являются сжатыми копиями (оканчиваются на <code>.gz</code> или <code>.br</code>)</td>
+                    </tr>
+                </table>
+
+                <h4>3.1.4. Debounce (Задержка)</h4>
+                <div class="info-box">
+                    <strong>📌 Требование:</strong> Для предотвращения множественной обработки одного файла при частых изменениях (например, при копировании), сжатие выполняется только после того, как файл не изменялся в течение заданного интервала (параметр <code>debounce_delay</code>).
+                </div>
+
+                <h4>3.1.5. Идемпотентность</h4>
+                <p>Если сжатый файл уже существует и его время модификации новее или равно времени модификации исходного файла, повторное сжатие не производится (при первоначальном сканировании).</p>
+
+                <h3 id="section3-2">3.2. Алгоритмы сжатия</h3>
+
+                <h4>3.2.1. Уровень сжатия</h4>
+                <p>Уровень сжатия для Gzip и Brotli должен быть настраиваемым.</p>
+
+                <h4>3.2.2. Многопоточность</h4>
+                <p>Поддержка многопоточности: параллельное сжатие разных файлов через пул потоков.</p>
+
+                <h4>3.2.3. Ограничение нагрузки</h4>
+                <p>Количество параллельных операций сжатия не должно превышать заданное значение (параметр <code>threads</code>).</p>
+
+                <h3 id="section3-3">3.3. Расширения файлов</h3>
+
+                <h4>3.3.1. Список расширений по умолчанию</h4>
+                <pre><code>txt, js, css, svg, json, html, htm, map</code></pre>
+
+                <h4>3.3.2. Регистронезависимость</h4>
+                <p>Сравнение расширений должно быть регистронезависимым (<code>.JS</code> = <code>.js</code>).</p>
+
+                <h4>3.3.3. Пользовательская конфигурация</h4>
+                <p>Пользователь может изменять список расширений в конфигурации.</p>
+            </section>
+
+            <!-- Section 4 -->
+            <section id="section4">
+                <h2><span class="section-number">4.</span>Требования к конфигурации</h2>
+
+                <table>
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Значение</th>
+                    </tr>
+                    <tr>
+                        <td><strong>4.1. Путь к конфигурационному файлу</strong></td>
+                        <td><code>/etc/mediahive/compressor-manager.conf</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>4.2. Формат</strong></td>
+                        <td>INI</td>
+                    </tr>
+                    <tr>
+                        <td><strong>4.3. Приоритет настроек</strong></td>
+                        <td>Аргументы командной строки имеют приоритет над конфигурационным файлом</td>
+                    </tr>
+                </table>
+
+                <h3>4.4. Структура файла конфигурации</h3>
+                <pre><code>[general]
+# Каталоги для мониторинга (разделитель ; или пробел)
+target_path=/var/www/html;/var/www/site1
+
+# Логирование отладки (true/false)
+debug=false
+
+# Количество потоков (0 = авто)
+threads=0
+
+# Список расширений (без точек, через пробел)
+list=txt js css svg json html htm map
+
+# Алгоритмы (gzip, brotli, all)
+algorithms=all
+
+# Уровень сжатия Gzip (1-9)
+gzip_level=6
+
+# Уровень сжатия Brotli (1-11)
+brotli_level=4
+
+# Задержка перед сжатием после изменения файла (сек)
+debounce_delay=2
+
+# Опционально: переопределение настроек для конкретной папки
+[/var/www/site2]
+list=html htm
+algorithms=all
+gzip_level=6
+brotli_level=4</code></pre>
+
+                <h3>4.5. Отсутствие конфигурационного файла</h3>
+                <div class="warning-box">
+                    <strong>⚠️ Важно:</strong> При отсутствии конфигурационного файла программа использует значения по умолчанию и записывает предупреждение в лог.
+                </div>
+            </section>
+
+            <!-- Section 5 -->
+            <section id="section5">
+                <h2><span class="section-number">5.</span>Интерфейс командной строки (CLI)</h2>
+
+                <p>Программа должна поддерживать следующие аргументы:</p>
+
+                <table>
+                    <tr>
+                        <th>Аргумент</th>
+                        <th>Описание</th>
+                        <th>Приоритет</th>
+                    </tr>
+                    <tr>
+                        <td><code>--config &lt;path&gt;</code></td>
+                        <td>Путь к файлу конфигурации (по умолчанию <code>/etc/mediahive/compressor-manager.conf</code>)</td>
+                        <td>Высокий</td>
+                    </tr>
+                    <tr>
+                        <td><code>--dir &lt;path&gt;</code></td>
+                        <td>Целевая директория (переопределяет <code>target_path</code>)</td>
+                        <td>Высокий</td>
+                    </tr>
+                    <tr>
+                        <td><code>--ext &lt;list&gt;</code></td>
+                        <td>Список расширений (переопределяет <code>list</code>)</td>
+                        <td>Высокий</td>
+                    </tr>
+                    <tr>
+                        <td><code>--gzip-level &lt;N&gt;</code></td>
+                        <td>Уровень сжатия Gzip</td>
+                        <td>Высокий</td>
+                    </tr>
+                    <tr>
+                        <td><code>--brotli-level &lt;N&gt;</code></td>
+                        <td>Уровень сжатия Brotli</td>
+                        <td>Высокий</td>
+                    </tr>
+                    <tr>
+                        <td><code>--dry-run</code></td>
+                        <td>Режим проверки (показать планы без действий)</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>--help</code>, <code>-h</code></td>
+                        <td>Вывод справки</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>--version</code>, <code>-v</code></td>
+                        <td>Вывод версии</td>
+                        <td>—</td>
+                    </tr>
+                </table>
+            </section>
+
+            <!-- Section 6 -->
+            <section id="section6">
+                <h2><span class="section-number">6.</span>Требования к надежности и производительности</h2>
+
+                <h3>6.1. Ресурсные ограничения</h3>
+                <table>
+                    <tr>
+                        <th>Ресурс</th>
+                        <th>Ограничение</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Потребление ОЗУ (покой)</strong></td>
+                        <td>Не более <span class="highlight">50 МБ</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Потребление ОЗУ (пик)</strong></td>
+                        <td>До <span class="highlight">200 МБ</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Файловые дескрипторы</strong></td>
+                        <td>Должно учитываться ограничение <code>inotify</code> (рекурсивное добавление наблюдений)</td>
+                    </tr>
+                </table>
+
+                <h3>6.2. Обработка ошибок</h3>
+                <ul>
+                    <li>Корректная обработка отсутствия прав на чтение/запись</li>
+                    <li>Обработка переполнения диска</li>
+                    <li>Обработка разрыва соединения <code>inotify</code> (превышение лимита событий) с попыткой переподключения</li>
+                    <li><strong>Недопустима потеря данных или повреждение исходных файлов</strong></li>
+                </ul>
+
+                <h3>6.3. Производительность</h3>
+                <table>
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Требование</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Интенсивность событий inotify</strong></td>
+                        <td>До <span class="highlight">1000 событий/сек</span> без потерь</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Нагрузка на CPU</strong></td>
+                        <td>Не должно быть превышения заданной нагрузки (контроль через пул потоков)</td>
+                    </tr>
+                </table>
+            </section>
+
+            <!-- Section 7 -->
+            <section id="section7">
+                <h2><span class="section-number">7.</span>Требования к безопасности</h2>
+
+                <h3>7.1. Права доступа</h3>
+                <table>
+                    <tr>
+                        <th>Файл</th>
+                        <th>Права</th>
+                        <th>Владелец</th>
+                    </tr>
+                    <tr>
+                        <td>Конфигурационный файл</td>
+                        <td><code>644</code></td>
+                        <td><code>root:root</code></td>
+                    </tr>
+                    <tr>
+                        <td>Служба</td>
+                        <td>—</td>
+                        <td>Рекомендуется запуск от специализированного системного пользователя <code>mh-compressor</code> (или <code>root</code> при необходимости доступа к системным папкам)</td>
+                    </tr>
+                </table>
+
+                <h3>7.2. Исполнение кода</h3>
+                <div class="warning-box">
+                    <strong>⛔ Запрещено:</strong> Выполнение внешних команд через <code>system()</code> или <code>popen()</code>. Сжатие только через API библиотек.
+                </div>
+
+                <h3>7.3. Изоляция</h3>
+                <ul>
+                    <li>Программа не должна записывать файлы в директории, куда нет прав на запись</li>
+                    <li>Программа не должна сжимать файлы, куда нет прав на чтение</li>
+                </ul>
+            </section>
+
+            <!-- Section 8 -->
+            <section id="section8">
+                <h2><span class="section-number">8.</span>Интеграция с системой (Systemd)</h2>
+
+                <h3>8.1. Тип службы</h3>
+                <p>Демон (долгий процесс).</p>
+
+                <h3>8.2. Файл юнита</h3>
+                <p><code>mh-compressor-manager.service</code></p>
+
+                <h3>8.3. Параметры юнита</h3>
+                <table>
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Значение</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Type</strong></td>
+                        <td><code>notify</code> (предпочтительно) или <code>simple</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>KillMode</strong></td>
+                        <td><code>mixed</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Путь установки</strong></td>
+                        <td><code>/usr/lib/systemd/system/</code> или <code>/etc/systemd/system/</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Поддерживаемые команды</strong></td>
+                        <td><code>start</code>, <code>stop</code>, <code>restart</code>, <code>status</code></td>
+                    </tr>
+                </table>
+
+                <h3>8.4. Завершение работы</h3>
+                <p>При получении сигналов <code>SIGTERM</code>, <code>SIGINT</code> программа должна корректно завершить текущие задачи сжатия и освободить ресурсы.</p>
+
+                <h3>8.5. Логирование службы</h3>
+                <p>Вывод в <code>systemd-journald</code> (stdout/stderr).</p>
+            </section>
+
+            <!-- Section 9 -->
+            <section id="section9">
+                <h2><span class="section-number">9.</span>Логирование и отчетность</h2>
+
+                <h3>9.1. Назначение</h3>
+                <p>Системный журнал (<code>syslog</code> / <code>journald</code>), facility <code>daemon</code>.</p>
+
+                <h3>9.2. Уровни логирования</h3>
+                <pre><code>INFO, WARNING, ERROR, DEBUG</code></pre>
+
+                <h3>9.3. Содержание логов</h3>
+                <ul>
+                    <li>Запуск и остановка службы</li>
+                    <li>Добавление/удаление каталогов мониторинга</li>
+                    <li>Начало и завершение сжатия (имя файла, размеры исходного и сжатого)</li>
+                    <li>Ошибки доступа, нехватки места, сбои библиотек</li>
+                </ul>
+
+                <h3>9.4. Коды возврата (Exit Code)</h3>
+                <table>
+                    <tr>
+                        <th>Код</th>
+                        <th>Значение</th>
+                    </tr>
+                    <tr>
+                        <td><code>0</code></td>
+                        <td>Успех</td>
+                    </tr>
+                    <tr>
+                        <td><code>1</code></td>
+                        <td>Ошибка выполнения</td>
+                    </tr>
+                    <tr>
+                        <td><code>2</code></td>
+                        <td>Ошибка конфигурации</td>
+                    </tr>
+                </table>
+            </section>
+
+            <!-- Section 10 -->
+            <section id="section10">
+                <h2><span class="section-number">10.</span>Требования к разработке и поставке</h2>
+
+                <h3>10.1. Система сборки</h3>
+                <p><code>CMake</code> или <code>Make</code>.</p>
+
+                <h3>10.2. Зависимости</h3>
+                <table>
+                    <tr>
+                        <th>Библиотека</th>
+                        <th>Пакет (Fedora)</th>
+                    </tr>
+                    <tr>
+                        <td><strong>zlib</strong></td>
+                        <td><code>zlib-devel</code> (Fedora 38-42) / <code>zlib-ng-compat-devel</code> (Fedora 43+)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Brotli</strong></td>
+                        <td><code>brotli-devel</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>systemd</strong></td>
+                        <td><code>systemd-devel</code> (заголовочные файлы)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>libstdc++</strong></td>
+                        <td>Стандартная библиотека C++</td>
+                    </tr>
+                </table>
+
+                <h3>10.3. Пакетирование</h3>
+                <ul>
+                    <li>Предоставление <code>SPEC</code> файла для сборки RPM пакета (Fedora)</li>
+                    <li>Возможность сборки из исходных кодов</li>
+                </ul>
+
+                <h3>10.4. Установка</h3>
+                <ul>
+                    <li>Создание системного пользователя и группы (опционально/рекомендуется)</li>
+                    <li>Копирование бинарника в <code>/usr/bin/</code></li>
+                    <li>Размещение конфига по умолчанию в <code>/etc/mediahive/</code></li>
+                    <li><strong>Служба не включается автоматически</strong> (<code>enable</code> выполняется администратором вручную)</li>
+                </ul>
+
+                <h3>10.5. Документация</h3>
+                <div class="info-box">
+                    <strong>📚 Требование:</strong> Наличие <code>README.md</code> с инструкцией по установке, настройке и управлению службой.
+                </div>
+            </section>
+
+            <!-- Section 11 -->
+            <section id="section11">
+                <h2><span class="section-number">11.</span>Критерии приемки</h2>
+
+                <div class="success-box">
+                    <strong>✅ Программа считается принятой при выполнении всех следующих условий:</strong>
+                </div>
+
+                <ol>
+                    <li>Программа компилируется на <strong>Fedora 38+</strong> без ошибок</li>
+                    <li>Служба корректно стартует, останавливается и перезапускается через <code>systemctl</code></li>
+                    <li>Файлы с расширениями по умолчанию сжимаются в <code>.gz</code> и <code>.br</code></li>
+                    <li>При изменении исходного файла сжатые копии обновляются (с учетом <code>debounce</code>)</li>
+                    <li>При удалении исходного файла сжатые копии удаляются</li>
+                    <li>Конфигурация через файл и CLI аргументы работает корректно</li>
+                    <li>Логи доступны через <code>journalctl -u mh-compressor-manager</code></li>
+                    <li>Потребление ресурсов не превышает заявленных лимитов</li>
+                </ol>
+            </section>
+
+            <!-- Section 12 -->
+            <section id="section12">
+                <h2><span class="section-number">12.</span>История разработки</h2>
+
+                <div class="history-box">
+                    <strong>📜 Историческая справка:</strong><br><br>
+                    
+                    Программа <code>mh-compressor-manager</code> версии 1.0.0 была разработана в <strong>2026 году</strong> специально для операционной системы <strong>Fedora 43</strong>.<br><br>
+                    
+                    <strong>Предыдущая версия (2014 год):</strong><br>
+                    Предыдущая версия утилиты сжатия была написана в <strong>2014 году</strong> и имела следующие ограничения:
+                    <ul>
+                        <li>Поддерживался только один алгоритм сжатия — <strong>Gzip</strong> (формат <code>.gz</code>)</li>
+                        <li>Отсутствовала система журналирования событий (логов)</li>
+                        <li>Не было поддержки многопоточности и асинхронной обработки</li>
+                        <li>Отсутствовала интеграция с systemd</li>
+                        <li>Конфигурация осуществлялась только через аргументы командной строки</li>
+                        <li>Не поддерживалось сохранение метаданных (владелец, группа, SELinux-контекст)</li>
+                    </ul>
+                    
+                    <strong>Текущая версия (2026 год):</strong><br>
+                    Текущая версия полностью переработана с использованием современных стандартов (<strong>C++23</strong>) и учитывает все требования к надежности, безопасности и производительности.
+                </div>
+
+                <h3>Сравнение версий</h3>
+                <table>
+                    <tr>
+                        <th>Характеристика</th>
+                        <th>Версия 2014</th>
+                        <th>Версия 2026 (текущая)</th>
+                    </tr>
+                    <tr>
+                        <td>Алгоритмы сжатия</td>
+                        <td>Только Gzip (.gz)</td>
+                        <td>Gzip + Brotli (.gz + .br)</td>
+                    </tr>
+                    <tr>
+                        <td>Логирование</td>
+                        <td>Отсутствовало</td>
+                        <td>Полноценное (syslog/journald)</td>
+                    </tr>
+                    <tr>
+                        <td>Многопоточность</td>
+                        <td>Нет</td>
+                        <td>Пул потоков</td>
+                    </tr>
+                    <tr>
+                        <td>Интеграция с systemd</td>
+                        <td>Нет</td>
+                        <td>Type=notify, sd_notify()</td>
+                    </tr>
+                    <tr>
+                        <td>Конфигурация</td>
+                        <td>Только CLI</td>
+                        <td>INI-файл + CLI</td>
+                    </tr>
+                    <tr>
+                        <td>Идемпотентность</td>
+                        <td>Нет</td>
+                        <td>Проверка временных меток</td>
+                    </tr>
+                    <tr>
+                        <td>Сохранение метаданных</td>
+                        <td>Частичное</td>
+                        <td>Полное (права, владелец, SELinux)</td>
+                    </tr>
+                    <tr>
+                        <td>Стандарт C++</td>
+                        <td>C++98/03</td>
+                        <td>C++23</td>
+                    </tr>
+                </table>
+            </section>
+
+            <!-- Section 13 -->
+            <section id="section13">
+                <h2><span class="section-number">13.</span>Правообладатель</h2>
+
+                <div class="info-box" style="text-align: center; padding: 30px;">
+                    <h3 style="margin-bottom: 20px; color: var(--primary-color);">📄 Информация о правообладателе</h3>
+                    <p style="font-size: 1.2em; margin-bottom: 10px;"><strong>© 2026 MediaHive.ru</strong></p>
+                    <p style="font-size: 1.1em; margin-bottom: 10px;"><strong>Владелец:</strong> ООО ОКБ "Улей"</p>
+                    <p style="font-size: 1.1em; margin-bottom: 10px;"><strong>Автор:</strong> Коваленко Павел</p>
+                    <p style="font-style: italic; color: #64748b;"><em>Все права защищены.</em></p>
+                </div>
+
+                <h3>Контактная информация</h3>
+                <table>
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Значение</th>
+                    </tr>
+                    <tr>
+                        <td>Проект</td>
+                        <td>mh-compressor-manager</td>
+                    </tr>
+                    <tr>
+                        <td>Версия</td>
+                        <td>1.0.0</td>
+                    </tr>
+                    <tr>
+                        <td>Стандарт</td>
+                        <td>C++23</td>
+                    </tr>
+                    <tr>
+                        <td>Платформа</td>
+                        <td>Linux (Fedora 43+, Fedora 38+, CentOS, Ubuntu)</td>
+                    </tr>
+                    <tr>
+                        <td>Компилятор</td>
+                        <td>GCC 13+ или Clang 16+</td>
+                    </tr>
+                    <tr>
+                        <td>Система сборки</td>
+                        <td>CMake 3.20+</td>
+                    </tr>
+                    <tr>
+                        <td>Документация</td>
+                        <td>README.md, README.html, TECHNICAL_SPECIFICATION.html</td>
+                    </tr>
+                </table>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <div class="copyright">
+                <p><strong>© 2026 MediaHive.ru</strong></p>
+                <p><strong>Владелец:</strong> ООО ОКБ "Улей"</p>
+                <p><strong>Автор:</strong> Коваленко Павел</p>
+                <p><em>Все права защищены.</em></p>
+            </div>
+            <div class="document-info">
+                <p>Техническое Задание версия 2.0 | Документ утвержден в 2026 году</p>
+                <p>mh-compressor-manager v1.0.0 | C++23 | Linux (Fedora 43+)</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Плавная прокрутка к якорям
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Подсветка текущего раздела в TOC
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            tocLinks.forEach(link => {
+                link.style.color = '';
+                link.style.fontWeight = '';
+                if (link.getAttribute('href') === '#' + current) {
+                    link.style.color = 'var(--primary-color)';
+                    link.style.fontWeight = 'bold';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

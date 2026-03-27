@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mh-compressor-manager — Документация</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --bg-color: #f8fafc;
+            --text-color: #1e293b;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --border-color: #e2e8f0;
+            --success-color: #16a34a;
+            --warning-color: #ca8a04;
+            --error-color: #dc2626;
+            --info-bg: #eff6ff;
+            --info-border: #3b82f6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        header {
+            border-bottom: 3px solid var(--primary-color);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .version {
+            display: inline-block;
+            background: var(--primary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        h2 {
+            color: var(--secondary-color);
+            border-left: 4px solid var(--primary-color);
+            padding-left: 15px;
+            margin: 30px 0 15px 0;
+            font-size: 1.8em;
+        }
+
+        h3 {
+            color: var(--text-color);
+            margin: 25px 0 10px 0;
+            font-size: 1.3em;
+        }
+
+        p { margin-bottom: 15px; }
+
+        ul, ol { margin-left: 25px; margin-bottom: 15px; }
+        li { margin-bottom: 8px; }
+
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.95em;
+            color: #c7254e;
+        }
+
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 15px 0;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        .note {
+            background: #fef3c7;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .warning {
+            background: #fee2e2;
+            border-left: 4px solid var(--error-color);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .success {
+            background: #dcfce7;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .info {
+            background: var(--info-bg);
+            border-left: 4px solid var(--info-border);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .history {
+            background: #f5f3ff;
+            border-left: 4px solid #8b5cf6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+            font-style: italic;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) { background: #f8fafc; }
+        tr:hover { background: #f1f5f9; }
+
+        .toc {
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+
+        .toc ul {
+            list-style: none;
+            margin-left: 0;
+        }
+
+        .toc li { margin-bottom: 5px; }
+
+        .toc a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .toc a:hover { text-decoration: underline; }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        .badge-required { background: var(--error-color); color: white; }
+        .badge-optional { background: var(--success-color); color: white; }
+
+        .copyright {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            color: #64748b;
+            font-size: 0.9em;
+        }
+
+        .copyright strong { color: var(--text-color); }
+
+        footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            color: #64748b;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 20px; }
+            h1 { font-size: 2em; }
+            h2 { font-size: 1.5em; }
+            pre { padding: 15px; font-size: 0.85em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>mh-compressor-manager</h1>
+            <p><span class="version">v1.0.0</span> Автоматическое сжатие статического контента для nginx</p>
+        </header>
+
+        <div class="toc">
+            <h3>📑 Содержание</h3>
+            <ul>
+                <li><a href="#overview">1. Обзор</a></li>
+                <li><a href="#history">2. История разработки</a></li>
+                <li><a href="#features">3. Возможности</a></li>
+                <li><a href="#requirements">4. Требования</a></li>
+                <li><a href="#installation">5. Установка</a></li>
+                <li><a href="#configuration">6. Конфигурация</a></li>
+                <li><a href="#cli">7. Командная строка</a></li>
+                <li><a href="#systemd">8. Интеграция с systemd</a></li>
+                <li><a href="#usage">9. Примеры использования</a></li>
+                <li><a href="#logging">10. Логирование</a></li>
+                <li><a href="#troubleshooting">11. Решение проблем</a></li>
+                <li><a href="#security">12. Безопасность</a></li>
+                <li><a href="#copyright">13. Правообладатель</a></li>
+            </ul>
+        </div>
+
+        <section id="overview">
+            <h2>1. Обзор</h2>
+            <p><strong>mh-compressor-manager</strong> — это фоновая служба (демон) для автоматического сжатия статического контента веб-сервера nginx. Программа отслеживает изменения в файловой системе в реальном времени и создает сжатые копии файлов в форматах <strong>Gzip (.gz)</strong> и <strong>Brotli (.br)</strong>.</p>
+            
+            <div class="success">
+                <strong>✅ Цель:</strong> Снижение сетевого трафика и ускорение загрузки веб-страниц за счет предварительного сжатия статических ресурсов.
+            </div>
+        </section>
+
+        <section id="history">
+            <h2>2. История разработки</h2>
+            
+            <div class="history">
+                <strong>📜 Историческая справка:</strong><br><br>
+                Программа <code>mh-compressor-manager</code> версии 1.0.0 была разработана в 2026 году специально для операционной системы <strong>Fedora 43</strong>.<br><br>
+                
+                Предыдущая версия утилиты сжатия была написана в <strong>2014 году</strong> и имела следующие ограничения:
+                <ul>
+                    <li>Поддерживался только один алгоритм сжатия — <strong>Gzip</strong> (формат <code>.gz</code>)</li>
+                    <li>Отсутствовала система журналирования событий (логов)</li>
+                    <li>Не было поддержки многопоточности и асинхронной обработки</li>
+                    <li>Отсутствовала интеграция с systemd</li>
+                    <li>Конфигурация осуществлялась только через аргументы командной строки</li>
+                </ul>
+                
+                Текущая версия полностью переработана с использованием современных стандартов (C++23) и учитывает все требования к надежности, безопасности и производительности.
+            </div>
+        </section>
+
+        <section id="features">
+            <h2>3. Возможности</h2>
+            <ul>
+                <li><strong>Мониторинг в реальном времени</strong> — использование <code>inotify</code> для отслеживания событий файловой системы</li>
+                <li><strong>Два алгоритма сжатия</strong> — Gzip (zlib) и Brotli (libbrotli)</li>
+                <li><strong>Рекурсивное сканирование</strong> — поддержка вложенных директорий</li>
+                <li><strong>Многопоточность</strong> — пул потоков для параллельного сжатия файлов</li>
+                <li><strong>Debounce-защита</strong> — предотвращение множественной обработки при частых изменениях</li>
+                <li><strong>Идемпотентность</strong> — пропуск файлов, которые уже сжаты и актуальны</li>
+                <li><strong>Сохранение метаданных</strong> — права доступа, владелец, группа, временные метки, SELinux-контекст</li>
+                <li><strong>Интеграция с systemd</strong> — уведомления о готовности, корректное завершение работы</li>
+                <li><strong>Гибкая конфигурация</strong> — INI-файл + аргументы командной строки</li>
+                <li><strong>Подробное логирование</strong> — интеграция с syslog/journald с уровнями DEBUG/INFO/WARNING/ERROR</li>
+            </ul>
+        </section>
+
+        <section id="requirements">
+            <h2>4. Требования</h2>
+            
+            <h3>4.1. Системные требования</h3>
+            <table>
+                <tr>
+                    <th>Компонент</th>
+                    <th>Требование</th>
+                    <th>Примечание</th>
+                </tr>
+                <tr>
+                    <td>ОС</td>
+                    <td>Linux (Fedora 43+, Fedora 38+, CentOS, Ubuntu)</td>
+                    <td>Приоритет: Fedora 43</td>
+                </tr>
+                <tr>
+                    <td>Компилятор</td>
+                    <td>GCC 13+ или Clang 16+</td>
+                    <td>Для поддержки C++23</td>
+                </tr>
+                <tr>
+                    <td>CMake</td>
+                    <td>3.20+</td>
+                    <td>Система сборки</td>
+                </tr>
+                <tr>
+                    <td>ОЗУ</td>
+                    <td>≤ 50 МБ (покой), ≤ 200 МБ (пик)</td>
+                    <td>Зависит от количества потоков</td>
+                </tr>
+            </table>
+
+            <h3>4.2. Зависимости для сборки (Fedora 43+)</h3>
+            <div class="info">
+                <strong>⚠️ Важно для Fedora 43:</strong> В Fedora 43 пакет <code>zlib-devel</code> заменён на <code>zlib-ng-compat-devel</code>. Используйте актуальные имена пакетов.
+            </div>
+            
+            <table>
+                <tr>
+                    <th>Библиотека</th>
+                    <th>Пакет (Fedora 43+)</th>
+                    <th>Пакет (Fedora 38-42)</th>
+                    <th>Пакет (Ubuntu/Debian)</th>
+                    <th>Назначение</th>
+                </tr>
+                <tr>
+                    <td><code>zlib</code></td>
+                    <td><code>zlib-ng-compat-devel</code></td>
+                    <td><code>zlib-devel</code></td>
+                    <td><code>zlib1g-dev</code></td>
+                    <td>Сжатие Gzip</td>
+                </tr>
+                <tr>
+                    <td><code>Brotli</code></td>
+                    <td><code>brotli-devel</code></td>
+                    <td><code>brotli-devel</code></td>
+                    <td><code>libbrotli-dev</code></td>
+                    <td>Сжатие Brotli</td>
+                </tr>
+                <tr>
+                    <td><code>systemd</code></td>
+                    <td><code>systemd-devel</code></td>
+                    <td><code>systemd-devel</code></td>
+                    <td><code>libsystemd-dev</code></td>
+                    <td>Интеграция с systemd</td>
+                </tr>
+                <tr>
+                    <td><code>libselinux</code></td>
+                    <td><code>libselinux-devel</code></td>
+                    <td><code>libselinux-devel</code></td>
+                    <td><code>libselinux1-dev</code></td>
+                    <td>SELinux-контексты (опционально)</td>
+                </tr>
+                <tr>
+                    <td><code>pkg-config</code></td>
+                    <td><code>pkgconf-pkg-config</code></td>
+                    <td><code>pkgconfig</code></td>
+                    <td><code>pkg-config</code></td>
+                    <td>Поиск зависимостей</td>
+                </tr>
+            </table>
+
+            <div class="note">
+                <strong>📌 Установка зависимостей на Fedora 43:</strong>
+                <pre>sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel pkgconf-pkg-config cmake gcc-c++ rpm-build rpmdevtools</pre>
+                
+                <strong>📌 Установка зависимостей на Fedora 38-42:</strong>
+                <pre>sudo dnf install zlib-devel brotli-devel systemd-devel libselinux-devel pkgconfig cmake gcc-c++ rpm-build rpmdevtools</pre>
+                
+                <strong>📌 Установка зависимостей на Ubuntu/Debian:</strong>
+                <pre>sudo apt-get install zlib1g-dev libbrotli-dev libsystemd-dev libselinux1-dev pkg-config cmake build-essential</pre>
+            </div>
+        </section>
+
+        <section id="installation">
+            <h2>5. Установка</h2>
+
+            <h3>5.1. Установка из RPM-пакета (рекомендуется для Fedora)</h3>
+            <pre># 1. Сборка RPM-пакета (из исходников)
+cd /path/to/mh-compressor-manager
+./build-rpm.sh 1.0.0
+
+# 2. Установка собранного пакета
+sudo dnf install ~/rpmbuild/RPMS/x86_64/mh-compressor-manager-1.0.0-1*.rpm
+
+# 3. Обновление базы systemd
+sudo systemctl daemon-reload</pre>
+
+            <h3>5.2. Сборка из исходных кодов</h3>
+            <pre># 1. Установка зависимостей (см. раздел 4.2)
+
+# 2. Клонирование репозитория (или распаковка архива)
+cd /path/to/source
+
+# 3. Создание директории сборки
+mkdir build && cd build
+
+# 4. Конфигурация проекта
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# 5. Компиляция
+make -j$(nproc)
+
+# 6. Установка в систему
+sudo make install
+
+# 7. Обновление базы systemd
+sudo systemctl daemon-reload</pre>
+
+            <h3>5.3. Структура установки</h3>
+            <table>
+                <tr>
+                    <th>Файл</th>
+                    <th>Путь</th>
+                    <th>Права</th>
+                </tr>
+                <tr>
+                    <td>Бинарный файл</td>
+                    <td><code>/usr/bin/mh-compressor-manager</code></td>
+                    <td>755</td>
+                </tr>
+                <tr>
+                    <td>Конфигурация</td>
+                    <td><code>/etc/mediahive/compressor-manager.conf</code></td>
+                    <td>644</td>
+                </tr>
+                <tr>
+                    <td>Systemd-юнит</td>
+                    <td><code>/usr/lib/systemd/system/mh-compressor-manager.service</code></td>
+                    <td>644</td>
+                </tr>
+            </table>
+
+            <h3>5.4. Создание системного пользователя (рекомендуется)</h3>
+            <pre># Создание пользователя и группы
+sudo useradd -r -s /sbin/nologin mh-compressor
+
+# Назначение прав на директорию с логами (если нужно)
+sudo chown -R mh-compressor:mh-compressor /var/log/mh-compressor</pre>
+        </section>
+
+        <section id="configuration">
+            <h2>6. Конфигурация</h2>
+
+            <h3>6.1. Файл конфигурации</h3>
+            <p>Путь по умолчанию: <code>/etc/mediahive/compressor-manager.conf</code></p>
+            
+            <pre>[general]
+# Каталоги для мониторинга (разделитель ; или пробел)
+target_path=/var/www/html;/var/www/site1
+
+# Логирование отладки (true/false)
+debug=false
+
+# Количество потоков (0 = автоопределение по CPU)
+threads=0
+
+# Список расширений (без точек, через пробел)
+list=txt js css svg json html htm map
+
+# Алгоритмы сжатия: gzip, brotli, all
+algorithms=all
+
+# Уровень сжатия Gzip (1-9)
+gzip_level=6
+
+# Уровень сжатия Brotli (1-11)
+brotli_level=4
+
+# Задержка перед сжатием после изменения файла (сек)
+debounce_delay=2
+
+# Опционально: переопределение настроек для конкретной папки
+[/var/www/site2]
+list=html htm
+algorithms=all
+gzip_level=6
+brotli_level=4</pre>
+
+            <h3>6.2. Описание параметров</h3>
+            <table>
+                <tr>
+                    <th>Параметр</th>
+                    <th>Тип</th>
+                    <th>По умолчанию</th>
+                    <th>Описание</th>
+                </tr>
+                <tr>
+                    <td><code>target_path</code></td>
+                    <td>string</td>
+                    <td>/var/www/html</td>
+                    <td>Каталоги для мониторинга</td>
+                </tr>
+                <tr>
+                    <td><code>debug</code></td>
+                    <td>boolean</td>
+                    <td>false</td>
+                    <td>Режим отладочного логирования</td>
+                </tr>
+                <tr>
+                    <td><code>threads</code></td>
+                    <td>integer</td>
+                    <td>0 (авто)</td>
+                    <td>Количество потоков пула</td>
+                </tr>
+                <tr>
+                    <td><code>list</code></td>
+                    <td>string</td>
+                    <td>txt js css...</td>
+                    <td>Список расширений файлов</td>
+                </tr>
+                <tr>
+                    <td><code>algorithms</code></td>
+                    <td>string</td>
+                    <td>all</td>
+                    <td>Алгоритмы: gzip, brotli, all</td>
+                </tr>
+                <tr>
+                    <td><code>gzip_level</code></td>
+                    <td>integer</td>
+                    <td>6</td>
+                    <td>Уровень сжатия Gzip (1-9)</td>
+                </tr>
+                <tr>
+                    <td><code>brotli_level</code></td>
+                    <td>integer</td>
+                    <td>4</td>
+                    <td>Уровень сжатия Brotli (1-11)</td>
+                </tr>
+                <tr>
+                    <td><code>debounce_delay</code></td>
+                    <td>integer</td>
+                    <td>2</td>
+                    <td>Задержка перед сжатием (сек)</td>
+                </tr>
+            </table>
+
+            <div class="warning">
+                <strong>⚠️ Важно:</strong> Аргументы командной строки имеют приоритет над настройками в файле конфигурации.
+            </div>
+        </section>
+
+        <section id="cli">
+            <h2>7. Командная строка</h2>
+
+            <table>
+                <tr>
+                    <th>Аргумент</th>
+                    <th>Описание</th>
+                    <th>Пример</th>
+                </tr>
+                <tr>
+                    <td><code>--config &lt;path&gt;</code></td>
+                    <td>Путь к файлу конфигурации</td>
+                    <td><code>--config /etc/my.conf</code></td>
+                </tr>
+                <tr>
+                    <td><code>--dir &lt;path&gt;</code></td>
+                    <td>Целевая директория (переопределяет config)</td>
+                    <td><code>--dir /var/www/html</code></td>
+                </tr>
+                <tr>
+                    <td><code>--ext &lt;list&gt;</code></td>
+                    <td>Список расширений (переопределяет config)</td>
+                    <td><code>--ext "js css html"</code></td>
+                </tr>
+                <tr>
+                    <td><code>--gzip-level &lt;N&gt;</code></td>
+                    <td>Уровень сжатия Gzip (1-9)</td>
+                    <td><code>--gzip-level 9</code></td>
+                </tr>
+                <tr>
+                    <td><code>--brotli-level &lt;N&gt;</code></td>
+                    <td>Уровень сжатия Brotli (1-11)</td>
+                    <td><code>--brotli-level 11</code></td>
+                </tr>
+                <tr>
+                    <td><code>--dry-run</code></td>
+                    <td>Режим проверки (без реального сжатия)</td>
+                    <td><code>--dry-run</code></td>
+                </tr>
+                <tr>
+                    <td><code>--help, -h</code></td>
+                    <td>Вывод справки</td>
+                    <td><code>--help</code></td>
+                </tr>
+                <tr>
+                    <td><code>--version, -v</code></td>
+                    <td>Вывод версии программы</td>
+                    <td><code>--version</code></td>
+                </tr>
+            </table>
+
+            <h3>Примеры использования CLI</h3>
+            <pre># Запуск с настройками по умолчанию
+sudo mh-compressor-manager
+
+# Запуск в режиме отладки с конкретной директорией
+sudo mh-compressor-manager --debug --dir /var/www/mysite
+
+# Тестовый запуск без реального сжатия
+sudo mh-compressor-manager --dry-run --debug
+
+# Запуск с альтернативным конфигом
+sudo mh-compressor-manager --config /opt/custom.conf
+
+# Запуск с переопределением уровней сжатия
+sudo mh-compressor-manager --gzip-level 9 --brotli-level 11</pre>
+        </section>
+
+        <section id="systemd">
+            <h2>8. Интеграция с systemd</h2>
+
+            <h3>8.1. Файл юнита</h3>
+            <pre>[Unit]
+Description=MediaHive Compressor Manager
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/mh-compressor-manager --config /etc/mediahive/compressor-manager.conf
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target</pre>
+
+            <h3>8.2. Управление службой</h3>
+            <pre># Запуск службы
+sudo systemctl start mh-compressor-manager
+
+# Остановка службы
+sudo systemctl stop mh-compressor-manager
+
+# Перезапуск службы
+sudo systemctl restart mh-compressor-manager
+
+# Проверка статуса
+sudo systemctl status mh-compressor-manager
+
+# Включение автозапуска при загрузке
+sudo systemctl enable mh-compressor-manager
+
+# Отключение автозапуска
+sudo systemctl disable mh-compressor-manager</pre>
+
+            <div class="note">
+                <strong>📌 Тип службы:</strong> <code>Type=notify</code> — программа отправляет уведомление о готовности через <code>sd_notify()</code>.
+            </div>
+        </section>
+
+        <section id="usage">
+            <h2>9. Примеры использования</h2>
+
+            <h3>9.1. Базовый сценарий</h3>
+            <pre># 1. Установка и настройка
+sudo dnf install mh-compressor-manager-1.0.0-1.x86_64.rpm
+sudo systemctl daemon-reload
+
+# 2. Проверка конфигурации
+sudo mh-compressor-manager --version
+
+# 3. Запуск службы
+sudo systemctl start mh-compressor-manager
+
+# 4. Проверка работы
+echo "console.log('test');" | sudo tee /var/www/html/test.js
+
+# 5. Через 2 секунды проверяем сжатые файлы
+ls -la /var/www/html/test.js*</pre>
+
+            <h3>9.2. Проверка логов</h3>
+            <pre># Просмотр логов службы в реальном времени
+sudo journalctl -u mh-compressor-manager -f
+
+# Просмотр логов за последний час
+sudo journalctl -u mh-compressor-manager --since "1 hour ago"
+
+# Просмотр только ошибок
+sudo journalctl -u mh-compressor-manager -p err</pre>
+
+            <h3>9.3. Тестирование удаления</h3>
+            <pre># Удаление исходного файла
+sudo rm /var/www/html/test.js
+
+# Сжатые копии должны быть удалены автоматически
+ls -la /var/www/html/test.js*  # Файлы .gz и .br должны отсутствовать</pre>
+        </section>
+
+        <section id="logging">
+            <h2>10. Логирование</h2>
+
+            <h3>10.1. Уровни логирования</h3>
+            <table>
+                <tr>
+                    <th>Уровень</th>
+                    <th>Описание</th>
+                    <th>Пример</th>
+                </tr>
+                <tr>
+                    <td><code>DEBUG</code></td>
+                    <td>Отладочная информация</td>
+                    <td>События inotify, проверка файлов</td>
+                </tr>
+                <tr>
+                    <td><code>INFO</code></td>
+                    <td>Информационные сообщения</td>
+                    <td>Запуск, остановка, сжатие файлов</td>
+                </tr>
+                <tr>
+                    <td><code>WARNING</code></td>
+                    <td>Предупреждения</td>
+                    <td>Отсутствие прав, недоступные пути</td>
+                </tr>
+                <tr>
+                    <td><code>ERROR</code></td>
+                    <td>Ошибки</td>
+                    <td>Сбои сжатия, ошибки библиотек</td>
+                </tr>
+            </table>
+
+            <h3>10.2. Просмотр логов</h3>
+            <pre># Все логи службы
+sudo journalctl -u mh-compressor-manager
+
+# Только ошибки и предупреждения
+sudo journalctl -u mh-compressor-manager -p warning
+
+# Логи в реальном времени
+sudo journalctl -u mh-compressor-manager -f
+
+# Логи с временными метками
+sudo journalctl -u mh-compressor-manager -o short-iso</pre>
+
+            <h3>10.3. Примеры записей в логе</h3>
+            <pre>[INFO] Starting mh-compressor-manager
+[INFO] Target paths: 1
+[INFO]   - /var/www/html
+[INFO] Thread pool size: 4
+[INFO] Monitor started
+[INFO] Watching directory: /var/www/html
+[INFO] Starting initial scan of existing files...
+[INFO] Initial scan completed: 150 files scanned, 45 queued for compression
+[INFO] Compressing: /var/www/html/style.css
+[INFO] Compression completed: /var/www/html/style.css
+[INFO] Service ready (sd_notify sent)</pre>
+        </section>
+
+        <section id="troubleshooting">
+            <h2>11. Решение проблем</h2>
+
+            <h3>11.1. Служба не запускается</h3>
+            <pre># Проверка статуса службы
+sudo systemctl status mh-compressor-manager
+
+# Просмотр логов на ошибки
+sudo journalctl -u mh-compressor-manager -p err
+
+# Проверка конфигурации
+sudo mh-compressor-manager --config /etc/mediahive/compressor-manager.conf --dry-run</pre>
+
+            <h3>11.2. Файлы не сжимаются</h3>
+            <ul>
+                <li>Проверьте права доступа к целевой директории</li>
+                <li>Убедитесь, что расширение файла есть в списке <code>list</code></li>
+                <li>Проверьте логи на наличие ошибок</li>
+                <li>Запустите в режиме <code>--debug</code> для подробной диагностики</li>
+            </ul>
+
+            <h3>11.3. Превышение лимита inotify</h3>
+            <pre># Проверка текущего лимита
+cat /proc/sys/fs/inotify/max_user_watches
+
+# Увеличение лимита (временно)
+sudo sysctl fs.inotify.max_user_watches=524288
+
+# Увеличение лимита (постоянно)
+echo "fs.inotify.max_user_watches=524288" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p</pre>
+
+            <h3>11.4. Ошибки прав доступа</h3>
+            <ul>
+                <li>Запускайте службу от <code>root</code> для доступа к системным директориям</li>
+                <li>Проверьте права на запись в целевую директорию</li>
+                <li>Убедитесь, что SELinux не блокирует доступ (проверьте <code>setenforce 0</code> для теста)</li>
+            </ul>
+
+            <h3>11.5. Высокое потребление памяти</h3>
+            <ul>
+                <li>Уменьшите количество потоков в конфигурации (<code>threads=2</code>)</li>
+                <li>Проверьте размер обрабатываемых файлов</li>
+                <li>Увеличьте <code>debounce_delay</code> для снижения нагрузки</li>
+            </ul>
+
+            <h3>11.6. Ошибки сборки на Fedora 43</h3>
+            <div class="warning">
+                <strong>⚠️ Fedora 43: zlib-ng-compat-devel</strong><br><br>
+                Если при сборке возникает ошибка «zlib-devel not found», установите актуальный пакет:
+                <pre>sudo dnf install zlib-ng-compat-devel</pre>
+                Также обновите CMakeLists.txt, заменив <code>pkg_check_modules(ZLIB REQUIRED zlib)</code> на <code>pkg_check_modules(ZLIB REQUIRED zlib-ng-compat)</code> при необходимости.
+            </div>
+        </section>
+
+        <section id="security">
+            <h2>12. Безопасность</h2>
+
+            <h3>12.1. Права доступа</h3>
+            <ul>
+                <li>Конфигурационный файл: <code>644</code> (владелец <code>root</code>)</li>
+                <li>Бинарный файл: <code>755</code> (владелец <code>root</code>)</li>
+                <li>Рекомендуется запуск от специализированного пользователя <code>mh-compressor</code></li>
+            </ul>
+
+            <h3>12.2. Защита от уязвимостей</h3>
+            <ul>
+                <li>❌ Запрещено выполнение внешних команд (<code>system()</code>, <code>popen()</code>)</li>
+                <li>❌ Игнорирование символических ссылок (защита от symlink-атак)</li>
+                <li>✅ Использование <code>lchown()</code> вместо <code>chown()</code> для безопасности</li>
+                <li>✅ Проверка прав доступа перед операциями записи</li>
+            </ul>
+
+            <h3>12.3. SELinux</h3>
+            <p>При включенном SELinux сжатые копии наследуют контекст безопасности оригинала. Для диагностики проблем с SELinux:</p>
+            <pre># Проверка контекста файла
+ls -Z /var/www/html/file.js
+
+# Просмотр логов SELinux
+sudo ausearch -m avc -ts recent
+
+# Временное отключение (для тестирования)
+sudo setenforce 0</pre>
+        </section>
+
+        <section id="copyright">
+            <h2>13. Правообладатель</h2>
+            
+            <div class="copyright">
+                <p><strong>© 2026 MediaHive.ru</strong></p>
+                <p><strong>Владелец:</strong> ООО ОКБ "Улей"</p>
+                <p><strong>Автор:</strong> Коваленко Павел</p>
+                <p><em>Все права защищены.</em></p>
+            </div>
+
+            <h3>Контакты</h3>
+            <ul>
+                <li><strong>Проект:</strong> mh-compressor-manager</li>
+                <li><strong>Версия:</strong> 1.0.0</li>
+                <li><strong>Стандарт:</strong> C++23</li>
+                <li><strong>Платформа:</strong> Linux (Fedora 43+, Fedora 38+, CentOS, Ubuntu)</li>
+                <li><strong>Репозиторий:</strong> (внутренний)</li>
+            </ul>
+
+            <div class="note">
+                <strong>📚 Дополнительная документация:</strong> Исходный код содержит комментарии, соответствующие требованиям Технического Задания версия 2.
+            </div>
+        </section>
+
+        <footer>
+            <p>mh-compressor-manager v1.0.0 | Документация сгенерирована согласно ТЗ версия 2</p>
+            <p>© 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Все права защищены.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Плавная прокрутка к якорям
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Подсветка текущего раздела в TOC
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            tocLinks.forEach(link => {
+                link.style.color = '';
+                link.style.fontWeight = '';
+                if (link.getAttribute('href') === '#' + current) {
+                    link.style.color = 'var(--primary-color)';
+                    link.style.fontWeight = 'bold';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
