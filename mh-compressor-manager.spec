@@ -3,7 +3,7 @@ Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Автоматическое сжатие статического контента для nginx
 
-License:        Proprietary
+License:        MIT License
 URL:            https://mediahive.ru
 BuildArch:      x86_64
 
