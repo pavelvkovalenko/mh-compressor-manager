@@ -9,8 +9,8 @@ mh-compressor-manager/
 │   ├── threadpool.h
 │   ├── compressor-manager.conf   # Пример конфига
 │   ├── mh-compressor-manager.service
-│   ├── README.md
-│   └── README.html
+├── README.md
+├── README.html
 ├── mh-compressor-manager.spec    # SPEC-файл для RPM
 ├── build-rpm.sh                  # Скрипт сборки
 ├── LICENSE                       # Лицензия
