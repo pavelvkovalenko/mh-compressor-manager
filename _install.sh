@@ -1,5 +1,6 @@
 #!/bin/bash
 sudo systemctl stop mh-compressor-manager >/dev/null
+cd src
 # 1. Копирование бинарного файла
 sudo cp build/mh-compressor-manager /usr/bin/
 
