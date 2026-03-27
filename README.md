@@ -110,7 +110,7 @@ sudo systemctl start mh-compressor-manager
 
 ```bash
 # 1. Клонирование репозитория
-git clone https://github.com/mediahive/mh-compressor-manager.git
+git clone https://github.com/pavelvkovalenko/mh-compressor-manager.git
 cd mh-compressor-manager
 
 # 2. Создание директории сборки
@@ -430,7 +430,7 @@ mh-compressor-manager/
 
 ### Сообщение об ошибках
 
-Пожалуйста, сообщайте об ошибках через систему отслеживания проблем, указывая:
+Пожалуйста, сообщайте об ошибках через [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues), указывая:
 
 1. Версию программы
 2. Версию ОС
@@ -442,9 +442,17 @@ mh-compressor-manager/
 
 Перед созданием запроса на добавление новой функции:
 
-1. Проверьте существующие запросы
+1. Проверьте существующие [запросы](https://github.com/pavelvkovalenko/mh-compressor-manager/issues)
 2. Опишите использование функции
 3. Укажите преимущества для пользователей
+
+### Pull Requests
+
+1. Создайте форк репозитория
+2. Создайте ветку для вашей функции (`git checkout -b feature/amazing-feature`)
+3. Зафиксируйте изменения (`git commit -m 'Add amazing feature'`)
+4. Отправьте в ветку (`git push origin feature/amazing-feature`)
+5. Откройте Pull Request
 
 ---
 
@@ -511,9 +519,9 @@ SOFTWARE.
 
 | Тип | Информация |
 |-----|------------|
-| **Проект** | mh-compressor-manager |
+| **Репозиторий** | [https://github.com/pavelvkovalenko/mh-compressor-manager.git](https://github.com/pavelvkovalenko/mh-compressor-manager.git) |
+| **Issues** | [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues) |
 | **Документация** | [README.md](README.md), [README.html](README.html), [TECHNICAL_SPECIFICATION.html](TECHNICAL_SPECIFICATION.html) |
-| **Репозиторий** | (внутренний) |
 | **Техническое задание** | ТЗ версия 2 |
 | **Лицензия** | [MIT](LICENSE) |
 
@@ -524,5 +532,7 @@ SOFTWARE.
 **mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 2
 
 © 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Лицензия MIT.
+
+[🔗 GitHub Repository](https://github.com/pavelvkovalenko/mh-compressor-manager)
 
 </div>
