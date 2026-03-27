@@ -66,7 +66,7 @@ done
 
 if [ -n "$MISSING" ]; then
     echo -e "${RED}✗ Отсутствуют пакеты:${MISSING}${NC}"
-    echo "Установите: sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build pkgconf-pkg-config rpmdevtools"
+    echo "Установите: sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build rpmdevtools"
     exit 1
 fi
 
@@ -85,7 +85,7 @@ echo -e "${GREEN}✓ Структура RPM создана в: ${RPM_BUILD_ROOT}
 echo ""
 
 # =============================================================================
-# [3/6] Подготовка исходных кодов (ИСПРАВЛЕНО - простое копирование)
+# [3/6] Подготовка исходных кодов (ИСПРАВЛЕНО - README в корне)
 # =============================================================================
 echo -e "${YELLOW}[3/6] Подготовка исходных кодов...${NC}"
 
@@ -104,6 +104,15 @@ fi
 # Простое копирование всех файлов из src/ в BUILD_DIR
 echo "  Копирование исходных файлов..."
 cp -r src/* "${BUILD_DIR}/"
+
+# Копирование файлов из корня проекта (README.md, README.html, LICENSE)
+echo "  Копирование файлов документации из корня..."
+cp "README.md" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.md не найден в корне"
+cp "README.html" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.html не найден в корне"
+cp "LICENSE" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/LICENSE"
+
+# Копирование SPEC-файла (для справки)
+cp "${SPEC_FILE}" "${BUILD_DIR}/" 2>/dev/null || true
 
 # Удаляем артефакты сборки, если они попали
 rm -rf "${BUILD_DIR}/build"
@@ -155,12 +164,6 @@ WantedBy=multi-user.target
 SVC
 fi
 
-# Документация
-cp "src/README.md" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/README.md"
-cp "src/README.html" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/README.html"
-cp "LICENSE" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/LICENSE"
-cp "${SPEC_FILE}" "${BUILD_DIR}/" 2>/dev/null || true
-
 # Создание архива
 echo "  Создание архива: ${SOURCE_TAR}"
 tar -czf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" \
@@ -195,11 +198,12 @@ echo ""
 # =============================================================================
 echo -e "${YELLOW}[4/6] Подготовка дополнительных файлов...${NC}"
 
-cp "${BUILD_DIR}/compressor-manager.conf" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "${BUILD_DIR}/mh-compressor-manager.service" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "${BUILD_DIR}/README.md" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "${BUILD_DIR}/README.html" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "${BUILD_DIR}/LICENSE" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
+# Копируем из корня проекта
+cp "README.md" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
+cp "README.html" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
+cp "LICENSE" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
+cp "compressor-manager.conf" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
+cp "mh-compressor-manager.service" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
 
 echo -e "${GREEN}✓ Дополнительные файлы подготовлены${NC}"
 echo ""
