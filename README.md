@@ -521,7 +521,7 @@ SOFTWARE.
 |-----|------------|
 | **Репозиторий** | [https://github.com/pavelvkovalenko/mh-compressor-manager.git](https://github.com/pavelvkovalenko/mh-compressor-manager.git) |
 | **Issues** | [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues) |
-| **Документация** | [README.md](README.md), [README.html]([README.html](https://html-preview.github.io/?url=https://github.com/pavelvkovalenko/mh-compressor-manager/blob/main/README.html)), [TECHNICAL_SPECIFICATION.html](https://html-preview.github.io/?url=https://github.com/pavelvkovalenko/mh-compressor-manager/blob/main/TECHNICAL_SPECIFICATION.html) |
+| **Документация** | [README.md](README.md), [README.html](README.html](https://html-preview.github.io/?url=https://github.com/pavelvkovalenko/mh-compressor-manager/blob/main/README.html)), [TECHNICAL_SPECIFICATION.html](https://html-preview.github.io/?url=https://github.com/pavelvkovalenko/mh-compressor-manager/blob/main/TECHNICAL_SPECIFICATION.html) |
 | **Техническое задание** | ТЗ версия 2 |
 | **Лицензия** | [MIT](LICENSE) |
 
