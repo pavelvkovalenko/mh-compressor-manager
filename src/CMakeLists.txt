@@ -38,13 +38,40 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(PkgConfig REQUIRED)
 
 # zlib - сжатие Gzip
-pkg_check_modules(ZLIB REQUIRED zlib)
+pkg_check_modules(ZLIB QUIET zlib)
+if(NOT ZLIB_FOUND)
+    message(FATAL_ERROR 
+        "zlib library not found!\n"
+        "Please install zlib development package:\n"
+        "  - Debian/Ubuntu: sudo apt-get install zlib1g-dev\n"
+        "  - RHEL/CentOS/Fedora: sudo dnf install zlib-devel\n"
+        "  - openSUSE: sudo zypper install zlib-devel"
+    )
+endif()
 
 # Brotli - сжатие Brotli (нужны обе библиотеки: common и enc)
-pkg_check_modules(BROTLI REQUIRED libbrotlienc libbrotlicommon)
+pkg_check_modules(BROTLI QUIET libbrotlienc libbrotlicommon)
+if(NOT BROTLI_FOUND)
+    message(FATAL_ERROR 
+        "Brotli library not found!\n"
+        "Please install Brotli development packages:\n"
+        "  - Debian/Ubuntu: sudo apt-get install libbrotli-dev\n"
+        "  - RHEL/CentOS/Fedora: sudo dnf install brotli-devel\n"
+        "  - openSUSE: sudo zypper install libbrotli-devel"
+    )
+endif()
 
 # systemd - интеграция с systemd (sd_notify)
-pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+pkg_check_modules(SYSTEMD QUIET libsystemd)
+if(NOT SYSTEMD_FOUND)
+    message(FATAL_ERROR 
+        "systemd library not found!\n"
+        "Please install systemd development package:\n"
+        "  - Debian/Ubuntu: sudo apt-get install libsystemd-dev\n"
+        "  - RHEL/CentOS/Fedora: sudo dnf install systemd-devel\n"
+        "  - openSUSE: sudo zypper install libsystemd-devel"
+    )
+endif()
 
 # SELinux - опциональная поддержка контекстов безопасности (ТЗ п. 2.5)
 pkg_check_modules(SELINUX libselinux)
