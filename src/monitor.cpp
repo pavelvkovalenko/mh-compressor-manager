@@ -2,10 +2,25 @@
 #include "logger.h"
 #include <sys/inotify.h>
 #include <unistd.h>
+#if __has_include(<format>)
 #include <format>
+#else
+#include <fmt/format.h>
+namespace std {
+    using fmt::format;
+}
+#endif
 #include <algorithm>
+#include <unordered_set>
 
-Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {}
+Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
+    // Кэшируем расширения в unordered_set для быстрого поиска O(1)
+    for (const auto& ext : m_cfg.extensions) {
+        std::string lower_ext = ext;
+        std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
+        m_extensions_cache.insert(lower_ext);
+    }
+}
 
 Monitor::~Monitor() {
     stop();
@@ -130,6 +145,8 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
 
 void Monitor::run() {
     char buffer[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+    auto last_debounce_check = std::chrono::steady_clock::now();
+    const auto debounce_check_interval = std::chrono::milliseconds(500);
     
     while (m_running) {
         fd_set readfds;
@@ -155,9 +172,11 @@ void Monitor::run() {
             }
         }
         
-        {
+        // Проверяем debounced файлы только с определенной периодичностью
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_debounce_check >= debounce_check_interval) {
+            last_debounce_check = now;
             std::lock_guard<std::mutex> lock(m_debounce_mutex);
-            auto now = std::chrono::steady_clock::now();
             for (auto it = m_debounce_map.begin(); it != m_debounce_map.end(); ) {
                 if (now >= it->second) {
                     Logger::debug(std::format("Debounce expired for: {}", it->first));
@@ -180,10 +199,8 @@ bool Monitor::is_target_extension(const std::string& filename) {
     
     if (ext == "gz" || ext == "br") return false;
     
-    for (const auto& e : m_cfg.extensions) {
-        if (ext == e) return true;
-    }
-    return false;
+    // Используем кэш расширений для быстрого поиска O(1)
+    return m_extensions_cache.count(ext) > 0;
 }
 
 void Monitor::process_event(int wd, uint32_t mask, const std::string& name) {

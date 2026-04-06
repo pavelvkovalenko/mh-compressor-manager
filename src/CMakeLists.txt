@@ -3,8 +3,31 @@ project(mh-compressor-manager LANGUAGES CXX)
 
 # ============================================================================
 # Стандарт C++23 (ТЗ п. 1.2)
+# Используем C++20 для совместимости с GCC 12, если <format> недоступен
 # ============================================================================
-set(CMAKE_CXX_STANDARD 23)
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+    #include <format>
+    #include <string>
+    int main() {
+        auto s = std::format(\"{}\", \"test\");
+        return 0;
+    }
+" HAS_STD_FORMAT)
+
+if(NOT HAS_STD_FORMAT)
+    message(STATUS "std::format not available, falling back to fmt library")
+    set(CMAKE_CXX_STANDARD 20)
+    find_package(fmt QUIET)
+    if(fmt_FOUND)
+        message(STATUS "Using fmt library for formatting")
+    else()
+        message(FATAL_ERROR "fmt library not found and std::format not available")
+    endif()
+else()
+    set(CMAKE_CXX_STANDARD 23)
+endif()
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -77,6 +100,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${SYSTEMD_LIBRARIES}
     pthread
 )
+
+# Добавляем fmt если используется вместо std::format
+if(NOT HAS_STD_FORMAT AND fmt_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
+endif()
 
 # Добавляем SELinux если найден
 if(SELINUX_FOUND)

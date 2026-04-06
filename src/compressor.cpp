@@ -7,7 +7,14 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#if __has_include(<format>)
 #include <format>
+#else
+#include <fmt/format.h>
+namespace std {
+    using fmt::format;
+}
+#endif
 #include <algorithm>
 #include <cerrno>
 #include <cstring>      // <--- ДОБАВЛЕНО: для strerror()
@@ -17,22 +24,15 @@
 #include <selinux/selinux.h>
 #endif
 
+// Размер буфера для потоковой обработки (64KB)
+constexpr size_t STREAM_BUFFER_SIZE = 65536;
+
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
-    std::ifstream ifs(input, std::ios::binary | std::ios::ate);
+    std::ifstream ifs(input, std::ios::binary);
     if (!ifs) {
         Logger::error(std::format("Failed to open file for reading: {}", input.string()));
         return false;
     }
-
-    std::streamsize size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    std::vector<char> buffer(size);
-    if (!ifs.read(buffer.data(), size)) {
-        Logger::error(std::format("Failed to read file: {}", input.string()));
-        return false;
-    }
-    ifs.close();
 
     z_stream strm = {};
     if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
@@ -47,11 +47,38 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         return false;
     }
 
-    strm.avail_in = buffer.size();
-    strm.next_in = (Bytef*)buffer.data();
-    
-    char out_buffer[8192];
+    std::vector<char> in_buffer(STREAM_BUFFER_SIZE);
+    char out_buffer[STREAM_BUFFER_SIZE];
     int ret;
+
+    do {
+        // Читаем порциями из входного файла
+        ifs.read(in_buffer.data(), in_buffer.size());
+        std::streamsize bytes_read = ifs.gcount();
+        
+        if (bytes_read > 0) {
+            strm.avail_in = bytes_read;
+            strm.next_in = (Bytef*)in_buffer.data();
+            
+            // Сжимаем и записываем порциями
+            do {
+                strm.avail_out = sizeof(out_buffer);
+                strm.next_out = (Bytef*)out_buffer;
+                ret = deflate(&strm, ifs.eof() ? Z_FINISH : Z_NO_FLUSH);
+                if (ret == Z_STREAM_ERROR) {
+                    Logger::error("Gzip stream error");
+                    deflateEnd(&strm);
+                    return false;
+                }
+                size_t have = sizeof(out_buffer) - strm.avail_out;
+                if (have > 0) {
+                    ofs.write(out_buffer, have);
+                }
+            } while (strm.avail_out == 0);
+        }
+    } while (!ifs.eof());
+
+    // Завершаем поток
     do {
         strm.avail_out = sizeof(out_buffer);
         strm.next_out = (Bytef*)out_buffer;
@@ -80,30 +107,9 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 }
 
 bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, int level) {
-    std::ifstream ifs(input, std::ios::binary | std::ios::ate);
+    std::ifstream ifs(input, std::ios::binary);
     if (!ifs) {
         Logger::error(std::format("Failed to open file for reading: {}", input.string()));
-        return false;
-    }
-
-    std::streamsize size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> input_buffer(size);
-    if (!ifs.read(reinterpret_cast<char*>(input_buffer.data()), size)) {
-        Logger::error(std::format("Failed to read file: {}", input.string()));
-        return false;
-    }
-    ifs.close();
-
-    size_t encoded_size = BrotliEncoderMaxCompressedSize(input_buffer.size());
-    std::vector<uint8_t> output_buffer(encoded_size);
-
-    size_t actual_encoded_size = encoded_size;
-    if (!BrotliEncoderCompress(level, BROTLI_DEFAULT_WINDOW, BROTLI_DEFAULT_MODE,
-                               input_buffer.size(), input_buffer.data(),
-                               &actual_encoded_size, output_buffer.data())) {
-        Logger::error(std::format("Brotli compression failed for: {}", input.string()));
         return false;
     }
 
@@ -112,12 +118,77 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         Logger::error(std::format("Failed to open output file: {}", output.string()));
         return false;
     }
-    
-    ofs.write(reinterpret_cast<char*>(output_buffer.data()), actual_encoded_size);
+
+    // Создаем поток сжатия Brotli
+    BrotliEncoderState* state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
+    if (!state) {
+        Logger::error("Failed to create Brotli encoder");
+        return false;
+    }
+
+    BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, (uint32_t)level);
+    BrotliEncoderSetParameter(state, BROTLI_PARAM_SIZE_HINT, 0);
+
+    std::vector<uint8_t> in_buffer(STREAM_BUFFER_SIZE);
+    std::vector<uint8_t> out_buffer(STREAM_BUFFER_SIZE);
+    bool success = true;
+
+    while (true) {
+        // Читаем порцию из входного файла
+        ifs.read(reinterpret_cast<char*>(in_buffer.data()), in_buffer.size());
+        std::streamsize bytes_read = ifs.gcount();
+        
+        const uint8_t* next_in = in_buffer.data();
+        size_t available_in = bytes_read;
+        
+        // Обрабатываем прочитанные данные
+        if (bytes_read > 0 || !ifs.eof()) {
+            while (available_in > 0 || !BrotliEncoderIsFinished(state)) {
+                size_t available_out = out_buffer.size();
+                uint8_t* next_out = out_buffer.data();
+                
+                if (!BrotliEncoderCompressStream(state,
+                        ifs.eof() ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS,
+                        &available_in, &next_in,
+                        &available_out, &next_out,
+                        nullptr)) {
+                    Logger::error(std::format("Brotli compression stream error for: {}", input.string()));
+                    success = false;
+                    break;
+                }
+                
+                size_t written = out_buffer.size() - available_out;
+                if (written > 0) {
+                    ofs.write(reinterpret_cast<char*>(out_buffer.data()), written);
+                }
+                
+                if (available_in == 0 && !ifs.eof()) {
+                    break;
+                }
+                
+                if (BrotliEncoderIsFinished(state)) {
+                    break;
+                }
+            }
+        }
+        
+        if (!success) break;
+        
+        // Если достигнут конец файла и поток завершен
+        if (ifs.eof() && BrotliEncoderIsFinished(state)) {
+            break;
+        }
+    }
+
+    BrotliEncoderDestroyInstance(state);
     ofs.close();
 
     if (ofs.fail()) {
         Logger::error("Failed to write brotli output");
+        return false;
+    }
+
+    if (!success) {
         return false;
     }
 

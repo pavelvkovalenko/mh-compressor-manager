@@ -7,10 +7,18 @@
 #include <systemd/sd-daemon.h>
 #include <csignal>
 #include <atomic>
+#if __has_include(<format>)
 #include <format>
+#else
+#include <fmt/format.h>
+namespace std {
+    using fmt::format;
+}
+#endif
 #include <filesystem>
 #include <thread>
 #include <chrono>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -29,6 +37,7 @@ void signal_handler(int sig) {
 }
 
 // Проверка необходимости сжатия (идемпотентность)
+// Использует кэш расширений для быстрого поиска
 bool should_compress(const fs::path& path, const Config& cfg) {
     if (!fs::exists(path)) {
         Logger::debug(std::format("File does not exist: {}", path.string()));
@@ -39,16 +48,27 @@ bool should_compress(const fs::path& path, const Config& cfg) {
     if (ext.size() > 0) ext = ext.substr(1);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
-    bool ext_match = false;
-    for (const auto& e : cfg.extensions) {
-        if (e == ext) { ext_match = true; break; }
+    // Быстрая проверка на сжатые форматы
+    if (ext == "gz" || ext == "br") return false;
+    
+    // Используем статический кэш расширений для быстрого поиска O(1)
+    static std::unordered_set<std::string> extensions_cache;
+    static bool cache_initialized = false;
+    
+    if (!cache_initialized || cache_initialized != true) {
+        extensions_cache.clear();
+        for (const auto& e : cfg.extensions) {
+            std::string lower_e = e;
+            std::transform(lower_e.begin(), lower_e.end(), lower_e.begin(), ::tolower);
+            extensions_cache.insert(lower_e);
+        }
+        cache_initialized = true;
     }
-    if (!ext_match) {
+    
+    if (extensions_cache.find(ext) == extensions_cache.end()) {
         Logger::debug(std::format("Extension not in list: {}.{}", path.string(), ext));
         return false;
     }
-
-    if (ext == "gz" || ext == "br") return false;
 
     fs::path gz = path.string() + ".gz";
     fs::path br = path.string() + ".br";
@@ -141,25 +161,30 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
 
-    // Настройка пула потоков
+    // Настройка пула потоков с ограничением размера очереди
     int threads = cfg.threads;
     if (threads == 0) threads = std::thread::hardware_concurrency();
     if (threads == 0) threads = 2;
-    Logger::info(std::format("Thread pool size: {}", threads));
+    constexpr size_t MAX_QUEUE_SIZE = 1000;  // Максимум задач в очереди
+    Logger::info(std::format("Thread pool size: {}, max queue size: {}", threads, MAX_QUEUE_SIZE));
 
-    ThreadPool pool(threads);
+    ThreadPool pool(threads, MAX_QUEUE_SIZE);
     g_pool = &pool;
 
     // Инициализация монитора
     Monitor monitor(cfg);
     g_monitor = &monitor;
 
-    // Регистрация обработчиков событий
+    // Регистрация обработчиков событий с проверкой переполнения очереди
     monitor.set_task_handler([&pool](const fs::path& p) {
-        pool.enqueue([p]() { compress_task(p); });
+        if (!pool.enqueue([p]() { compress_task(p); })) {
+            Logger::warning(std::format("Task queue full, skipping: {}", p.string()));
+        }
     });
     monitor.set_delete_handler([&pool](const fs::path& p) {
-        pool.enqueue([p]() { delete_task(p); });
+        if (!pool.enqueue([p]() { delete_task(p); })) {
+            Logger::warning(std::format("Delete task queue full, skipping: {}", p.string()));
+        }
     });
 
     // Запуск мониторинга
