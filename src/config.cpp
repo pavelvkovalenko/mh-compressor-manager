@@ -3,7 +3,14 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#if __has_include(<format>)
 #include <format>
+#else
+#include <fmt/format.h>
+namespace std {
+    using fmt::format;
+}
+#endif
 #include <iostream>
 #include <unistd.h>
 

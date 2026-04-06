@@ -36,4 +36,5 @@ private:
     std::map<std::string, std::chrono::steady_clock::time_point> m_debounce_map;
     std::mutex m_debounce_mutex;
     std::map<int, std::string> m_wd_path_map;
+    std::unordered_set<std::string> m_extensions_cache;  // Кэш расширений для быстрого поиска
 };
