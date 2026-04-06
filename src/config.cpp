@@ -50,7 +50,7 @@ Config load_config(int argc, char* argv[]) {
             exit(0);
         }
         if (arg == "--version" || arg == "-v") {
-            std::cout << "mh-compressor-manager v1.0.0\n";
+            std::cout << "mh-compressor-manager v1.0.1\n";
             exit(0);
         }
         if (arg == "--config" && i + 1 < argc) cfg.config_path = argv[++i];
