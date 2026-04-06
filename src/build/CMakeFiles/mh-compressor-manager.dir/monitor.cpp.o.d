@@ -232,6 +232,10 @@ CMakeFiles/mh-compressor-manager.dir/monitor.cpp.o: \
  /usr/include/c++/12/bits/unordered_set.h /workspace/src/logger.h \
  /usr/include/syslog.h /usr/include/x86_64-linux-gnu/sys/syslog.h \
  /usr/include/x86_64-linux-gnu/bits/syslog-path.h \
+ /usr/include/c++/12/queue /usr/include/c++/12/deque \
+ /usr/include/c++/12/bits/stl_deque.h /usr/include/c++/12/bits/deque.tcc \
+ /usr/include/c++/12/bits/stl_queue.h \
+ /usr/include/c++/12/condition_variable \
  /usr/include/x86_64-linux-gnu/sys/inotify.h \
  /usr/include/x86_64-linux-gnu/bits/inotify.h /usr/include/fmt/format.h \
  /usr/include/c++/12/cmath /usr/include/math.h \

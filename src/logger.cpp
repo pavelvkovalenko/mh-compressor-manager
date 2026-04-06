@@ -11,6 +11,38 @@ namespace std {
 #include <cstdarg>
 
 bool Logger::s_debug = false;
+std::thread Logger::s_async_thread;
+std::atomic<bool> Logger::s_running{false};
+std::queue<std::pair<LogLevel, std::string>> Logger::s_log_queue;
+std::mutex Logger::s_queue_mutex;
+std::condition_variable Logger::s_queue_cv;
+
+void Logger::async_writer() {
+    while (s_running || !s_log_queue.empty()) {
+        std::unique_lock<std::mutex> lock(s_queue_mutex);
+        s_queue_cv.wait_for(lock, std::chrono::milliseconds(100), [] {
+            return !s_log_queue.empty() || !s_running;
+        });
+        
+        while (!s_log_queue.empty()) {
+            auto [level, message] = std::move(s_log_queue.front());
+            s_log_queue.pop();
+            lock.unlock();
+            
+            int priority = LOG_INFO;
+            switch (level) {
+                case LogLevel::DEBUG: priority = LOG_DEBUG; break;
+                case LogLevel::INFO: priority = LOG_INFO; break;
+                case LogLevel::WARNING: priority = LOG_WARNING; break;
+                case LogLevel::ERROR: priority = LOG_ERR; break;
+            }
+            syslog(priority, "%s", message.c_str());
+            std::cerr << "[" << priority << "] " << message << std::endl;
+            
+            lock.lock();
+        }
+    }
+}
 
 void Logger::init(const std::string& ident, bool debug) {
     s_debug = debug;
@@ -20,19 +52,26 @@ void Logger::init(const std::string& ident, bool debug) {
     } else {
         setlogmask(LOG_UPTO(LOG_INFO));
     }
+    
+    s_running = true;
+    s_async_thread = std::thread(async_writer);
+}
+
+void Logger::shutdown() {
+    s_running = false;
+    s_queue_cv.notify_all();
+    if (s_async_thread.joinable()) {
+        s_async_thread.join();
+    }
+    closelog();
 }
 
 void Logger::log(LogLevel level, const std::string& message) {
-    int priority = LOG_INFO;
-    switch (level) {
-        case LogLevel::DEBUG: priority = LOG_DEBUG; break;
-        case LogLevel::INFO: priority = LOG_INFO; break;
-        case LogLevel::WARNING: priority = LOG_WARNING; break;
-        case LogLevel::ERROR: priority = LOG_ERR; break;
+    {
+        std::lock_guard<std::mutex> lock(s_queue_mutex);
+        s_log_queue.emplace(level, message);
     }
-    syslog(priority, "%s", message.c_str());
-    // Also output to stderr for journald capture if running manually
-    std::cerr << "[" << priority << "] " << message << std::endl;
+    s_queue_cv.notify_one();
 }
 
 void Logger::debug(const std::string& msg) { if (s_debug) log(LogLevel::DEBUG, msg); }

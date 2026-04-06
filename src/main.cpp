@@ -145,6 +145,11 @@ TaskPriority determine_priority(const fs::path& path) {
 void compress_task(const fs::path& path) {
     if (!g_cfg) return;
     
+    // I/O троттлинг - задержка между файлами
+    if (g_cfg->io_delay_us > 0) {
+        std::this_thread::sleep_for(std::chrono::microseconds(g_cfg->io_delay_us));
+    }
+    
     g_metrics.total_tasks++;
     auto start = std::chrono::steady_clock::now();
     
@@ -171,6 +176,19 @@ void compress_task(const fs::path& path) {
         bool gzip_success = false;
         bool brotli_success = false;
 
+        // Приоритет brotli если включен - сначала сжимаем brotli (лучшее сжатие)
+        bool prefer_brotli = (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli");
+        
+        if (prefer_brotli && (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli")) {
+            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", g_cfg->brotli_level);
+            if (brotli_success && fs::exists(path.string() + ".br")) {
+                Compressor::copy_metadata(path, path.string() + ".br");
+                try {
+                    compressed_size += fs::file_size(path.string() + ".br");
+                } catch (...) {}
+            }
+        }
+        
         if (g_cfg->algorithms == "all" || g_cfg->algorithms == "gzip") {
             gzip_success = Compressor::compress_gzip(path, path.string() + ".gz", g_cfg->gzip_level);
             if (gzip_success && fs::exists(path.string() + ".gz")) {
@@ -181,7 +199,8 @@ void compress_task(const fs::path& path) {
             }
         }
         
-        if (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli") {
+        // Если brotli не был выполнен первым (только gzip режим)
+        if (!prefer_brotli && (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli")) {
             brotli_success = Compressor::compress_brotli(path, path.string() + ".br", g_cfg->brotli_level);
             if (brotli_success && fs::exists(path.string() + ".br")) {
                 Compressor::copy_metadata(path, path.string() + ".br");
@@ -240,14 +259,16 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
 
-    // Настройка пула потоков с ограничением размера очереди
+    // Настройка пула потоков с ограничением размера очереди и I/O
     int threads = cfg.threads;
     if (threads == 0) threads = std::thread::hardware_concurrency();
     if (threads == 0) threads = 2;
     constexpr size_t MAX_QUEUE_SIZE = 1000;  // Максимум задач в очереди
-    Logger::info(std::format("Thread pool size: {}, max queue size: {}", threads, MAX_QUEUE_SIZE));
+    size_t max_ios = cfg.max_active_ios > 0 ? cfg.max_active_ios : 0;
+    Logger::info(std::format("Thread pool size: {}, max queue size: {}, max active I/O: {}", 
+                             threads, MAX_QUEUE_SIZE, max_ios > 0 ? max_ios : SIZE_MAX));
 
-    ThreadPool pool(threads, MAX_QUEUE_SIZE);
+    ThreadPool pool(threads, MAX_QUEUE_SIZE, max_ios);
     g_pool = &pool;
 
     // Инициализация монитора
@@ -287,5 +308,9 @@ int main(int argc, char* argv[]) {
     g_metrics.log_summary();
 
     Logger::info("Service stopped");
+    
+    // Корректное завершение работы логгера
+    Logger::shutdown();
+    
     return 0;
 }
