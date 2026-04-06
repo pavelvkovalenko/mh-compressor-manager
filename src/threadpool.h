@@ -36,6 +36,7 @@ public:
     ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0) 
         : stop_flag(false), max_queue_size(max_queue_size), active_tasks(0), 
           m_max_active_ios(max_ios), io_slots_available(max_ios > 0 ? max_ios : SIZE_MAX) {
+        workers.reserve(threads);
         for (size_t i = 0; i < threads; ++i) {
             workers.emplace_back([this] {
                 while (true) {
@@ -53,14 +54,18 @@ public:
                             if (stop_flag && tasks.empty()) return;
                         }
                         
-                        task = std::move(tasks.top().task);
+                        auto& top = tasks.top();
+                        task = std::move(top.task);
                         tasks.pop();
                         ++active_tasks;
                         if (m_max_active_ios > 0) {
                             --io_slots_available;
                         }
                     }
+                    
+                    // Выполняем задачу вне блокировки
                     task();
+                    
                     {
                         std::lock_guard<std::mutex> lock(queue_mutex);
                         --active_tasks;

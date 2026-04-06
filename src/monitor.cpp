@@ -2,6 +2,9 @@
 #include "logger.h"
 #include <sys/inotify.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <pwd.h>
+#include <grp.h>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -12,6 +15,8 @@ namespace std {
 #endif
 #include <algorithm>
 #include <unordered_set>
+#include <cstring>
+#include <cerrno>
 
 Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
     // Кэшируем расширения в unordered_set для быстрого поиска O(1)
@@ -119,7 +124,7 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
     }
     
     int wd = inotify_add_watch(m_fd, base_path.c_str(), 
-        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_TO | IN_ISDIR);
+        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
     if (wd >= 0) {
         m_wd_path_map[wd] = base_path.string();
         Logger::info(std::format("Watching directory: {}", base_path.string()));
@@ -132,7 +137,7 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
                 fs::directory_options::skip_permission_denied)) {
             if (entry.is_directory()) {
                 int wd_sub = inotify_add_watch(m_fd, entry.path().c_str(), 
-                    IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_TO | IN_ISDIR);
+                    IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
                 if (wd_sub >= 0) {
                     m_wd_path_map[wd_sub] = entry.path().string();
                 }
@@ -144,7 +149,9 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
 }
 
 void Monitor::run() {
-    char buffer[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+    // Увеличиваем буфер для обработки большего количества событий за один раз
+    constexpr size_t BUFFER_SIZE = 16384;
+    char buffer[BUFFER_SIZE] __attribute__((aligned(__alignof__(struct inotify_event))));
     auto last_debounce_check = std::chrono::steady_clock::now();
     const auto debounce_check_interval = std::chrono::milliseconds(500);
     
@@ -224,6 +231,10 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name) {
     Logger::debug(std::format("Event detected: mask={}, path={}", mask, full_path.string()));
 
     if (mask & IN_DELETE) {
+        if (m_on_delete) m_on_delete(full_path);
+    } else if (mask & IN_MOVED_FROM) {
+        // Файл был перемещён из monitored директории - удаляем сжатые копии
+        Logger::info(std::format("File moved out of monitored directory: {}", full_path.string()));
         if (m_on_delete) m_on_delete(full_path);
     } else if (mask & (IN_MODIFY | IN_CREATE | IN_MOVED_TO)) {
         std::lock_guard<std::mutex> lock(m_debounce_mutex);

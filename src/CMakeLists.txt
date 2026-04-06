@@ -118,7 +118,17 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall
     -Wextra
     -Wpedantic
-    -O2
+    -O3
+    -march=native
+    -flto=auto
+    -funroll-loops
+)
+
+# Флаги линковки для оптимизации
+target_link_options(${PROJECT_NAME} PRIVATE
+    -flto=auto
+    -Wl,-O1
+    -Wl,--as-needed
 )
 
 # ============================================================================

@@ -18,25 +18,28 @@ namespace std {
 #include <algorithm>
 #include <cerrno>
 #include <cstring>      // <--- ДОБАВЛЕНО: для strerror()
+#include <pwd.h>        // Для getpwuid()
+#include <grp.h>        // Для getgrgid()
+#include <climits>      // Для PATH_MAX
 
 // Опциональная поддержка SELinux
 #ifdef HAVE_SELINUX
 #include <selinux/selinux.h>
 #endif
 
-// Размер буфера для потоковой обработки (128KB - увеличено для лучшей производительности)
-constexpr size_t STREAM_BUFFER_SIZE = 131072;
+// Размер буфера для потоковой обработки (256KB - оптимизировано для производительности)
+constexpr size_t STREAM_BUFFER_SIZE = 262144;
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Открываем входной файл с прямым доступом
-    int fd_in = open(input.c_str(), O_RDONLY);
+    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME);
     if (fd_in < 0) {
         Logger::error(std::format("Failed to open file for reading: {} - {}", input.string(), strerror(errno)));
         return false;
     }
     
-    // Подсказка ОС о последовательном чтении
-    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL);
+    // Подсказка ОС о последовательном чтении и предзагрузке
+    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
     
     std::ifstream ifs(input, std::ios::binary);
     if (!ifs) {
@@ -46,7 +49,9 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
 
     z_stream strm = {};
-    if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+    // Используем Z_HUFFMAN_ONLY для быстрых файлов или Z_DEFAULT_STRATEGY для лучшего сжатия
+    int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
+    if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
         Logger::error("Failed to init gzip stream");
         close(fd_in);
         return false;
@@ -137,14 +142,14 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 
 bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, int level) {
     // Открываем входной файл с прямым доступом
-    int fd_in = open(input.c_str(), O_RDONLY);
+    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME);
     if (fd_in < 0) {
         Logger::error(std::format("Failed to open file for reading: {} - {}", input.string(), strerror(errno)));
         return false;
     }
     
-    // Подсказка ОС о последовательном чтении
-    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL);
+    // Подсказка ОС о последовательном чтении и предзагрузке
+    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
     
     std::ifstream ifs(input, std::ios::binary);
     if (!ifs) {
@@ -169,6 +174,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
 
     BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, (uint32_t)level);
+    // Оптимизация: используем режим потока для лучшей производительности
+    BrotliEncoderSetParameter(state, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
     BrotliEncoderSetParameter(state, BROTLI_PARAM_SIZE_HINT, 0);
 
     // Выделяем буферы один раз вне цикла
@@ -292,5 +299,175 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     
     Logger::debug(std::format("Metadata copied: {} -> {} (mode={}, uid={}, gid={})", 
                               source.string(), dest.string(), st.st_mode, st.st_uid, st.st_gid));
+    return true;
+}
+
+// Проверка: является ли путь символической ссылкой, указывающей за пределы разрешённых директорий
+bool Compressor::is_symlink_attack(const fs::path& path) {
+    struct stat st;
+    
+    // Проверяем, является ли файл символической ссылкой
+    if (lstat(path.c_str(), &st) != 0) {
+        Logger::warning(std::format("Failed to lstat {}: {}", path.string(), strerror(errno)));
+        return false;  // Не можем проверить - считаем безопасным для логирования
+    }
+    
+    // Если это не symlink, атаки нет
+    if (!S_ISLNK(st.st_mode)) {
+        return false;
+    }
+    
+    // Это symlink - проверяем, куда он указывает
+    char target[PATH_MAX];
+    ssize_t len = readlink(path.c_str(), target, sizeof(target) - 1);
+    if (len < 0) {
+        Logger::warning(std::format("Failed to readlink {}: {}", path.string(), strerror(errno)));
+        return true;  // Считаем потенциальной атакой
+    }
+    target[len] = '\0';
+    
+    Logger::warning(std::format("Symlink detected: {} -> {}", path.string(), target));
+    
+    // Проверяем, указывает ли ссылка на файл вне типичных пользовательских директорий
+    std::string target_str(target);
+    if (target_str.find("/etc/") == 0 || 
+        target_str.find("/usr/") == 0 || 
+        target_str.find("/var/log/") == 0 ||
+        target_str.find("/proc/") == 0 ||
+        target_str.find("/sys/") == 0) {
+        Logger::error(std::format("Potential symlink attack detected: {} points to system directory", path.string()));
+        return true;
+    }
+    
+    return false;  // Symlink существует, но не указывает на системные директории
+}
+
+// Проверка владельца файла
+bool Compressor::check_file_ownership(const fs::path& path, uid_t expected_uid) {
+    struct stat st;
+    
+    if (lstat(path.c_str(), &st) != 0) {
+        Logger::warning(std::format("Failed to stat {}: {}", path.string(), strerror(errno)));
+        return false;
+    }
+    
+    if (st.st_uid != expected_uid && expected_uid != 0) {
+        // Получаем информацию о владельце для логирования
+        struct passwd* pw = getpwuid(st.st_uid);
+        const char* owner_name = pw ? pw->pw_name : "unknown";
+        
+        Logger::warning(std::format("File ownership mismatch for {}: expected uid={}, actual uid={} ({})", 
+                                   path.string(), expected_uid, st.st_uid, owner_name));
+        return false;
+    }
+    
+    return true;
+}
+
+// Проверка пути: находится ли файл в разрешённой директории
+bool Compressor::validate_path_in_directory(const fs::path& path, const std::vector<std::string>& allowed_dirs) {
+    // Получаем канонический путь исходного файла
+    std::error_code ec;
+    fs::path canonical_path;
+    
+    try {
+        canonical_path = fs::canonical(path.parent_path(), ec);
+        if (ec) {
+            Logger::warning(std::format("Failed to get canonical path for {}: {}", path.string(), ec.message()));
+            return false;
+        }
+    } catch (const fs::filesystem_error& e) {
+        Logger::warning(std::format("Filesystem error getting canonical path for {}: {}", path.string(), e.what()));
+        return false;
+    }
+    
+    std::string canonical_str = canonical_path.string();
+    
+    // Проверяем, начинается ли канонический путь с одного из разрешённых
+    for (const auto& allowed : allowed_dirs) {
+        try {
+            fs::path canonical_allowed = fs::canonical(allowed, ec);
+            if (!ec) {
+                std::string allowed_str = canonical_allowed.string();
+                // Проверяем, что путь начинается с разрешённой директории
+                if (canonical_str.find(allowed_str) == 0) {
+                    // Дополнительная проверка: убедимся, что это действительно поддиректория
+                    // (например, /home/user должен соответствовать /home/user/file.txt,
+                    // но не /home/users/file.txt)
+                    if (canonical_str.length() == allowed_str.length() ||
+                        canonical_str[allowed_str.length()] == '/') {
+                        return true;
+                    }
+                }
+            }
+        } catch (const fs::filesystem_error& e) {
+            Logger::debug(std::format("Cannot canonicalize allowed dir {}: {}", allowed, e.what()));
+        }
+    }
+    
+    Logger::warning(std::format("Path validation failed: {} is not in any allowed directory", path.string()));
+    return false;
+}
+
+// Безопасное удаление сжатых копий
+bool Compressor::safe_remove_compressed(const fs::path& original_path) {
+    std::error_code ec;
+    
+    // 1. Проверка на symlink-атаку для оригинального пути
+    if (is_symlink_attack(original_path)) {
+        Logger::error(std::format("Refusing to remove compressed copies: potential symlink attack for {}", original_path.string()));
+        return false;
+    }
+    
+    // 2. Получаем информацию об оригинальном файле (если он ещё существует)
+    struct stat orig_st;
+    bool orig_exists = (lstat(original_path.c_str(), &orig_st) == 0);
+    uid_t expected_uid = orig_exists ? orig_st.st_uid : 0;  // 0 означает "не проверять владельца"
+    
+    if (!orig_exists) {
+        // Файл уже удалён - используем uid=0 для пропуска проверки владельца
+        Logger::debug(std::format("Original file does not exist, skipping ownership check for compressed copies of {}", original_path.string()));
+    }
+    
+    // 3. Проверяем и удаляем .gz копию
+    fs::path gz_path = original_path.string() + ".gz";
+    if (fs::exists(gz_path, ec) && !ec) {
+        // Проверка на symlink-атаку для сжатого файла
+        if (is_symlink_attack(gz_path)) {
+            Logger::error(std::format("Refusing to remove {}: potential symlink attack", gz_path.string()));
+        } else {
+            // Проверка владельца (пропускаем, если оригинал не существует)
+            if (!orig_exists || check_file_ownership(gz_path, expected_uid)) {
+                if (fs::remove(gz_path, ec) && !ec) {
+                    Logger::info(std::format("Removed compressed copy: {}", gz_path.string()));
+                } else {
+                    Logger::error(std::format("Failed to remove {}: {}", gz_path.string(), ec.message()));
+                }
+            } else {
+                Logger::error(std::format("Ownership check failed for {}, skipping removal", gz_path.string()));
+            }
+        }
+    }
+    
+    // 4. Проверяем и удаляем .br копию
+    fs::path br_path = original_path.string() + ".br";
+    if (fs::exists(br_path, ec) && !ec) {
+        // Проверка на symlink-атаку для сжатого файла
+        if (is_symlink_attack(br_path)) {
+            Logger::error(std::format("Refusing to remove {}: potential symlink attack", br_path.string()));
+        } else {
+            // Проверка владельца (пропускаем, если оригинал не существует)
+            if (!orig_exists || check_file_ownership(br_path, expected_uid)) {
+                if (fs::remove(br_path, ec) && !ec) {
+                    Logger::info(std::format("Removed compressed copy: {}", br_path.string()));
+                } else {
+                    Logger::error(std::format("Failed to remove {}: {}", br_path.string(), ec.message()));
+                }
+            } else {
+                Logger::error(std::format("Ownership check failed for {}, skipping removal", br_path.string()));
+            }
+        }
+    }
+    
     return true;
 }

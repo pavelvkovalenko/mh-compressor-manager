@@ -6,5 +6,5 @@ CXX_DEFINES = -DFMT_SHARED
 
 CXX_INCLUDES = 
 
-CXX_FLAGS = -Wall -Wextra -Wpedantic -O2 -std=c++20
+CXX_FLAGS = -Wall -Wextra -Wpedantic -O3 -march=native -flto=auto -funroll-loops -std=c++20
 
