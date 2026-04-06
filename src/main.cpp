@@ -18,7 +18,6 @@ namespace std {
 #include <filesystem>
 #include <thread>
 #include <chrono>
-#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -37,7 +36,6 @@ void signal_handler(int sig) {
 }
 
 // Проверка необходимости сжатия (идемпотентность)
-// Использует кэш расширений для быстрого поиска
 bool should_compress(const fs::path& path, const Config& cfg) {
     if (!fs::exists(path)) {
         Logger::debug(std::format("File does not exist: {}", path.string()));
@@ -51,21 +49,20 @@ bool should_compress(const fs::path& path, const Config& cfg) {
     // Быстрая проверка на сжатые форматы
     if (ext == "gz" || ext == "br") return false;
     
-    // Используем статический кэш расширений для быстрого поиска O(1)
-    static std::unordered_set<std::string> extensions_cache;
-    static bool cache_initialized = false;
-    
-    if (!cache_initialized || cache_initialized != true) {
-        extensions_cache.clear();
-        for (const auto& e : cfg.extensions) {
+    // Проверяем расширение напрямую из конфигурации (O(n), где n - малое число расширений)
+    bool ext_match = false;
+    for (const auto& e : cfg.extensions) {
+        if (e.size() == ext.size()) {
             std::string lower_e = e;
             std::transform(lower_e.begin(), lower_e.end(), lower_e.begin(), ::tolower);
-            extensions_cache.insert(lower_e);
+            if (lower_e == ext) {
+                ext_match = true;
+                break;
+            }
         }
-        cache_initialized = true;
     }
     
-    if (extensions_cache.find(ext) == extensions_cache.end()) {
+    if (!ext_match) {
         Logger::debug(std::format("Extension not in list: {}.{}", path.string(), ext));
         return false;
     }
