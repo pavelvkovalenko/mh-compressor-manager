@@ -1,1 +1,1 @@
-(src/config.cpp)
+Nothing should be ignored based on the provided file changes, as they only include source code files (.cpp, .h) and no build artifacts, dependencies, or temporary files.

@@ -97,9 +97,13 @@ public:
     void stop() {
         stop_flag = true;
         condition.notify_all();
+        io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
         for (std::thread& worker : workers) {
-            if (worker.joinable()) worker.join();
+            if (worker.joinable()) {
+                worker.join();
+            }
         }
+        workers.clear();  // Очищаем вектор потоков после завершения
     }
     
     size_t queue_size() const {

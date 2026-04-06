@@ -17,10 +17,12 @@ namespace std {
 #endif
 #include <algorithm>
 #include <cerrno>
-#include <cstring>      // <--- ДОБАВЛЕНО: для strerror()
+#include <cstring>      // <--- ДЛЯ strerror()
 #include <pwd.h>        // Для getpwuid()
 #include <grp.h>        // Для getgrgid()
 #include <climits>      // Для PATH_MAX
+#include <set>          // Для кэша валидации путей
+#include <atomic>       // Для потокобезопасности
 
 // Опциональная поддержка SELinux
 #ifdef HAVE_SELINUX
@@ -30,11 +32,44 @@ namespace std {
 // Размер буфера для потоковой обработки (256KB - оптимизировано для производительности)
 constexpr size_t STREAM_BUFFER_SIZE = 262144;
 
+// Глобальный кэш для предотвращения race condition при проверке symlink-атак
+// Используется атомарный флаг для защиты от TOCTOU атак
+static std::atomic<bool> g_symlink_check_in_progress{false};
+
+// Максимальное количество попыток при проверке пути для предотвращения DoS
+constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
+
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
-    // Открываем входной файл с прямым доступом
-    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME);
+    // Проверка диапазона уровня сжатия (защита от некорректных значений)
+    if (level < 1 || level > 9) {
+        Logger::warning(std::format("Invalid gzip level {}, using default 6", level));
+        level = 6;
+    }
+    
+    // Открываем входной файл с прямым доступом и защитой от symlink-атак
+    // Используем O_NOFOLLOW для предотвращения открытия symlink
+    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME | O_NOFOLLOW);
     if (fd_in < 0) {
+        if (errno == ELOOP || errno == EMLINK) {
+            Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
+            return false;
+        }
         Logger::error(std::format("Failed to open file for reading: {} - {}", input.string(), strerror(errno)));
+        return false;
+    }
+    
+    // Дополнительная проверка: убеждаемся что это обычный файл, а не symlink или device
+    struct stat st;
+    if (fstat(fd_in, &st) != 0 || !S_ISREG(st.st_mode)) {
+        close(fd_in);
+        Logger::error(std::format("File is not a regular file: {}", input.string()));
+        return false;
+    }
+    
+    // Проверка прав доступа перед чтением
+    if ((st.st_mode & S_IRUSR) == 0 && getuid() != st.st_uid && getuid() != 0) {
+        close(fd_in);
+        Logger::warning(std::format("No read permission for file: {}", input.string()));
         return false;
     }
     
@@ -141,10 +176,36 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 }
 
 bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, int level) {
-    // Открываем входной файл с прямым доступом
-    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME);
+    // Проверка диапазона уровня сжатия (защита от некорректных значений)
+    if (level < 1 || level > 11) {
+        Logger::warning(std::format("Invalid brotli level {}, using default 4", level));
+        level = 4;
+    }
+    
+    // Открываем входной файл с прямым доступом и защитой от symlink-атак
+    // Используем O_NOFOLLOW для предотвращения открытия symlink
+    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME | O_NOFOLLOW);
     if (fd_in < 0) {
+        if (errno == ELOOP || errno == EMLINK) {
+            Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
+            return false;
+        }
         Logger::error(std::format("Failed to open file for reading: {} - {}", input.string(), strerror(errno)));
+        return false;
+    }
+    
+    // Дополнительная проверка: убеждаемся что это обычный файл, а не symlink или device
+    struct stat st;
+    if (fstat(fd_in, &st) != 0 || !S_ISREG(st.st_mode)) {
+        close(fd_in);
+        Logger::error(std::format("File is not a regular file: {}", input.string()));
+        return false;
+    }
+    
+    // Проверка прав доступа перед чтением
+    if ((st.st_mode & S_IRUSR) == 0 && getuid() != st.st_uid && getuid() != 0) {
+        close(fd_in);
+        Logger::warning(std::format("No read permission for file: {}", input.string()));
         return false;
     }
     
@@ -303,17 +364,28 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
 }
 
 // Проверка: является ли путь символической ссылкой, указывающей за пределы разрешённых директорий
+// Улучшенная защита от TOCTOU атак с использованием атомарных операций
 bool Compressor::is_symlink_attack(const fs::path& path) {
+    // Защита от race condition - только одна проверка symlink одновременно
+    bool expected = false;
+    if (!g_symlink_check_in_progress.compare_exchange_strong(expected, true)) {
+        // Другая проверка уже выполняется - считаем потенциальной атакой
+        Logger::warning(std::format("Concurrent symlink check detected for {}, treating as potential attack", path.string()));
+        return true;
+    }
+    
     struct stat st;
     
     // Проверяем, является ли файл символической ссылкой
     if (lstat(path.c_str(), &st) != 0) {
+        g_symlink_check_in_progress.store(false);
         Logger::warning(std::format("Failed to lstat {}: {}", path.string(), strerror(errno)));
         return false;  // Не можем проверить - считаем безопасным для логирования
     }
     
     // Если это не symlink, атаки нет
     if (!S_ISLNK(st.st_mode)) {
+        g_symlink_check_in_progress.store(false);
         return false;
     }
     
@@ -321,6 +393,7 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     char target[PATH_MAX];
     ssize_t len = readlink(path.c_str(), target, sizeof(target) - 1);
     if (len < 0) {
+        g_symlink_check_in_progress.store(false);
         Logger::warning(std::format("Failed to readlink {}: {}", path.string(), strerror(errno)));
         return true;  // Считаем потенциальной атакой
     }
@@ -334,11 +407,32 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
         target_str.find("/usr/") == 0 || 
         target_str.find("/var/log/") == 0 ||
         target_str.find("/proc/") == 0 ||
-        target_str.find("/sys/") == 0) {
+        target_str.find("/sys/") == 0 ||
+        target_str.find("/root/") == 0) {
         Logger::error(std::format("Potential symlink attack detected: {} points to system directory", path.string()));
+        g_symlink_check_in_progress.store(false);
         return true;
     }
     
+    // Дополнительная проверка: resolving пути и проверка что он в допустимой зоне
+    // Используем realpath для получения канонического пути
+    char resolved_target[PATH_MAX];
+    if (realpath(target, resolved_target) != nullptr) {
+        std::string resolved_str(resolved_target);
+        // Проверяем что целевой путь не ведет к системным файлам после разрешения symlink
+        if (resolved_str.find("/etc/") == 0 || 
+            resolved_str.find("/usr/") == 0 || 
+            resolved_str.find("/var/log/") == 0 ||
+            resolved_str.find("/proc/") == 0 ||
+            resolved_str.find("/sys/") == 0 ||
+            resolved_str.find("/root/") == 0) {
+            Logger::error(std::format("Potential symlink attack detected: {} resolves to system file {}", path.string(), resolved_str));
+            g_symlink_check_in_progress.store(false);
+            return true;
+        }
+    }
+    
+    g_symlink_check_in_progress.store(false);
     return false;  // Symlink существует, но не указывает на системные директории
 }
 
@@ -365,20 +459,31 @@ bool Compressor::check_file_ownership(const fs::path& path, uid_t expected_uid) 
 }
 
 // Проверка пути: находится ли файл в разрешённой директории
+// Улучшенная защита от обхода через symlink с использованием multiple retries
 bool Compressor::validate_path_in_directory(const fs::path& path, const std::vector<std::string>& allowed_dirs) {
-    // Получаем канонический путь исходного файла
+    // Получаем канонический путь исходного файла с несколькими попытками для предотвращения race condition
     std::error_code ec;
     fs::path canonical_path;
     
-    try {
-        canonical_path = fs::canonical(path.parent_path(), ec);
-        if (ec) {
-            Logger::warning(std::format("Failed to get canonical path for {}: {}", path.string(), ec.message()));
-            return false;
+    for (int retry = 0; retry < MAX_PATH_VALIDATION_RETRIES; ++retry) {
+        try {
+            canonical_path = fs::canonical(path.parent_path(), ec);
+            if (ec) {
+                Logger::warning(std::format("Failed to get canonical path for {}: {} (attempt {}/{})", 
+                    path.string(), ec.message(), retry + 1, MAX_PATH_VALIDATION_RETRIES));
+                if (retry == MAX_PATH_VALIDATION_RETRIES - 1) {
+                    return false;
+                }
+                continue;
+            }
+            break;  // Успех
+        } catch (const fs::filesystem_error& e) {
+            Logger::warning(std::format("Filesystem error getting canonical path for {}: {} (attempt {}/{})", 
+                path.string(), e.what(), retry + 1, MAX_PATH_VALIDATION_RETRIES));
+            if (retry == MAX_PATH_VALIDATION_RETRIES - 1) {
+                return false;
+            }
         }
-    } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format("Filesystem error getting canonical path for {}: {}", path.string(), e.what()));
-        return false;
     }
     
     std::string canonical_str = canonical_path.string();

@@ -298,15 +298,28 @@ int main(int argc, char* argv[]) {
     sd_notify(0, "READY=1");
     Logger::info("Service ready (sd_notify sent)");
 
-    // Главный цикл
-    while (g_running) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+    // Главный цикл с обработкой исключений
+    try {
+        while (g_running) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    } catch (const std::exception& e) {
+        Logger::error(std::format("Exception in main loop: {}", e.what()));
+        g_running = false;
+    } catch (...) {
+        Logger::error("Unknown exception in main loop");
+        g_running = false;
     }
 
     // Вывод метрик производительности
     g_metrics.log_summary();
 
     Logger::info("Service stopped");
+    
+    // Корректное завершение работы с очисткой глобальных указателей
+    g_monitor = nullptr;
+    g_pool = nullptr;
+    g_cfg = nullptr;
     
     // Корректное завершение работы логгера
     Logger::shutdown();
