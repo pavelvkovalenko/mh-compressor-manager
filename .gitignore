@@ -1,34 +1,22 @@
 ```
 # Build artifacts
 src/build/
+src/compile_commands.json
+
+# CMake files
+src/CMakeCache.txt
+src/CMakeFiles/
+*.cmake
+
+# Compiled objects
 *.o
 *.obj
 *.a
+*.lib
 *.so
+*.dylib
 *.dll
-*.exe
-*.out
 
-# CMake files
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-
-# Dependencies
-vendor/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
+# Executables
+src/mh-compressor-manager
 ```

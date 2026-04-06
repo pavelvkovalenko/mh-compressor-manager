@@ -234,9 +234,8 @@ void delete_task(const fs::path& path) {
     if (!g_cfg) return;
     if (!g_cfg->dry_run) {
         Logger::info(std::format("Removing compressed copies for: {}", path.string()));
-        std::error_code ec;
-        fs::remove(path.string() + ".gz", ec);
-        fs::remove(path.string() + ".br", ec);
+        // Используем безопасное удаление с проверками
+        Compressor::safe_remove_compressed(path);
     } else {
         Logger::info(std::format("[DRY RUN] Would remove copies for: {}", path.string()));
     }

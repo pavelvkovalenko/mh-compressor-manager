@@ -18,17 +18,29 @@ std::mutex Logger::s_queue_mutex;
 std::condition_variable Logger::s_queue_cv;
 
 void Logger::async_writer() {
+    // Оптимизация: пакетная обработка логов для уменьшения блокировок
+    constexpr size_t BATCH_SIZE = 32;
+    std::vector<std::pair<LogLevel, std::string>> batch;
+    batch.reserve(BATCH_SIZE);
+    
     while (s_running || !s_log_queue.empty()) {
         std::unique_lock<std::mutex> lock(s_queue_mutex);
         s_queue_cv.wait_for(lock, std::chrono::milliseconds(100), [] {
             return !s_log_queue.empty() || !s_running;
         });
         
-        while (!s_log_queue.empty()) {
-            auto [level, message] = std::move(s_log_queue.front());
+        // Забираем пакет сообщений за одну блокировку
+        size_t count = 0;
+        while (!s_log_queue.empty() && count < BATCH_SIZE) {
+            batch.emplace_back(std::move(s_log_queue.front()));
             s_log_queue.pop();
-            lock.unlock();
-            
+            ++count;
+        }
+        
+        lock.unlock();
+        
+        // Обрабатываем пакет вне блокировки
+        for (auto& [level, message] : batch) {
             int priority = LOG_INFO;
             switch (level) {
                 case LogLevel::DEBUG: priority = LOG_DEBUG; break;
@@ -37,10 +49,11 @@ void Logger::async_writer() {
                 case LogLevel::ERROR: priority = LOG_ERR; break;
             }
             syslog(priority, "%s", message.c_str());
-            std::cerr << "[" << priority << "] " << message << std::endl;
-            
-            lock.lock();
+            if (s_debug) {
+                std::cerr << "[" << priority << "] " << message << std::endl;
+            }
         }
+        batch.clear();
     }
 }
 
