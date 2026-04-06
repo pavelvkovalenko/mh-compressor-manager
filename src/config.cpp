@@ -35,7 +35,7 @@ static std::vector<std::string> split(const std::string& s, char delim) {
 Config load_config(int argc, char* argv[]) {
     Config cfg;
     
-    // Simple CLI parsing
+    // Simple CLI parsing с проверкой диапазонов числовых параметров
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -43,8 +43,8 @@ Config load_config(int argc, char* argv[]) {
                       << "  --config <path>   Config file path\n"
                       << "  --dir <path>      Target directory (override)\n"
                       << "  --ext <list>      Extensions (override)\n"
-                      << "  --gzip-level <N>  Gzip level\n"
-                      << "  --brotli-level <N> Brotli level\n"
+                      << "  --gzip-level <N>  Gzip level (1-9)\n"
+                      << "  --brotli-level <N> Brotli level (1-11)\n"
                       << "  --dry-run         Dry run mode\n"
                       << "  --version         Show version\n";
             exit(0);
@@ -59,8 +59,24 @@ Config load_config(int argc, char* argv[]) {
             auto exts = split(argv[++i], ' ');
             cfg.cli_exts.insert(cfg.cli_exts.end(), exts.begin(), exts.end());
         }
-        else if (arg == "--gzip-level" && i + 1 < argc) cfg.cli_gzip_level = std::stoi(argv[++i]);
-        else if (arg == "--brotli-level" && i + 1 < argc) cfg.cli_brotli_level = std::stoi(argv[++i]);
+        else if (arg == "--gzip-level" && i + 1 < argc) {
+            int level = std::stoi(argv[++i]);
+            // Валидация диапазона уровня gzip
+            if (level < 1 || level > 9) {
+                std::cerr << "Warning: gzip level must be 1-9, using default 6\n";
+                level = 6;
+            }
+            cfg.cli_gzip_level = level;
+        }
+        else if (arg == "--brotli-level" && i + 1 < argc) {
+            int level = std::stoi(argv[++i]);
+            // Валидация диапазона уровня brotli
+            if (level < 1 || level > 11) {
+                std::cerr << "Warning: brotli level must be 1-11, using default 4\n";
+                level = 4;
+            }
+            cfg.cli_brotli_level = level;
+        }
         else if (arg == "--dry-run") cfg.dry_run = true;
     }
 
@@ -85,17 +101,90 @@ Config load_config(int argc, char* argv[]) {
                     std::string val = trim(line.substr(eq + 1));
                     if (key == "target_path") cfg.target_paths = split(val, ';');
                     else if (key == "debug") cfg.debug = (val == "true");
-                    else if (key == "threads") cfg.threads = std::stoi(val);
+                    else if (key == "threads") {
+                        try {
+                            int threads = std::stoi(val);
+                            // Валидация диапазона количества потоков
+                            if (threads < 0 || threads > 256) {
+                                Logger::warning(std::format("Invalid threads value {}, using auto-detect", threads));
+                                cfg.threads = 0;
+                            } else {
+                                cfg.threads = threads;
+                            }
+                        } catch (...) {
+                            Logger::warning("Invalid threads value, using auto-detect");
+                            cfg.threads = 0;
+                        }
+                    }
                     else if (key == "list") {
                         auto exts = split(val, ' ');
                         cfg.extensions.insert(cfg.extensions.end(), exts.begin(), exts.end());
                     }
                     else if (key == "algorithms") cfg.algorithms = val;
-                    else if (key == "gzip_level") cfg.gzip_level = std::stoi(val);
-                    else if (key == "brotli_level") cfg.brotli_level = std::stoi(val);
-                    else if (key == "debounce_delay") cfg.debounce_delay = std::stoi(val);
-                    else if (key == "io_delay_us") cfg.io_delay_us = std::stoi(val);
-                    else if (key == "max_active_ios") cfg.max_active_ios = std::stoull(val);
+                    else if (key == "gzip_level") {
+                        try {
+                            int level = std::stoi(val);
+                            if (level < 1 || level > 9) {
+                                Logger::warning(std::format("Invalid gzip_level {}, using default 6", level));
+                                level = 6;
+                            }
+                            cfg.gzip_level = level;
+                        } catch (...) {
+                            Logger::warning("Invalid gzip_level, using default 6");
+                            cfg.gzip_level = 6;
+                        }
+                    }
+                    else if (key == "brotli_level") {
+                        try {
+                            int level = std::stoi(val);
+                            if (level < 1 || level > 11) {
+                                Logger::warning(std::format("Invalid brotli_level {}, using default 4", level));
+                                level = 4;
+                            }
+                            cfg.brotli_level = level;
+                        } catch (...) {
+                            Logger::warning("Invalid brotli_level, using default 4");
+                            cfg.brotli_level = 4;
+                        }
+                    }
+                    else if (key == "debounce_delay") {
+                        try {
+                            int delay = std::stoi(val);
+                            if (delay < 0 || delay > 60) {
+                                Logger::warning(std::format("Invalid debounce_delay {}, using default 2", delay));
+                                delay = 2;
+                            }
+                            cfg.debounce_delay = delay;
+                        } catch (...) {
+                            Logger::warning("Invalid debounce_delay, using default 2");
+                            cfg.debounce_delay = 2;
+                        }
+                    }
+                    else if (key == "io_delay_us") {
+                        try {
+                            int delay = std::stoi(val);
+                            if (delay < 0 || delay > 1000000) {
+                                Logger::warning(std::format("Invalid io_delay_us {}, using default 0", delay));
+                                delay = 0;
+                            }
+                            cfg.io_delay_us = delay;
+                        } catch (...) {
+                            Logger::warning("Invalid io_delay_us, using default 0");
+                            cfg.io_delay_us = 0;
+                        }
+                    }
+                    else if (key == "max_active_ios") {
+                        try {
+                            cfg.max_active_ios = std::stoull(val);
+                            if (cfg.max_active_ios > 10000) {
+                                Logger::warning(std::format("max_active_ios {} too high, limiting to 10000", cfg.max_active_ios));
+                                cfg.max_active_ios = 10000;
+                            }
+                        } catch (...) {
+                            Logger::warning("Invalid max_active_ios, using unlimited");
+                            cfg.max_active_ios = 0;
+                        }
+                    }
                 }
             }
         }

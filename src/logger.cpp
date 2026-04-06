@@ -9,6 +9,12 @@ namespace std {
 }
 #endif
 #include <cstdarg>
+#include <chrono>
+
+// Максимальный размер очереди логов для предотвращения DoS через переполнение памяти
+constexpr size_t MAX_LOG_QUEUE_SIZE = 10000;
+// Максимальное время ожидания перед сбросом старых логов (мс)
+constexpr int LOG_FLUSH_TIMEOUT_MS = 5000;
 
 bool Logger::s_debug = false;
 std::thread Logger::s_async_thread;
@@ -74,6 +80,13 @@ void Logger::shutdown() {
     s_running = false;
     s_queue_cv.notify_all();
     if (s_async_thread.joinable()) {
+        // Ждем завершения потока логов с таймаутом для предотвращения зависания
+        auto start = std::chrono::steady_clock::now();
+        while (!s_log_queue.empty() && 
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start).count() < LOG_FLUSH_TIMEOUT_MS) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
         s_async_thread.join();
     }
     closelog();
@@ -82,6 +95,18 @@ void Logger::shutdown() {
 void Logger::log(LogLevel level, const std::string& message) {
     {
         std::lock_guard<std::mutex> lock(s_queue_mutex);
+        // Защита от переполнения очереди логов (DoS prevention)
+        if (s_log_queue.size() >= MAX_LOG_QUEUE_SIZE) {
+            // Сбрасываем старые логи если очередь переполнена
+            size_t drop_count = s_log_queue.size() / 4;  // Удаляем 25% старых записей
+            for (size_t i = 0; i < drop_count && !s_log_queue.empty(); ++i) {
+                s_log_queue.pop();
+            }
+            // Логируем предупреждение о переполнении (только если это не само сообщение о переполнении)
+            if (message.find("Log queue overflow") == std::string::npos) {
+                s_log_queue.emplace(LogLevel::WARNING, "Log queue overflow - dropped old entries");
+            }
+        }
         s_log_queue.emplace(level, message);
     }
     s_queue_cv.notify_one();
