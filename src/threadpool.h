@@ -33,8 +33,9 @@ struct PrioritizedTask {
 
 class ThreadPool {
 public:
-    ThreadPool(size_t threads, size_t max_queue_size = 1000) 
-        : stop_flag(false), max_queue_size(max_queue_size), active_tasks(0) {
+    ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0) 
+        : stop_flag(false), max_queue_size(max_queue_size), active_tasks(0), 
+          m_max_active_ios(max_ios), io_slots_available(max_ios > 0 ? max_ios : SIZE_MAX) {
         for (size_t i = 0; i < threads; ++i) {
             workers.emplace_back([this] {
                 while (true) {
@@ -43,14 +44,30 @@ public:
                         std::unique_lock<std::mutex> lock(queue_mutex);
                         condition.wait(lock, [this] { return stop_flag || !tasks.empty(); });
                         if (stop_flag && tasks.empty()) return;
+                        
+                        // Ждем доступного I/O слота если установлен лимит
+                        if (m_max_active_ios > 0) {
+                            io_slot_available.wait(lock, [this] { 
+                                return io_slots_available > 0 || stop_flag; 
+                            });
+                            if (stop_flag && tasks.empty()) return;
+                        }
+                        
                         task = std::move(tasks.top().task);
                         tasks.pop();
                         ++active_tasks;
+                        if (m_max_active_ios > 0) {
+                            --io_slots_available;
+                        }
                     }
                     task();
                     {
                         std::lock_guard<std::mutex> lock(queue_mutex);
                         --active_tasks;
+                        if (m_max_active_ios > 0) {
+                            ++io_slots_available;
+                            io_slot_available.notify_one();
+                        }
                         task_done.notify_all();
                     }
                 }
@@ -104,7 +121,10 @@ private:
     mutable std::mutex queue_mutex;
     std::condition_variable condition;
     std::condition_variable task_done;
+    std::condition_variable io_slot_available;
     std::atomic<bool> stop_flag;
     size_t max_queue_size;
     size_t active_tasks;
+    size_t m_max_active_ios;
+    size_t io_slots_available;
 };

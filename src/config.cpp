@@ -94,6 +94,8 @@ Config load_config(int argc, char* argv[]) {
                     else if (key == "gzip_level") cfg.gzip_level = std::stoi(val);
                     else if (key == "brotli_level") cfg.brotli_level = std::stoi(val);
                     else if (key == "debounce_delay") cfg.debounce_delay = std::stoi(val);
+                    else if (key == "io_delay_us") cfg.io_delay_us = std::stoi(val);
+                    else if (key == "max_active_ios") cfg.max_active_ios = std::stoull(val);
                 }
             }
         }

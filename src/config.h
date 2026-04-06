@@ -14,6 +14,10 @@ struct Config {
     int debounce_delay = 2; // seconds
     std::string config_path = "/etc/mediahive/compressor-manager.conf";
     
+    // Ограничение I/O нагрузки
+    int io_delay_us = 0;         // Задержка между файлами (микросекунды)
+    size_t max_active_ios = 0;   // Лимит параллельных I/O операций (0 = без лимита)
+    
     // CLI overrides
     std::vector<std::string> cli_dirs;
     std::vector<std::string> cli_exts;
