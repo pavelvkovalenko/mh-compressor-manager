@@ -8,6 +8,7 @@
 #include <mutex>
 #include <chrono>
 #include <string>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 

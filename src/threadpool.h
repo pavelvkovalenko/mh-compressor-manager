@@ -50,7 +50,7 @@ public:
     }
     
     size_t queue_size() const {
-        std::lock_guard<std::mutex> lock(queue_mutex);
+        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(queue_mutex));
         return tasks.size();
     }
 private:
