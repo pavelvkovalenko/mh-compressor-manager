@@ -5,6 +5,14 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <atomic>
+#if __has_include(<format>)
+#include <format>
+#else
+#include <fmt/format.h>
+namespace std {
+    using fmt::format;
+}
+#endif
 
 // Проверяем доступность io_uring через liburing
 #if __has_include(<liburing.h>)

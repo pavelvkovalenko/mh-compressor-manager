@@ -93,22 +93,33 @@ void Logger::shutdown() {
 }
 
 void Logger::log(LogLevel level, const std::string& message) {
+    bool queue_full = false;
+    std::pair<LogLevel, std::string> overflow_msg;
+    
     {
         std::lock_guard<std::mutex> lock(s_queue_mutex);
         // Защита от переполнения очереди логов (DoS prevention)
         if (s_log_queue.size() >= MAX_LOG_QUEUE_SIZE) {
+            queue_full = true;
             // Сбрасываем старые логи если очередь переполнена
             size_t drop_count = s_log_queue.size() / 4;  // Удаляем 25% старых записей
             for (size_t i = 0; i < drop_count && !s_log_queue.empty(); ++i) {
                 s_log_queue.pop();
             }
-            // Логируем предупреждение о переполнении (только если это не само сообщение о переполнении)
+            // Готовим предупреждение о переполнении для добавления после разблокировки
             if (message.find("Log queue overflow") == std::string::npos) {
-                s_log_queue.emplace(LogLevel::WARNING, "Log queue overflow - dropped old entries");
+                overflow_msg = {LogLevel::WARNING, "Log queue overflow - dropped old entries"};
             }
         }
         s_log_queue.emplace(level, message);
     }
+    
+    // Добавляем сообщение о переполнении вне блокировки чтобы избежать рекурсии
+    if (queue_full && !overflow_msg.second.empty()) {
+        std::lock_guard<std::mutex> lock(s_queue_mutex);
+        s_log_queue.push(std::move(overflow_msg));
+    }
+    
     s_queue_cv.notify_one();
 }
 
