@@ -26,6 +26,7 @@ namespace std {
 #include <atomic>       // Для потокобезопасности
 #include <linux/aio_abi.h>
 #include <libaio.h>
+#include <random>       // Для генерации случайных имен временных файлов
 
 // Размер буфера для потоковой обработки (256KB - оптимизировано для производительности)
 constexpr size_t STREAM_BUFFER_SIZE = 262144;
@@ -44,6 +45,12 @@ static ByteBufferPool g_buffer_pool(16);
 
 // Флаги для Direct I/O
 constexpr int DIRECT_IO_FLAGS = O_DIRECT;
+
+// Максимальное количество попыток создания временного файла
+constexpr int MAX_TEMP_FILE_RETRIES = 10;
+
+// Размер случайной части имени временного файла (байты)
+constexpr size_t TEMP_FILE_RANDOM_BYTES = 8;
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
@@ -152,43 +159,69 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
     // fdopen забирает владение дескриптором, теперь закрывать нужно только fclose(file_in)
 
-    // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
-    // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
-    // Добавляем O_DIRECT для прямого доступа к диску (минуя кэш страницы)
-    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | DIRECT_IO_FLAGS, st.st_mode & 0666);
-    if (fd_out < 0) {
-        int saved_errno = errno;
-        fclose(file_in);
-        if (saved_errno == EEXIST) {
-            Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
-        } else if (saved_errno == ELOOP) {
-            Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
-        } else if (saved_errno == EINVAL) {
-            // O_DIRECT не поддерживается или буфер не выровнен - пробуем без O_DIRECT
-            Logger::debug(std::format("O_DIRECT not supported for {}, trying without direct I/O", output.string()));
-            fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
-            if (fd_out < 0) {
-                saved_errno = errno;
-                if (saved_errno == EEXIST) {
-                    Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
-                } else if (saved_errno == ELOOP) {
-                    Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
-                } else {
-                    Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
-                }
-                return false;
-            }
+    // Шаг 6: Безопасное создание выходного файла через временный файл + rename()
+    // Это полностью устраняет race condition между open() с O_EXCL и последующими операциями
+    // Используем временный файл в той же директории что и целевой файл
+    
+    fs::path output_parent = output.parent_path();
+    if (output_parent.empty()) {
+        output_parent = ".";
+    }
+    
+    // Генерируем случайное имя для временного файла
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dist;
+    
+    fs::path temp_path;
+    int fd_out = -1;
+    bool temp_created = false;
+    
+    for (int retry = 0; retry < MAX_TEMP_FILE_RETRIES && !temp_created; ++retry) {
+        // Создаем уникальное имя временного файла: <output>.tmp.<random_hex>
+        uint64_t random_val = dist(gen);
+        char random_hex[TEMP_FILE_RANDOM_BYTES * 2 + 1];
+        snprintf(random_hex, sizeof(random_hex), "%016lx", random_val);
+        
+        temp_path = output.string() + ".tmp." + std::string(random_hex);
+        
+        // Открываем временный файл с O_CREAT | O_EXCL для атомарности
+        fd_out = open(temp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | DIRECT_IO_FLAGS, st.st_mode & 0666);
+        
+        if (fd_out >= 0) {
+            temp_created = true;
         } else {
-            Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
-            return false;
+            int saved_errno = errno;
+            if (saved_errno == EINVAL) {
+                // O_DIRECT не поддерживается - пробуем без него
+                Logger::debug(std::format("O_DIRECT not supported for temp file {}, trying without direct I/O", temp_path.string()));
+                fd_out = open(temp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
+                if (fd_out >= 0) {
+                    temp_created = true;
+                }
+            } else if (saved_errno != EEXIST) {
+                // Другая ошибка - логируем и пробуем снова
+                Logger::warning(std::format("Failed to create temp file (attempt {}/{}): {} - {}", 
+                                           retry + 1, MAX_TEMP_FILE_RETRIES, temp_path.string(), strerror(saved_errno)));
+            }
+            // Если EEXIST - цикл продолжится с новым случайным именем
         }
+    }
+    
+    if (!temp_created || fd_out < 0) {
+        fclose(file_in);
+        Logger::error(std::format("Failed to create temporary file after {} attempts: {}", 
+                                 MAX_TEMP_FILE_RETRIES, output.string()));
+        return false;
     }
     
     FILE* file_out = fdopen(fd_out, "wb");
     if (!file_out) {
         close(fd_out);
         fclose(file_in);
-        Logger::error(std::format("Failed to fdopen output file {}: {}", output.string(), strerror(errno)));
+        Logger::error(std::format("Failed to fdopen temp file {}: {}", temp_path.string(), strerror(errno)));
+        // Удаляем временный файл при ошибке
+        unlink(temp_path.c_str());
         return false;
     }
 
@@ -230,6 +263,12 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
                 size_t have = out_buffer.size() - strm.avail_out;
                 if (have > 0) {
                     if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
+                        // Проверяем errno для определения причины ошибки
+                        if (errno == ENOSPC) {
+                            Logger::error(std::format("No space left on device while writing gzip output: {}", output.string()));
+                        } else {
+                            Logger::error(std::format("Failed to write gzip output: {} - {}", output.string(), strerror(errno)));
+                        }
                         has_error = true;
                         break;
                     }
@@ -254,6 +293,12 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             size_t have = out_buffer.size() - strm.avail_out;
             if (have > 0) {
                 if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
+                    // Проверяем errno для определения причины ошибки
+                    if (errno == ENOSPC) {
+                        Logger::error(std::format("No space left on device while writing gzip output: {}", output.string()));
+                    } else {
+                        Logger::error(std::format("Failed to write gzip output: {} - {}", output.string(), strerror(errno)));
+                    }
                     has_error = true;
                     break;
                 }
@@ -263,14 +308,44 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 
     deflateEnd(&strm);
     fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    fclose(file_out); // Закрываем выходной файл
     
-    if (has_error || fflush(file_out) != 0 || fsync(fd_out) != 0) {
-        Logger::error("Failed to write gzip output");
+    // Проверяем ошибки записи и делаем fsync перед rename
+    if (has_error || fflush(file_out) != 0) {
+        if (errno == ENOSPC) {
+            Logger::error(std::format("No space left on device while finalizing gzip output: {}", output.string()));
+        } else {
+            Logger::error("Failed to write gzip output");
+        }
+        fclose(file_out);
+        unlink(temp_path.c_str());  // Удаляем временный файл при ошибке
+        return false;
+    }
+    
+    // Получаем дескриптор из FILE* для fsync перед rename
+    int out_fd_raw = fileno(file_out);
+    if (out_fd_raw >= 0 && fsync(out_fd_raw) != 0) {
+        if (errno == ENOSPC) {
+            Logger::error(std::format("No space left on device while fsync gzip output: {}", output.string()));
+        } else {
+            Logger::error(std::format("Failed to fsync gzip output: {}", strerror(errno)));
+        }
+        fclose(file_out);
+        unlink(temp_path.c_str());  // Удаляем временный файл при ошибке
+        return false;
+    }
+    
+    fclose(file_out);
+    
+    // Атомарно переименовываем временный файл в целевой
+    // Это завершает защиту от race condition - файл появляется только после успешной записи
+    if (rename(temp_path.c_str(), output.c_str()) != 0) {
+        Logger::error(std::format("Failed to rename temp file to output: {} -> {} - {}", 
+                                 temp_path.string(), output.string(), strerror(errno)));
+        unlink(temp_path.c_str());  // Удаляем временный файл при ошибке
         return false;
     }
 
-    Logger::debug(std::format("Gzip compressed: {} -> {}", input.string(), output.string()));
+    Logger::debug(std::format("Gzip compressed: {} -> {} (via temp file)", input.string(), output.string()));
     return true;
 }
 
@@ -377,26 +452,45 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
     // fdopen забирает владение дескриптором
 
-    // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
-    struct stat input_st;
-    if (fstat(fd_in, &input_st) != 0) {
-        fclose(file_in);
-        Logger::error(std::format("Failed to fstat input file {}: {}", input.string(), strerror(errno)));
-        return false;
+    // Шаг 6: Безопасное создание выходного файла через временный файл + rename() (аналогично gzip)
+    fs::path output_parent = output.parent_path();
+    if (output_parent.empty()) {
+        output_parent = ".";
     }
     
-    // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
-    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, input_st.st_mode & 0666);
-    if (fd_out < 0) {
-        int saved_errno = errno;
-        fclose(file_in);
-        if (saved_errno == EEXIST) {
-            Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
-        } else if (saved_errno == ELOOP) {
-            Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
+    // Генерируем случайное имя для временного файла
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dist;
+    
+    fs::path temp_path;
+    int fd_out = -1;
+    bool temp_created = false;
+    
+    for (int retry = 0; retry < MAX_TEMP_FILE_RETRIES && !temp_created; ++retry) {
+        uint64_t random_val = dist(gen);
+        char random_hex[TEMP_FILE_RANDOM_BYTES * 2 + 1];
+        snprintf(random_hex, sizeof(random_hex), "%016lx", random_val);
+        
+        temp_path = output.string() + ".tmp." + std::string(random_hex);
+        
+        fd_out = open(temp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, input_st.st_mode & 0666);
+        
+        if (fd_out >= 0) {
+            temp_created = true;
         } else {
-            Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
+            int saved_errno = errno;
+            if (saved_errno != EEXIST) {
+                Logger::warning(std::format("Failed to create temp file for brotli (attempt {}/{}): {} - {}", 
+                                           retry + 1, MAX_TEMP_FILE_RETRIES, temp_path.string(), strerror(saved_errno)));
+            }
         }
+    }
+    
+    if (!temp_created || fd_out < 0) {
+        fclose(file_in);
+        Logger::error(std::format("Failed to create temporary file after {} attempts: {}", 
+                                 MAX_TEMP_FILE_RETRIES, output.string()));
         return false;
     }
     
@@ -404,7 +498,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     if (!file_out) {
         close(fd_out);
         fclose(file_in);
-        Logger::error(std::format("Failed to fdopen output file {}: {}", output.string(), strerror(errno)));
+        Logger::error(std::format("Failed to fdopen temp file {}: {}", temp_path.string(), strerror(errno)));
+        unlink(temp_path.c_str());
         return false;
     }
 
@@ -453,6 +548,11 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                 size_t written = out_buffer.size() - available_out;
                 if (written > 0) {
                     if (fwrite(out_buffer.data(), 1, written, file_out) != written) {
+                        if (errno == ENOSPC) {
+                            Logger::error(std::format("No space left on device while writing brotli output: {}", output.string()));
+                        } else {
+                            Logger::error(std::format("Failed to write brotli output: {} - {}", output.string(), strerror(errno)));
+                        }
                         success = false;
                         break;
                     }
@@ -478,18 +578,43 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
 
     BrotliEncoderDestroyInstance(state);
     fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    fclose(file_out); // Закрываем выходной файл
-
-    if (fflush(file_out) != 0 || fsync(fd_out) != 0) {
-        Logger::error("Failed to write brotli output");
+    
+    // Проверяем ошибки записи и делаем fsync перед rename
+    if (!success || fflush(file_out) != 0) {
+        if (errno == ENOSPC) {
+            Logger::error(std::format("No space left on device while finalizing brotli output: {}", output.string()));
+        } else {
+            Logger::error("Failed to write brotli output");
+        }
+        fclose(file_out);
+        unlink(temp_path.c_str());  // Удаляем временный файл при ошибке
+        return false;
+    }
+    
+    // Получаем дескриптор из FILE* для fsync перед rename
+    int out_fd_raw = fileno(file_out);
+    if (out_fd_raw >= 0 && fsync(out_fd_raw) != 0) {
+        if (errno == ENOSPC) {
+            Logger::error(std::format("No space left on device while fsync brotli output: {}", output.string()));
+        } else {
+            Logger::error(std::format("Failed to fsync brotli output: {}", strerror(errno)));
+        }
+        fclose(file_out);
+        unlink(temp_path.c_str());  // Удаляем временный файл при ошибке
+        return false;
+    }
+    
+    fclose(file_out);
+    
+    // Атомарно переименовываем временный файл в целевой
+    if (rename(temp_path.c_str(), output.c_str()) != 0) {
+        Logger::error(std::format("Failed to rename temp file to output: {} -> {} - {}", 
+                                 temp_path.string(), output.string(), strerror(errno)));
+        unlink(temp_path.c_str());  // Удаляем временный файл при ошибке
         return false;
     }
 
-    if (!success) {
-        return false;
-    }
-
-    Logger::debug(std::format("Brotli compressed: {} -> {}", input.string(), output.string()));
+    Logger::debug(std::format("Brotli compressed: {} -> {} (via temp file)", input.string(), output.string()));
     return true;
 }
 

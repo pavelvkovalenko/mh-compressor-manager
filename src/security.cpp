@@ -113,49 +113,114 @@ bool init_seccomp() {
 #if HAVE_SECCOMP
     scmp_filter_ctx ctx;
     
-    // Инициализируем фильтр с действием по умолчанию: разрешать всё
-    // Затем добавляем правила запрета для опасных вызовов
-    ctx = seccomp_init(SCMP_ACT_ALLOW);
+    // Инициализируем фильтр с действием по умолчанию: ЗАПРЕЩАТЬ всё
+    // Затем добавляем правила разрешения для необходимых вызовов
+    // Это более безопасный подход (whitelist вместо blacklist)
+    ctx = seccomp_init(SCMP_ACT_ERRNO(EPERM));
     if (ctx == nullptr) {
         Logger::error("Failed to initialize seccomp context");
         return false;
     }
     
-    // Запрещаем опасные системные вызовы
+    // Разрешаем только необходимые системные вызовы для работы компрессора
     
-    // Выполнение программ
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(execve), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(execveat), 0);
+    // Базовые вызовы для работы с файлами
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(open), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(read), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lseek), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fsync), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fdatasync), 0);
     
-    // Сетевые вызовы (демон не должен иметь сеть)
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(socket), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(connect), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(accept), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(bind), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(listen), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(sendto), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(recvfrom), 0);
+    // Вызовы для stat/fstat/lstat
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(stat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fstat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lstat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(newfstatat), 0);
     
-    // Отладка и трассировка
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(ptrace), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(process_vm_readv), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(process_vm_writev), 0);
+    // Вызовы для работы с директориями
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getdents), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getdents64), 0);
     
-    // Монтирование ФС
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(mount), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(umount2), 0);
+    // Вызовы для управления файлами
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fcntl), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fchmod), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fchown), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(futimens), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlink), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlinkat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rename), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(renameat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(renameat2), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mkdir), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mkdirat), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rmdir), 0);
     
-    // Изменение имен процессов (маскировка)
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(prctl), 0);
+    // Вызовы для работы с памятью
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mmap), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(munmap), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mprotect), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(brk), 0);
     
-    // Загрузка модулей ядра
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(init_module), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(finit_module), 0);
-    seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(delete_module), 0);
+    // Вызовы для работы с потоками
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(futex), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(set_robust_list), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(get_robust_list), 0);
     
-    // Переименование и создание жестких ссылок (потенциально опасно)
-    // seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(link), 0);
-    // seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(linkat), 0);
+    // Вызовы для получения информации о процессе
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getpid), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(gettid), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getuid), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(geteuid), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getgid), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getegid), 0);
+    
+    // Вызовы для syslog
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(syslog), 0);
+    
+    // Вызовы для работы со временем
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clock_gettime), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clock_getres), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(nanosleep), 0);
+    
+    // Вызовы для select/poll (используются в monitor)
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(select), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pselect6), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(poll), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ppoll), 0);
+    
+    // Вызовы для доступа к /proc/self/fd/
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(readlink), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(readlinkat), 0);
+    
+    // Вызовы для fadvise (оптимизация чтения)
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fadvise64), 0);
+    
+    // Вызовы для prctl (NO_NEW_PRIVS уже установлен)
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(prctl), 0);
+    
+    // Вызовы для exit
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit_group), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(wait4), 0);
+    
+    // Вызовы для rt_sigaction и связанных
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask), 0);
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn), 0);
+    
+    // Вызовы для arch_prctl (требуется на x86_64)
+    #if defined(__x86_64__)
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(arch_prctl), 0);
+    #endif
+    
+    // Вызовы для set_tid_address
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(set_tid_address), 0);
+    
+    // Вызовы для getrandom
+    seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getrandom), 0);
     
     // Применяем фильтр
     int rc = seccomp_load(ctx);
@@ -166,7 +231,7 @@ bool init_seccomp() {
     }
     
     seccomp_release(ctx);
-    Logger::info("Seccomp sandbox initialized successfully");
+    Logger::info("Seccomp sandbox initialized successfully (whitelist mode)");
     return true;
 #else
     Logger::warning("Seccomp support not available (libseccomp not installed)");
