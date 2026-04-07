@@ -1,9 +1,43 @@
 ```
 # Build artifacts
-build/
-CMakeCache.txt
-CMakeFiles/
+src/build/
+*.o
+*.obj
+*.out
 
-# Executables
-mh-compressor-manager
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.a
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Environment
+.env
+.env.local
+*.env.*
 ```

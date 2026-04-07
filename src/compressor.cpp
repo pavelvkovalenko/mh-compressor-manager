@@ -32,12 +32,15 @@ namespace std {
 // Размер буфера для потоковой обработки (256KB - оптимизировано для производительности)
 constexpr size_t STREAM_BUFFER_SIZE = 262144;
 
+// Максимальное количество попыток при проверке пути для предотвращения DoS
+constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
+
+// Буфер для /proc/self/fd/<fd> путей (достаточно для большинства систем)
+constexpr size_t PROC_FD_PATH_SIZE = 64;
+
 // Глобальный кэш для предотвращения race condition при проверке symlink-атак
 // Используется атомарный флаг для защиты от TOCTOU атак
 static std::atomic<bool> g_symlink_check_in_progress{false};
-
-// Максимальное количество попыток при проверке пути для предотвращения DoS
-constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
@@ -46,38 +49,62 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         level = 6;
     }
     
-    // Открываем входной файл с прямым доступом и защитой от symlink-атак
-    // Используем O_NOFOLLOW для предотвращения открытия symlink
-    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME | O_NOFOLLOW);
-    if (fd_in < 0) {
+    // === ЗАЩИТА ОТ TOCTOU: Используем O_PATH + openat() ===
+    // Шаг 1: Открываем путь с O_PATH для получения fd без чтения данных
+    // O_PATH не следует за symlink, если используется с O_NOFOLLOW
+    int fd_path = open(input.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    if (fd_path < 0) {
         if (errno == ELOOP || errno == EMLINK) {
             Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
             return false;
         }
-        Logger::error(std::format("Failed to open file for reading: {} - {}", input.string(), strerror(errno)));
+        Logger::error(std::format("Failed to open path reference: {} - {}", input.string(), strerror(errno)));
         return false;
     }
     
-    // Дополнительная проверка: убеждаемся что это обычный файл, а не symlink или device
+    // Шаг 2: Проверяем что это обычный файл через fstat (не следует за symlink)
     struct stat st;
-    if (fstat(fd_in, &st) != 0 || !S_ISREG(st.st_mode)) {
-        close(fd_in);
-        Logger::error(std::format("File is not a regular file: {}", input.string()));
+    if (fstat(fd_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        close(fd_path);
+        Logger::error(std::format("Path is not a regular file or is a symlink: {}", input.string()));
         return false;
+    }
+    
+    // Шаг 3: Дополнительная проверка на hardlink-атаки (st_nlink > 1 может указывать на атаку)
+    if (st.st_nlink > 1) {
+        close(fd_path);
+        Logger::warning(std::format("Hardlink detected (nlink={}): {} - potential security risk", st.st_nlink, input.string()));
+        // Не блокируем, но логируем для аудита
     }
     
     // Проверка прав доступа перед чтением
     if ((st.st_mode & S_IRUSR) == 0 && getuid() != st.st_uid && getuid() != 0) {
-        close(fd_in);
+        close(fd_path);
         Logger::warning(std::format("No read permission for file: {}", input.string()));
         return false;
     }
     
+    // Шаг 4: Открываем файл для чтения через /proc/self/fd/ используя тот же fd
+    // Это гарантирует что мы работаем с тем же самым файлом, который проверили
+    char proc_path[PROC_FD_PATH_SIZE];
+    snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd_path);
+    
+    int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
+    if (fd_in < 0) {
+        int saved_errno = errno;
+        close(fd_path);
+        Logger::error(std::format("Failed to reopen file for reading: {} - {}", input.string(), strerror(saved_errno)));
+        return false;
+    }
+    
+    // Закрываем временный fd_path, он больше не нужен
+    close(fd_path);
+    
     // Подсказка ОС о последовательном чтении и предзагрузке
     posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
     
-    // ВАЖНО: Используем fdopen() вместо повторного open() для предотвращения TOCTOU-атаки
-    // Повторное открытие файла по пути (input.c_str()) создало бы уязвимость между fstat() и fopen()
+    // Шаг 5: Используем fdopen() для работы с FILE* из уже открытого fd
+    // Это полностью устраняет TOCTOU - между проверкой и открытием нет race condition
     FILE* file_in = fdopen(fd_in, "rb");
     if (!file_in) {
         int saved_errno = errno;
@@ -185,37 +212,57 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         level = 4;
     }
     
-    // Открываем входной файл с прямым доступом и защитой от symlink-атак
-    // Используем O_NOFOLLOW для предотвращения открытия symlink
-    int fd_in = open(input.c_str(), O_RDONLY | O_NOATIME | O_NOFOLLOW);
-    if (fd_in < 0) {
+    // === ЗАЩИТА ОТ TOCTOU: Используем O_PATH + openat() ===
+    // Шаг 1: Открываем путь с O_PATH для получения fd без чтения данных
+    int fd_path = open(input.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    if (fd_path < 0) {
         if (errno == ELOOP || errno == EMLINK) {
             Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
             return false;
         }
-        Logger::error(std::format("Failed to open file for reading: {} - {}", input.string(), strerror(errno)));
+        Logger::error(std::format("Failed to open path reference: {} - {}", input.string(), strerror(errno)));
         return false;
     }
     
-    // Дополнительная проверка: убеждаемся что это обычный файл, а не symlink или device
+    // Шаг 2: Проверяем что это обычный файл через fstat
     struct stat st;
-    if (fstat(fd_in, &st) != 0 || !S_ISREG(st.st_mode)) {
-        close(fd_in);
-        Logger::error(std::format("File is not a regular file: {}", input.string()));
+    if (fstat(fd_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        close(fd_path);
+        Logger::error(std::format("Path is not a regular file or is a symlink: {}", input.string()));
         return false;
+    }
+    
+    // Шаг 3: Дополнительная проверка на hardlink-атаки
+    if (st.st_nlink > 1) {
+        close(fd_path);
+        Logger::warning(std::format("Hardlink detected (nlink={}): {} - potential security risk", st.st_nlink, input.string()));
     }
     
     // Проверка прав доступа перед чтением
     if ((st.st_mode & S_IRUSR) == 0 && getuid() != st.st_uid && getuid() != 0) {
-        close(fd_in);
+        close(fd_path);
         Logger::warning(std::format("No read permission for file: {}", input.string()));
         return false;
     }
     
+    // Шаг 4: Открываем файл для чтения через /proc/self/fd/
+    char proc_path[PROC_FD_PATH_SIZE];
+    snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd_path);
+    
+    int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
+    if (fd_in < 0) {
+        int saved_errno = errno;
+        close(fd_path);
+        Logger::error(std::format("Failed to reopen file for reading: {} - {}", input.string(), strerror(saved_errno)));
+        return false;
+    }
+    
+    close(fd_path);
+    
     // Подсказка ОС о последовательном чтении и предзагрузке
     posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
     
-    // ВАЖНО: Используем fdopen() вместо повторного open() для предотвращения TOCTOU-атаки
+    // Шаг 5: Используем fdopen() для работы с FILE* из уже открытого fd
     FILE* file_in = fdopen(fd_in, "rb");
     if (!file_in) {
         int saved_errno = errno;

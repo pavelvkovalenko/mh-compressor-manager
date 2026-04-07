@@ -249,4 +249,6 @@ CMakeFiles/mh-compressor-manager.dir/logger.cpp.o: \
  /usr/include/c++/12/pstl/glue_memory_defs.h \
  /usr/include/c++/12/pstl/execution_defs.h /usr/include/fmt/core.h \
  /usr/include/c++/12/cstddef /usr/include/c++/12/iterator \
- /usr/include/c++/12/bits/stream_iterator.h /usr/include/c++/12/cstdarg
+ /usr/include/c++/12/bits/stream_iterator.h /usr/include/c++/12/cstdarg \
+ /usr/include/c++/12/chrono /usr/include/c++/12/sstream \
+ /usr/include/c++/12/bits/sstream.tcc

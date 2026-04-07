@@ -379,7 +379,11 @@ CMakeFiles/mh-compressor-manager.dir/compressor.cpp.o: /workspace/src/compressor
   /usr/include/c++/12/set \
   /usr/include/c++/12/bits/stl_tree.h \
   /usr/include/c++/12/bits/stl_set.h \
-  /usr/include/c++/12/bits/stl_multiset.h
+  /usr/include/c++/12/bits/stl_multiset.h \
+  /usr/include/linux/fcntl.h \
+  /usr/include/x86_64-linux-gnu/asm/fcntl.h \
+  /usr/include/asm-generic/fcntl.h \
+  /usr/include/linux/openat2.h
 
 CMakeFiles/mh-compressor-manager.dir/config.cpp.o: /workspace/src/config.cpp \
   /usr/include/stdc-predef.h \
@@ -1034,7 +1038,10 @@ CMakeFiles/mh-compressor-manager.dir/logger.cpp.o: /workspace/src/logger.cpp \
   /usr/include/c++/12/cstddef \
   /usr/include/c++/12/iterator \
   /usr/include/c++/12/bits/stream_iterator.h \
-  /usr/include/c++/12/cstdarg
+  /usr/include/c++/12/cstdarg \
+  /usr/include/c++/12/chrono \
+  /usr/include/c++/12/sstream \
+  /usr/include/c++/12/bits/sstream.tcc
 
 CMakeFiles/mh-compressor-manager.dir/main.cpp.o: /workspace/src/main.cpp \
   /usr/include/stdc-predef.h \
@@ -1844,6 +1851,14 @@ CMakeFiles/mh-compressor-manager.dir/monitor.cpp.o: /workspace/src/monitor.cpp \
 /workspace/src/config.h:
 
 /workspace/src/config.cpp:
+
+/usr/include/linux/openat2.h:
+
+/usr/include/asm-generic/fcntl.h:
+
+/usr/include/x86_64-linux-gnu/asm/fcntl.h:
+
+/usr/include/linux/fcntl.h:
 
 /usr/include/c++/12/bits/stl_tree.h:
 
