@@ -38,9 +38,10 @@ constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
 // Буфер для /proc/self/fd/<fd> путей (достаточно для большинства систем)
 constexpr size_t PROC_FD_PATH_SIZE = 64;
 
-// Глобальный кэш для предотвращения race condition при проверке symlink-атак
-// Используется атомарный флаг для защиты от TOCTOU атак
-static std::atomic<bool> g_symlink_check_in_progress{false};
+// Максимальный размер файла для сжатия (100MB) - защита от DoS атак
+constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
+
+// Директория для safe openat операций (инициализируется при первом использовании)
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
@@ -49,24 +50,53 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         level = 6;
     }
     
-    // === ЗАЩИТА ОТ TOCTOU: Используем O_PATH + openat() ===
-    // Шаг 1: Открываем путь с O_PATH для получения fd без чтения данных
-    // O_PATH не следует за symlink, если используется с O_NOFOLLOW
-    int fd_path = open(input.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    // === ЗАЩИТА ОТ TOCTOU: Используем openat() с дескриптором директории ===
+    // Получаем директорию и базовое имя файла
+    fs::path parent_dir = input.parent_path();
+    std::string basename = input.filename().string();
+    
+    // Если путь относительный или пустой, используем текущую директорию
+    if (parent_dir.empty()) {
+        parent_dir = ".";
+    }
+    
+    // Открываем директорию с O_RDONLY | O_DIRECTORY | O_NOFOLLOW для защиты от symlink
+    int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (dir_fd < 0) {
+        Logger::error(std::format("Failed to open directory {}: {}", parent_dir.string(), strerror(errno)));
+        return false;
+    }
+    
+    // Шаг 1: Открываем файл с O_PATH через openat() для получения fd без чтения данных
+    // Это полностью устраняет TOCTOU - атаки между проверкой пути и открытием
+    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
     if (fd_path < 0) {
-        if (errno == ELOOP || errno == EMLINK) {
+        int saved_errno = errno;
+        close(dir_fd);
+        if (saved_errno == ELOOP || saved_errno == EMLINK) {
             Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
             return false;
         }
-        Logger::error(std::format("Failed to open path reference: {} - {}", input.string(), strerror(errno)));
+        Logger::error(std::format("Failed to open file reference: {} - {}", input.string(), strerror(saved_errno)));
         return false;
     }
+    
+    // Закрываем dir_fd, он больше не нужен
+    close(dir_fd);
     
     // Шаг 2: Проверяем что это обычный файл через fstat (не следует за symlink)
     struct stat st;
     if (fstat(fd_path, &st) != 0 || !S_ISREG(st.st_mode)) {
         close(fd_path);
         Logger::error(std::format("Path is not a regular file or is a symlink: {}", input.string()));
+        return false;
+    }
+    
+    // Проверка на максимальный размер файла для предотвращения DoS атак
+    if (st.st_size > MAX_FILE_SIZE) {
+        close(fd_path);
+        Logger::warning(std::format("File too large: {} (size: {} bytes, max: {} bytes)", 
+                                    input.string(), st.st_size, MAX_FILE_SIZE));
         return false;
     }
     
@@ -212,23 +242,53 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         level = 4;
     }
     
-    // === ЗАЩИТА ОТ TOCTOU: Используем O_PATH + openat() ===
-    // Шаг 1: Открываем путь с O_PATH для получения fd без чтения данных
-    int fd_path = open(input.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    // === ЗАЩИТА ОТ TOCTOU: Используем openat() с дескриптором директории ===
+    // Получаем директорию и базовое имя файла
+    fs::path parent_dir = input.parent_path();
+    std::string basename = input.filename().string();
+    
+    // Если путь относительный или пустой, используем текущую директорию
+    if (parent_dir.empty()) {
+        parent_dir = ".";
+    }
+    
+    // Открываем директорию с O_RDONLY | O_DIRECTORY | O_NOFOLLOW для защиты от symlink
+    int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (dir_fd < 0) {
+        Logger::error(std::format("Failed to open directory {}: {}", parent_dir.string(), strerror(errno)));
+        return false;
+    }
+    
+    // Шаг 1: Открываем файл с O_PATH через openat() для получения fd без чтения данных
+    // Это полностью устраняет TOCTOU - атаки между проверкой пути и открытием
+    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
     if (fd_path < 0) {
-        if (errno == ELOOP || errno == EMLINK) {
+        int saved_errno = errno;
+        close(dir_fd);
+        if (saved_errno == ELOOP || saved_errno == EMLINK) {
             Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
             return false;
         }
-        Logger::error(std::format("Failed to open path reference: {} - {}", input.string(), strerror(errno)));
+        Logger::error(std::format("Failed to open file reference: {} - {}", input.string(), strerror(saved_errno)));
         return false;
     }
+    
+    // Закрываем dir_fd, он больше не нужен
+    close(dir_fd);
     
     // Шаг 2: Проверяем что это обычный файл через fstat
     struct stat st;
     if (fstat(fd_path, &st) != 0 || !S_ISREG(st.st_mode)) {
         close(fd_path);
         Logger::error(std::format("Path is not a regular file or is a symlink: {}", input.string()));
+        return false;
+    }
+    
+    // Проверка на максимальный размер файла для предотвращения DoS атак
+    if (st.st_size > MAX_FILE_SIZE) {
+        close(fd_path);
+        Logger::warning(std::format("File too large: {} (size: {} bytes, max: {} bytes)", 
+                                    input.string(), st.st_size, MAX_FILE_SIZE));
         return false;
     }
     
@@ -416,28 +476,18 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
 }
 
 // Проверка: является ли путь символической ссылкой, указывающей за пределы разрешённых директорий
-// Улучшенная защита от TOCTOU атак с использованием атомарных операций
+// Удалена небезопасная проверка с атомарным флагом - используется openat() для защиты от TOCTOU
 bool Compressor::is_symlink_attack(const fs::path& path) {
-    // Защита от race condition - только одна проверка symlink одновременно
-    bool expected = false;
-    if (!g_symlink_check_in_progress.compare_exchange_strong(expected, true)) {
-        // Другая проверка уже выполняется - считаем потенциальной атакой
-        Logger::warning(std::format("Concurrent symlink check detected for {}, treating as potential attack", path.string()));
-        return true;
-    }
-    
     struct stat st;
     
     // Проверяем, является ли файл символической ссылкой
     if (lstat(path.c_str(), &st) != 0) {
-        g_symlink_check_in_progress.store(false);
         Logger::warning(std::format("Failed to lstat {}: {}", path.string(), strerror(errno)));
         return false;  // Не можем проверить - считаем безопасным для логирования
     }
     
     // Если это не symlink, атаки нет
     if (!S_ISLNK(st.st_mode)) {
-        g_symlink_check_in_progress.store(false);
         return false;
     }
     
@@ -445,7 +495,6 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     char target[PATH_MAX];
     ssize_t len = readlink(path.c_str(), target, sizeof(target) - 1);
     if (len < 0) {
-        g_symlink_check_in_progress.store(false);
         Logger::warning(std::format("Failed to readlink {}: {}", path.string(), strerror(errno)));
         return true;  // Считаем потенциальной атакой
     }
@@ -462,7 +511,6 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
         target_str.find("/sys/") == 0 ||
         target_str.find("/root/") == 0) {
         Logger::error(std::format("Potential symlink attack detected: {} points to system directory", path.string()));
-        g_symlink_check_in_progress.store(false);
         return true;
     }
     
@@ -479,12 +527,10 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
             resolved_str.find("/sys/") == 0 ||
             resolved_str.find("/root/") == 0) {
             Logger::error(std::format("Potential symlink attack detected: {} resolves to system file {}", path.string(), resolved_str));
-            g_symlink_check_in_progress.store(false);
             return true;
         }
     }
     
-    g_symlink_check_in_progress.store(false);
     return false;  // Symlink существует, но не указывает на системные директории
 }
 
