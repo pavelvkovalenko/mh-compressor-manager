@@ -1,6 +1,14 @@
 
 # Build artifacts
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+Makefile
 src/build/
+src/cmake-build-*/
+src/CMakeFiles/
+src/CMakeCache.txt
+src/Makefile
 *.o
 *.obj
 *.out
