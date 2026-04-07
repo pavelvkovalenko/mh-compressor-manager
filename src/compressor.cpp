@@ -474,16 +474,26 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         
         temp_path = output.string() + ".tmp." + std::string(random_hex);
         
-        fd_out = open(temp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, input_st.st_mode & 0666);
+        // Пытаемся создать с O_DIRECT, если не поддерживается - пробуем без него
+        fd_out = open(temp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | DIRECT_IO_FLAGS, st.st_mode & 0666);
         
         if (fd_out >= 0) {
             temp_created = true;
         } else {
             int saved_errno = errno;
-            if (saved_errno != EEXIST) {
+            if (saved_errno == EINVAL) {
+                // O_DIRECT не поддерживается - пробуем без него
+                Logger::debug(std::format("O_DIRECT not supported for temp file {}, trying without direct I/O", temp_path.string()));
+                fd_out = open(temp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
+                if (fd_out >= 0) {
+                    temp_created = true;
+                }
+            } else if (saved_errno != EEXIST) {
+                // Другая ошибка - логируем и пробуем снова
                 Logger::warning(std::format("Failed to create temp file for brotli (attempt {}/{}): {} - {}", 
                                            retry + 1, MAX_TEMP_FILE_RETRIES, temp_path.string(), strerror(saved_errno)));
             }
+            // Если EEXIST - цикл продолжится с новым случайным именем
         }
     }
     
@@ -779,34 +789,28 @@ bool Compressor::check_file_ownership(const fs::path& path, uid_t expected_uid) 
 }
 
 // Проверка пути: находится ли файл в разрешённой директории
-// Улучшенная защита от обхода через symlink с использованием multiple retries
+// Улучшенная защита от обхода через symlink с использованием weakly_canonical для предотвращения атак с ".."
 bool Compressor::validate_path_in_directory(const fs::path& path, const std::vector<std::string>& allowed_dirs) {
-    // Получаем канонический путь исходного файла с несколькими попытками для предотвращения race condition
+    // Используем weakly_canonical вместо canonical для защиты от атак с несуществующими путями
+    // weakly_canonical разрешает существующую часть пути и аппроксимирует остальное
     std::error_code ec;
-    fs::path canonical_path;
+    fs::path resolved_path = fs::weakly_canonical(path, ec);
     
-    for (int retry = 0; retry < MAX_PATH_VALIDATION_RETRIES; ++retry) {
-        try {
-            canonical_path = fs::canonical(path.parent_path(), ec);
-            if (ec) {
-                Logger::warning(std::format("Failed to get canonical path for {}: {} (attempt {}/{})", 
-                    path.string(), ec.message(), retry + 1, MAX_PATH_VALIDATION_RETRIES));
-                if (retry == MAX_PATH_VALIDATION_RETRIES - 1) {
-                    return false;
-                }
-                continue;
-            }
-            break;  // Успех
-        } catch (const fs::filesystem_error& e) {
-            Logger::warning(std::format("Filesystem error getting canonical path for {}: {} (attempt {}/{})", 
-                path.string(), e.what(), retry + 1, MAX_PATH_VALIDATION_RETRIES));
-            if (retry == MAX_PATH_VALIDATION_RETRIES - 1) {
-                return false;
-            }
-        }
+    if (ec || resolved_path.empty()) {
+        Logger::warning(std::format("Failed to resolve path {}: {}", path.string(), ec.message()));
+        return false;
     }
     
-    std::string canonical_str = canonical_path.string();
+    // Проверяем наличие ".." в разрешённом пути после нормализации
+    std::string resolved_str = resolved_path.string();
+    if (resolved_str.find("..") != std::string::npos) {
+        Logger::warning(std::format("Path traversal attempt detected: {} resolves to {}", path.string(), resolved_str));
+        return false;
+    }
+    
+    // Получаем родительскую директорию файла
+    fs::path parent_dir = resolved_path.parent_path();
+    std::string parent_str = parent_dir.string();
     
     // Проверяем, начинается ли канонический путь с одного из разрешённых
     for (const auto& allowed : allowed_dirs) {
@@ -815,12 +819,12 @@ bool Compressor::validate_path_in_directory(const fs::path& path, const std::vec
             if (!ec) {
                 std::string allowed_str = canonical_allowed.string();
                 // Проверяем, что путь начинается с разрешённой директории
-                if (canonical_str.find(allowed_str) == 0) {
+                if (parent_str.find(allowed_str) == 0) {
                     // Дополнительная проверка: убедимся, что это действительно поддиректория
                     // (например, /home/user должен соответствовать /home/user/file.txt,
                     // но не /home/users/file.txt)
-                    if (canonical_str.length() == allowed_str.length() ||
-                        canonical_str[allowed_str.length()] == '/') {
+                    if (parent_str.length() == allowed_str.length() ||
+                        parent_str[allowed_str.length()] == '/') {
                         return true;
                     }
                 }
@@ -830,7 +834,7 @@ bool Compressor::validate_path_in_directory(const fs::path& path, const std::vec
         }
     }
     
-    Logger::warning(std::format("Path validation failed: {} is not in any allowed directory", path.string()));
+    Logger::warning(std::format("Path validation failed: {} is not in any allowed directory", resolved_str));
     return false;
 }
 
