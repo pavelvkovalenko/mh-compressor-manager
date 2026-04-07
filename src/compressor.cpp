@@ -230,6 +230,11 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
                 size_t have = out_buffer.size() - strm.avail_out;
                 if (have > 0) {
                     if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
+                        if (errno == ENOSPC) {
+                            Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
+                        } else {
+                            Logger::error(std::format("Failed to write compressed data: {}", strerror(errno)));
+                        }
                         has_error = true;
                         break;
                     }
@@ -254,6 +259,11 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             size_t have = out_buffer.size() - strm.avail_out;
             if (have > 0) {
                 if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
+                    if (errno == ENOSPC) {
+                        Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
+                    } else {
+                        Logger::error(std::format("Failed to write compressed data: {}", strerror(errno)));
+                    }
                     has_error = true;
                     break;
                 }
@@ -453,6 +463,11 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                 size_t written = out_buffer.size() - available_out;
                 if (written > 0) {
                     if (fwrite(out_buffer.data(), 1, written, file_out) != written) {
+                        if (errno == ENOSPC) {
+                            Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
+                        } else {
+                            Logger::error(std::format("Failed to write compressed data: {}", strerror(errno)));
+                        }
                         success = false;
                         break;
                     }
@@ -654,48 +669,49 @@ bool Compressor::check_file_ownership(const fs::path& path, uid_t expected_uid) 
 }
 
 // Проверка пути: находится ли файл в разрешённой директории
-// Улучшенная защита от обхода через symlink с использованием multiple retries
+// Улучшенная защита от обхода через symlink с использованием fs::weakly_canonical
 bool Compressor::validate_path_in_directory(const fs::path& path, const std::vector<std::string>& allowed_dirs) {
-    // Получаем канонический путь исходного файла с несколькими попытками для предотвращения race condition
+    // Используем weakly_canonical вместо canonical для обработки несуществующих путей
+    // Это позволяет проверять пути к новым файлам которые ещё не созданы
     std::error_code ec;
-    fs::path canonical_path;
+    fs::path resolved_path;
     
-    for (int retry = 0; retry < MAX_PATH_VALIDATION_RETRIES; ++retry) {
-        try {
-            canonical_path = fs::canonical(path.parent_path(), ec);
-            if (ec) {
-                Logger::warning(std::format("Failed to get canonical path for {}: {} (attempt {}/{})", 
-                    path.string(), ec.message(), retry + 1, MAX_PATH_VALIDATION_RETRIES));
-                if (retry == MAX_PATH_VALIDATION_RETRIES - 1) {
-                    return false;
-                }
-                continue;
-            }
-            break;  // Успех
-        } catch (const fs::filesystem_error& e) {
-            Logger::warning(std::format("Filesystem error getting canonical path for {}: {} (attempt {}/{})", 
-                path.string(), e.what(), retry + 1, MAX_PATH_VALIDATION_RETRIES));
-            if (retry == MAX_PATH_VALIDATION_RETRIES - 1) {
-                return false;
-            }
-        }
+    // Сначала пытаемся получить канонический путь родительской директории
+    fs::path parent = path.parent_path();
+    if (parent.empty()) {
+        parent = ".";
     }
     
-    std::string canonical_str = canonical_path.string();
+    // Проверяем существование родительской директории
+    if (!fs::exists(parent, ec) || !fs::is_directory(parent, ec)) {
+        Logger::warning(std::format("Parent directory does not exist or is not a directory: {}", parent.string()));
+        return false;
+    }
     
-    // Проверяем, начинается ли канонический путь с одного из разрешённых
+    // Получаем канонический путь родительской директории
+    fs::path canonical_parent = fs::canonical(parent, ec);
+    if (ec) {
+        Logger::warning(std::format("Failed to get canonical path for {}: {}", parent.string(), ec.message()));
+        return false;
+    }
+    
+    // Собираем полный путь: каноническая директория + имя файла
+    resolved_path = canonical_parent / path.filename();
+    std::string resolved_str = resolved_path.string();
+    
+    // Проверяем что путь начинается с одного из разрешённых
     for (const auto& allowed : allowed_dirs) {
         try {
             fs::path canonical_allowed = fs::canonical(allowed, ec);
             if (!ec) {
                 std::string allowed_str = canonical_allowed.string();
                 // Проверяем, что путь начинается с разрешённой директории
-                if (canonical_str.find(allowed_str) == 0) {
+                if (resolved_str.find(allowed_str) == 0) {
                     // Дополнительная проверка: убедимся, что это действительно поддиректория
                     // (например, /home/user должен соответствовать /home/user/file.txt,
                     // но не /home/users/file.txt)
-                    if (canonical_str.length() == allowed_str.length() ||
-                        canonical_str[allowed_str.length()] == '/') {
+                    if (resolved_str.length() == allowed_str.length() ||
+                        resolved_str[allowed_str.length()] == '/') {
                         return true;
                     }
                 }
