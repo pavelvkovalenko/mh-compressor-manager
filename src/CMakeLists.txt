@@ -76,6 +76,9 @@ endif()
 # SELinux - опциональная поддержка контекстов безопасности (ТЗ п. 2.5)
 pkg_check_modules(SELINUX libselinux)
 
+# Seccomp - песочница системных вызовов
+pkg_check_modules(SECCOMP libseccomp)
+
 # ============================================================================
 # Исходные файлы
 # ============================================================================
@@ -85,6 +88,7 @@ set(SOURCES
     compressor.cpp
     monitor.cpp
     logger.cpp
+    security.cpp
 )
 
 set(HEADERS
@@ -93,6 +97,7 @@ set(HEADERS
     monitor.h
     logger.h
     threadpool.h
+    security.h
 )
 
 # ============================================================================
@@ -136,6 +141,16 @@ endif()
 # Добавляем SELinux если найден
 if(SELINUX_FOUND)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${SELINUX_LIBRARIES})
+endif()
+
+# Добавляем Seccomp если найден
+if(SECCOMP_FOUND)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${SECCOMP_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${SECCOMP_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_SECCOMP)
+    message(STATUS "Seccomp support enabled")
+else()
+    message(STATUS "Seccomp support disabled (libseccomp not found)")
 endif()
 
 # ============================================================================
