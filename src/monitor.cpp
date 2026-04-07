@@ -109,15 +109,23 @@ void Monitor::scan_existing_files() {
                             bool need_compress = false;
                             
                             try {
-                                auto src_time = fs::last_write_time(entry.path());
+                                // Безопасное получение времени модификации через lstat (не следует за symlink)
+                                struct stat src_st, gz_st, br_st;
+                                
+                                if (lstat(entry.path().c_str(), &src_st) != 0) {
+                                    continue;
+                                }
+                                auto src_time = std::chrono::system_clock::from_time_t(src_st.st_mtime);
                                 
                                 // Безопасная проверка сжатых файлов через lstat (не следует за symlink)
-                                struct stat gz_st, br_st;
                                 bool gz_exists = (lstat(gz.c_str(), &gz_st) == 0 && !S_ISLNK(gz_st.st_mode));
                                 bool br_exists = (lstat(br.c_str(), &br_st) == 0 && !S_ISLNK(br_st.st_mode));
                                 
-                                bool gz_ok = gz_exists && (fs::last_write_time(gz) >= src_time);
-                                bool br_ok = br_exists && (fs::last_write_time(br) >= src_time);
+                                auto gz_time = gz_exists ? std::chrono::system_clock::from_time_t(gz_st.st_mtime) : decltype(src_time)::min();
+                                auto br_time = br_exists ? std::chrono::system_clock::from_time_t(br_st.st_mtime) : decltype(src_time)::min();
+                                
+                                bool gz_ok = gz_exists && (gz_time >= src_time);
+                                bool br_ok = br_exists && (br_time >= src_time);
                                 
                                 if (!gz_ok || !br_ok) {
                                     need_compress = true;
@@ -208,6 +216,10 @@ void Monitor::run() {
     constexpr size_t INITIAL_BUFFER_SIZE = 262144;  // 256KB
     std::vector<char> buffer(INITIAL_BUFFER_SIZE);
     
+    // ОПТИМИЗАЦИЯ: Выносим вектор событий наружу для переиспользования памяти
+    std::vector<std::pair<int, std::string>> batch_events;
+    batch_events.reserve(64);  // Предварительно резервируем память
+    
     auto last_debounce_check = std::chrono::steady_clock::now();
     const auto debounce_check_interval = std::chrono::milliseconds(500);
     
@@ -235,7 +247,9 @@ void Monitor::run() {
                     // ОБРАБОТКА ПАКЕТАМИ: Обрабатываем все события из одного read()
                     // Это улучшает производительность при массовых событиях
                     int i = 0;
-                    std::vector<std::pair<int, std::string>> batch_events;
+                    
+                    // Очищаем вектор вместо создания нового - переиспользование памяти
+                    batch_events.clear();
                     
                     while (i < len) {
                         struct inotify_event* event = (struct inotify_event*)&buffer[i];

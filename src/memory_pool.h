@@ -70,21 +70,28 @@ public:
         return static_cast<T*>(ptr);
     }
     
-    // Возврат буфера в пул (для vector - копируем данные если нужно)
+    // Возврат буфера в пул (для vector - переиспользуем напрямую без копирования)
     void release(std::vector<T>& buffer) {
+        if (buffer.empty()) {
+            return;
+        }
+        
+        // Проверяем что размер соответствует ожидаемому
         if (buffer.size() != buffer_size / sizeof(T)) {
             // Несоответствующий размер - не принимаем
             return;
         }
         
-        T* raw_buf = allocate_raw();
-        if (!raw_buf) {
-            return;
-        }
+        // Получаем указатель на данные vector
+        T* raw_buf = buffer.data();
         
-        // Копируем данные из vector в переиспользованный буфер
-        std::copy(buffer.begin(), buffer.end(), raw_buf);
-        // Vector уничтожается вызывающей стороной
+        // Возвращаем буфер в пул для переиспользования
+        std::unique_lock<std::mutex> lock(mutex_);
+        free_buffers_.push(raw_buf);
+        // Освобождаем ownership у vector чтобы избежать double-free
+        // Vector будет уничтожен вызывающей стороной, но data() больше не валиден
+        buffer.clear();
+        buffer.shrink_to_fit();
     }
     
     // Возврат сырого буфера в пул (без копирования -真正的 переиспользование)

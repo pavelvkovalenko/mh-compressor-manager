@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
 
 // Приоритеты задач
 enum class TaskPriority : uint8_t {
@@ -100,23 +101,22 @@ public:
         io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
         
         // Завершаем потоки с таймаутом для избежания вечной блокировки
-        // Используем отдельный поток для ожидания join с таймаутом
+        // Используем std::async с wait_for для реального таймаута
         constexpr auto THREAD_JOIN_TIMEOUT = std::chrono::seconds(30);
         
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                std::atomic<bool> join_done{false};
-                std::thread join_waiter([&worker, &join_done]() {
+                // Создаем future для join операции
+                auto join_future = std::async(std::launch::async, [&worker]() {
                     worker.join();
-                    join_done.store(true, std::memory_order_release);
                 });
                 
-                join_waiter.join();
-                
-                // Если поток не завершился за таймаут, детачим его
-                // (в реальности это маловероятно благодаря stop_flag)
-                if (!join_done.load(std::memory_order_acquire)) {
-                    Logger::warning("Thread join timeout, continuing shutdown");
+                // Ждем завершения с таймаутом
+                if (join_future.wait_for(THREAD_JOIN_TIMEOUT) == std::future_status::timeout) {
+                    Logger::warning("Thread join timeout, detaching thread");
+                    // Детачим поток если не завершился за таймаут
+                    // Примечание: это не идеально, но предотвращает зависание
+                    worker.detach();
                 }
             }
         }

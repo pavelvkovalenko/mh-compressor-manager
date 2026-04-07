@@ -1,0 +1,25 @@
+```
+# CMake build artifacts
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Compiled objects and executables
+*.o
+*.obj
+*.out
+*.bin
+mh-compressor-manager
+
+# Logs
+CMakeError.log
+CMakeOutput.log
+*.log
+
+# Temporary files
+*.tmp
+*.d
+```
