@@ -660,13 +660,16 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
 
     BrotliEncoderDestroyInstance(state);
-    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    fclose(file_out); // Закрываем выходной файл
-
+    // fflush должен вызываться ДО fclose, а не после
     if (fflush(file_out) != 0 || fsync(fd_out) != 0) {
-        Logger::error("Failed to write brotli output");
+        Logger::error("Failed to flush brotli output");
+        fclose(file_in);
+        fclose(file_out);
         return false;
     }
+    
+    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
+    fclose(file_out); // Закрываем выходной файл
 
     if (!success) {
         return false;
