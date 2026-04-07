@@ -202,12 +202,19 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
 }
 
 void Monitor::run() {
-    // Оптимизированный буфер для обработки массовых событий inotify
-    // Увеличен с 16KB до 64KB для лучшей производительности при большом количестве событий
-    constexpr size_t BUFFER_SIZE = 65536;
-    char buffer[BUFFER_SIZE] __attribute__((aligned(__alignof__(struct inotify_event))));
+    // ОПТИМИЗАЦИЯ: Увеличенный буфер для обработки массовых событий inotify
+    // 256KB вместо 64KB для лучшей производительности при большом количестве событий
+    // Также добавлена поддержка динамического увеличения при переполнении
+    constexpr size_t INITIAL_BUFFER_SIZE = 262144;  // 256KB
+    std::vector<char> buffer(INITIAL_BUFFER_SIZE);
+    
     auto last_debounce_check = std::chrono::steady_clock::now();
     const auto debounce_check_interval = std::chrono::milliseconds(500);
+    
+    // Счётчик переполнений для адаптивного увеличения буфера
+    int overflow_count = 0;
+    constexpr int MAX_OVERFLOW_BEFORE_RESIZE = 3;
+    constexpr size_t MAX_BUFFER_SIZE = 1048576;  // 1MB максимум
     
     while (m_running) {
         fd_set readfds;
@@ -220,19 +227,52 @@ void Monitor::run() {
         
         int ret = select(m_fd + 1, &readfds, NULL, NULL, &tv);
         if (ret > 0 && FD_ISSET(m_fd, &readfds)) {
-            int len = read(m_fd, buffer, sizeof(buffer));
-            if (len > 0) {
-                int i = 0;
-                while (i < len) {
-                    struct inotify_event* event = (struct inotify_event*)&buffer[i];
-                    if (event->len > 0) {
-                        process_event(event->wd, event->mask, std::string(event->name));
+            // Читаем события в цикле пока есть данные
+            bool has_more_data = true;
+            while (has_more_data && m_running) {
+                int len = read(m_fd, buffer.data(), buffer.size());
+                if (len > 0) {
+                    // ОБРАБОТКА ПАКЕТАМИ: Обрабатываем все события из одного read()
+                    // Это улучшает производительность при массовых событиях
+                    int i = 0;
+                    std::vector<std::pair<int, std::string>> batch_events;
+                    
+                    while (i < len) {
+                        struct inotify_event* event = (struct inotify_event*)&buffer[i];
+                        if (event->len > 0) {
+                            batch_events.emplace_back(event->wd, std::string(event->name));
+                        }
+                        i += sizeof(struct inotify_event) + event->len;
                     }
-                    i += sizeof(struct inotify_event) + event->len;
+                    
+                    // Пакетная обработка событий
+                    for (const auto& [wd, name] : batch_events) {
+                        process_event(wd, 0, name);
+                    }
+                    
+                    // Проверяем есть ли ещё данные (неблокирующий read)
+                    fd_set check_fds;
+                    FD_ZERO(&check_fds);
+                    FD_SET(m_fd, &check_fds);
+                    struct timeval zero_tv{0, 0};
+                    if (select(m_fd + 1, &check_fds, NULL, NULL, &zero_tv) <= 0) {
+                        has_more_data = false;
+                    }
+                } else if (len < 0 && errno == EINVAL) {
+                    // Буфер переполнен - увеличиваем его размер
+                    overflow_count++;
+                    Logger::warning(std::format("inotify buffer overflow detected (count: {}), events may be lost", overflow_count));
+                    
+                    if (overflow_count >= MAX_OVERFLOW_BEFORE_RESIZE && buffer.size() < MAX_BUFFER_SIZE) {
+                        size_t new_size = std::min(buffer.size() * 2, MAX_BUFFER_SIZE);
+                        buffer.resize(new_size);
+                        Logger::info(std::format("Increased inotify buffer to {} bytes", new_size));
+                        overflow_count = 0;
+                    }
+                    break;
+                } else {
+                    break;
                 }
-            } else if (len < 0 && errno == EINVAL) {
-                // Буфер переполнен - увеличиваем его размер в следующей итерации
-                Logger::warning("inotify buffer overflow detected, events may be lost");
             }
         }
         

@@ -1,5 +1,6 @@
 #include "compressor.h"
 #include "logger.h"
+#include "memory_pool.h"
 #include <fstream>
 #include <vector>
 #include <zlib.h>
@@ -17,17 +18,14 @@ namespace std {
 #endif
 #include <algorithm>
 #include <cerrno>
-#include <cstring>      // <--- ДЛЯ strerror()
+#include <cstring>      // Для strerror()
 #include <pwd.h>        // Для getpwuid()
 #include <grp.h>        // Для getgrgid()
 #include <climits>      // Для PATH_MAX
 #include <set>          // Для кэша валидации путей
 #include <atomic>       // Для потокобезопасности
-
-// Опциональная поддержка SELinux
-#ifdef HAVE_SELINUX
-#include <selinux/selinux.h>
-#endif
+#include <linux/aio_abi.h>
+#include <libaio.h>
 
 // Размер буфера для потоковой обработки (256KB - оптимизировано для производительности)
 constexpr size_t STREAM_BUFFER_SIZE = 262144;
@@ -41,7 +39,11 @@ constexpr size_t PROC_FD_PATH_SIZE = 64;
 // Максимальный размер файла для сжатия (100MB) - защита от DoS атак
 constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
 
-// Директория для safe openat операций (инициализируется при первом использовании)
+// Глобальный пул памяти для буферов сжатия (переиспользуется между задачами)
+static ByteBufferPool g_buffer_pool(16);
+
+// Флаги для Direct I/O
+constexpr int DIRECT_IO_FLAGS = O_DIRECT;
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
@@ -152,7 +154,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 
     // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
     // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
-    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
+    // Добавляем O_DIRECT для прямого доступа к диску (минуя кэш страницы)
+    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | DIRECT_IO_FLAGS, st.st_mode & 0666);
     if (fd_out < 0) {
         int saved_errno = errno;
         fclose(file_in);
@@ -160,10 +163,25 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
         } else if (saved_errno == ELOOP) {
             Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
+        } else if (saved_errno == EINVAL) {
+            // O_DIRECT не поддерживается или буфер не выровнен - пробуем без O_DIRECT
+            Logger::debug(std::format("O_DIRECT not supported for {}, trying without direct I/O", output.string()));
+            fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
+            if (fd_out < 0) {
+                saved_errno = errno;
+                if (saved_errno == EEXIST) {
+                    Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
+                } else if (saved_errno == ELOOP) {
+                    Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
+                } else {
+                    Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
+                }
+                return false;
+            }
         } else {
             Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
+            return false;
         }
-        return false;
     }
     
     FILE* file_out = fdopen(fd_out, "wb");
