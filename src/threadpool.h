@@ -22,6 +22,12 @@ struct PrioritizedTask {
     std::function<void()> task;
     TaskPriority priority;
     std::chrono::steady_clock::time_point enqueue_time;
+    uint64_t file_size;  // Кэшированный размер файла для оптимизации
+    
+    PrioritizedTask() : priority(TaskPriority::NORMAL), file_size(0) {}
+    PrioritizedTask(std::function<void()> t, TaskPriority p, 
+                   std::chrono::steady_clock::time_point time, uint64_t size = 0)
+        : task(std::move(t)), priority(p), enqueue_time(time), file_size(size) {}
     
     // Оператор сравнения для priority_queue (больший приоритет = выше в очереди)
     bool operator<(const PrioritizedTask& other) const {
@@ -48,11 +54,16 @@ public:
                         condition.wait(lock, [this] { return stop_flag || !tasks.empty(); });
                         if (stop_flag && tasks.empty()) return;
                         
-                        // Ждем доступного I/O слота если установлен лимит
+                        // Ждем доступного I/O слота если установлен лимит (с таймаутом для предотвращения блокировок)
                         if (m_max_active_ios > 0) {
-                            io_slot_available.wait(lock, [this] { 
-                                return io_slots_available > 0 || stop_flag; 
-                            });
+                            auto wait_result = io_slot_available.wait_for(lock, 
+                                std::chrono::seconds(5),  // Таймаут 5 секунд для предотвращения deadlock
+                                [this] { return io_slots_available > 0 || stop_flag; });
+                            
+                            // Если таймаут истек, проверяем не нужно ли завершаться
+                            if (!wait_result && !stop_flag) {
+                                Logger::warning("I/O slot wait timeout, possible deadlock detected");
+                            }
                             if (stop_flag && tasks.empty()) return;
                         }
                         
