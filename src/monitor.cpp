@@ -17,6 +17,7 @@ namespace std {
 #include <unordered_set>
 #include <cstring>
 #include <cerrno>
+#include <climits>      // Для PATH_MAX
 
 Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
     // Кэшируем расширения в unordered_set для быстрого поиска O(1)
@@ -61,15 +62,44 @@ void Monitor::scan_existing_files() {
     
     for (const auto& path_str : m_cfg.target_paths) {
         fs::path base_path(path_str);
-        if (!fs::exists(base_path) || !fs::is_directory(base_path)) {
-            Logger::warning(std::format("Path does not exist: {}", path_str));
+        
+        // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Защита от symlink атак на базовый путь ===
+        // Используем lstat вместо fs::exists/fs::is_directory для предотвращения TOCTOU
+        struct stat st;
+        if (lstat(base_path.c_str(), &st) != 0) {
+            Logger::warning(std::format("Path does not exist or inaccessible: {}", path_str));
+            continue;
+        }
+        
+        // Проверка: базовый путь не должен быть symlink - это потенциальная атака
+        if (S_ISLNK(st.st_mode)) {
+            Logger::error(std::format("SECURITY: Base path is a symlink (potential attack): {}", path_str));
+            continue;
+        }
+        
+        if (!S_ISDIR(st.st_mode)) {
+            Logger::warning(std::format("Path is not a directory: {}", path_str));
             continue;
         }
         
         try {
+            // skip_symlinks предотвращает следование за symlink при обходе
             for (const auto& entry : fs::recursive_directory_iterator(base_path, 
-                    fs::directory_options::skip_permission_denied)) {
-                if (entry.is_regular_file() && !entry.is_symlink()) {
+                    fs::directory_options::skip_permission_denied | 
+                    fs::directory_options::skip_symlinks)) {
+                
+                // Дополнительная проверка через lstat для каждого файла
+                if (lstat(entry.path().c_str(), &st) != 0) {
+                    continue;
+                }
+                
+                // Пропускаем symlinkи - потенциальная атака
+                if (S_ISLNK(st.st_mode)) {
+                    Logger::debug(std::format("Skipping symlink: {} (potential security risk)", entry.path().string()));
+                    continue;
+                }
+                
+                if (S_ISREG(st.st_mode)) {
                     std::string filename = entry.path().filename().string();
                     if (is_target_extension(filename)) {
                         scanned++;
@@ -80,8 +110,14 @@ void Monitor::scan_existing_files() {
                             
                             try {
                                 auto src_time = fs::last_write_time(entry.path());
-                                bool gz_ok = fs::exists(gz) && fs::last_write_time(gz) >= src_time;
-                                bool br_ok = fs::exists(br) && fs::last_write_time(br) >= src_time;
+                                
+                                // Безопасная проверка сжатых файлов через lstat (не следует за symlink)
+                                struct stat gz_st, br_st;
+                                bool gz_exists = (lstat(gz.c_str(), &gz_st) == 0 && !S_ISLNK(gz_st.st_mode));
+                                bool br_exists = (lstat(br.c_str(), &br_st) == 0 && !S_ISLNK(br_st.st_mode));
+                                
+                                bool gz_ok = gz_exists && (fs::last_write_time(gz) >= src_time);
+                                bool br_ok = br_exists && (fs::last_write_time(br) >= src_time);
                                 
                                 if (!gz_ok || !br_ok) {
                                     need_compress = true;
