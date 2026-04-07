@@ -1,1 +1,1 @@
-Nothing should be ignored in this case, as only a source code file (`src/compressor.cpp`) was modified and there are no build artifacts, dependencies, or temporary files in the changes.
+Nothing should be ignored since the changes only include source code files (.cpp, .h) and no build artifacts, dependencies, or temporary files.

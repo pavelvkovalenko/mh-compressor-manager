@@ -31,7 +31,8 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
     if (!username.empty()) {
         struct passwd* pw = getpwnam(username.c_str());
         if (!pw) {
-            Logger::error(std::string("User not found: ") + username);
+            Logger::error(std::string("User not found: ") + username + 
+                         ": " + (errno ? strerror(errno) : "unknown error"));
             return false;
         }
         target_uid = pw->pw_uid;
@@ -52,8 +53,14 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         
         for (const auto& path : target_paths) {
             struct stat st;
-            if (stat(path.c_str(), &st) != 0) {
-                Logger::error(std::string("Cannot stat path for ownership check: ") + path);
+            if (lstat(path.c_str(), &st) != 0) {
+                Logger::error(std::string("Cannot lstat path for ownership check: ") + path);
+                return false;
+            }
+            
+            // Проверяем что это не symlink (защита от symlink-атак)
+            if (S_ISLNK(st.st_mode)) {
+                Logger::error(std::string("Path is a symlink, refusing to use for privilege drop: ") + path);
                 return false;
             }
             
@@ -77,7 +84,12 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         
         // Получаем имя пользователя для логирования
         struct passwd* pw = getpwuid(target_uid);
-        std::string user_info = pw ? pw->pw_name : std::to_string(target_uid);
+        if (!pw) {
+            Logger::error(std::string("Failed to get username for UID ") + std::to_string(target_uid) + 
+                         ": " + strerror(errno));
+            return false;
+        }
+        std::string user_info = pw->pw_name;
         Logger::info(std::string("Auto-detected owner: ") + user_info + 
                     " (UID=" + std::to_string(target_uid) + ", GID=" + std::to_string(target_gid) + ")");
     }

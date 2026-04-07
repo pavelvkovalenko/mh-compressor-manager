@@ -36,7 +36,7 @@ void delete_task(const fs::path& path);
 
 // Глобальные переменные для обработки сигналов
 std::atomic<bool> g_running{true};
-std::atomic<bool> g_reload_config{false};
+std::atomic<bool> g_reload_config{false};  // Атомарная переменная для защиты от race condition
 std::unique_ptr<ThreadPool> g_pool;
 std::unique_ptr<Monitor> g_monitor;
 std::unique_ptr<Config> g_cfg;
@@ -259,9 +259,11 @@ bool should_compress(const fs::path& path, const Config& cfg) {
 }
 
 // Определение приоритета задачи на основе размера файла
-TaskPriority determine_priority(const fs::path& path) {
+// Возвращает приоритет и кэширует размер файла через выходной параметр
+TaskPriority determine_priority(const fs::path& path, uint64_t& out_size) {
     try {
         auto size = fs::file_size(path);
+        out_size = size;  // Кэшируем размер для последующего использования
         // Маленькие файлы (< 10KB) - высокий приоритет (быстрая обработка)
         // Средние файлы (10KB - 1MB) - нормальный приоритет
         // Большие файлы (> 1MB) - низкий приоритет (долгая обработка)
@@ -274,11 +276,19 @@ TaskPriority determine_priority(const fs::path& path) {
         }
     } catch (const fs::filesystem_error& e) {
         Logger::warning(std::format("Filesystem error getting file size: {} - {}", path.string(), e.what()));
+        out_size = 0;
         return TaskPriority::NORMAL;
     } catch (const std::exception& e) {
         Logger::warning(std::format("Error getting file size: {} - {}", path.string(), e.what()));
+        out_size = 0;
         return TaskPriority::NORMAL;
     }
+}
+
+// Перегруженная версия для обратной совместимости
+TaskPriority determine_priority(const fs::path& path) {
+    uint64_t dummy;
+    return determine_priority(path, dummy);
 }
 
 // Задача сжатия (выполняется в пуле потоков)
@@ -494,9 +504,9 @@ int main(int argc, char* argv[]) {
     // Главный цикл с использованием epoll для обработки сигналов через signalfd
     try {
         while (g_running) {
-            // Проверяем необходимость перезагрузки конфигурации
-            if (g_reload_config) {
-                g_reload_config = false;
+            // Проверяем необходимость перезагрузки конфигурации (атомарная операция)
+            if (g_reload_config.load()) {
+                g_reload_config.store(false);
                 reload_config();
             }
             

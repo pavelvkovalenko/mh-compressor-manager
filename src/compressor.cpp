@@ -82,7 +82,7 @@ inline size_t align_for_direct_io(size_t size) {
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
-    if (level < 1 || level > 9) {
+    if (!validate_compression_level(level, 1, 9)) {
         Logger::warning(std::format("Invalid gzip level {}, using default 6", level));
         level = 6;
     }
@@ -323,7 +323,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 
 bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
-    if (level < 1 || level > 11) {
+    if (!validate_compression_level(level, 1, 11)) {
         Logger::warning(std::format("Invalid brotli level {}, using default 4", level));
         level = 4;
     }

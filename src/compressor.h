@@ -5,6 +5,11 @@
 
 namespace fs = std::filesystem;
 
+// Вспомогательная функция для валидации уровней сжатия
+inline bool validate_compression_level(int level, int min_level, int max_level) {
+    return level >= min_level && level <= max_level;
+}
+
 class Compressor {
 public:
     static bool compress_gzip(const fs::path& input, const fs::path& output, int level);
