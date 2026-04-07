@@ -1,9 +1,65 @@
-```
+
 # Build artifacts
 build/
-CMakeCache.txt
+cmake-build-*/
 CMakeFiles/
+CMakeCache.txt
+Makefile
+src/build/
+src/cmake-build-*/
+src/CMakeFiles/
+src/CMakeCache.txt
+src/Makefile
+*.cmake
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.obj
 
-# Executables
-mh-compressor-manager
-```
+# Dependencies
+vendor/
+_third_party/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Package management
+*.tar.gz
+*.zip
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
