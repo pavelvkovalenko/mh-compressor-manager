@@ -396,8 +396,40 @@ void compress_task(const fs::path& path) {
             g_metrics.failed_tasks++;
         }
     } else {
+        // Dry-run режим: показываем детальную информацию без реального сжатия
         Logger::info(std::format("[DRY RUN] Would compress: {}", path.string()));
+        Logger::info(std::format("[DRY RUN] Original size: {} bytes", original_size));
+        
+        // Оцениваем потенциальный размер после сжатия (эмпирические коэффициенты)
+        // gzip обычно даёт 60-70% сжатия для текста, brotli 70-80%
+        uint64_t estimated_gzip_size = original_size * 35 / 100;  // ~65% экономия
+        uint64_t estimated_brotli_size = original_size * 25 / 100; // ~75% экономия
+        
+        bool prefer_brotli = (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli");
+        
+        if (g_cfg->algorithms == "all") {
+            Logger::info(std::format("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)", 
+                                     estimated_gzip_size, (100 - estimated_gzip_size * 100 / (original_size > 0 ? original_size : 1))));
+            Logger::info(std::format("[DRY RUN] Estimated brotli size: {} bytes (~{}% savings)", 
+                                     estimated_brotli_size, (100 - estimated_brotli_size * 100 / (original_size > 0 ? original_size : 1))));
+            Logger::info(std::format("[DRY RUN] Total estimated savings: {} bytes (~{}%)", 
+                                     original_size - (estimated_gzip_size + estimated_brotli_size),
+                                     (100 - (estimated_gzip_size + estimated_brotli_size) * 100 / (original_size > 0 ? original_size : 1))));
+        } else if (g_cfg->algorithms == "gzip") {
+            Logger::info(std::format("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)", 
+                                     estimated_gzip_size, (100 - estimated_gzip_size * 100 / (original_size > 0 ? original_size : 1))));
+            Logger::info(std::format("[DRY RUN] Total estimated savings: {} bytes", original_size - estimated_gzip_size));
+        } else if (g_cfg->algorithms == "brotli") {
+            Logger::info(std::format("[DRY RUN] Estimated brotli size: {} bytes (~{}% savings)", 
+                                     estimated_brotli_size, (100 - estimated_brotli_size * 100 / (original_size > 0 ? original_size : 1))));
+            Logger::info(std::format("[DRY RUN] Total estimated savings: {} bytes", original_size - estimated_brotli_size));
+        }
+        
         g_metrics.completed_tasks++;
+        g_metrics.bytes_processed += original_size;
+        g_metrics.bytes_compressed += (g_cfg->algorithms == "all") ? 
+                                       (estimated_gzip_size + estimated_brotli_size) :
+                                       (g_cfg->algorithms == "gzip" ? estimated_gzip_size : estimated_brotli_size);
     }
     
     auto end = std::chrono::steady_clock::now();
@@ -413,7 +445,24 @@ void delete_task(const fs::path& path) {
         // Используем безопасное удаление с проверками
         Compressor::safe_remove_compressed(path);
     } else {
-        Logger::info(std::format("[DRY RUN] Would remove copies for: {}", path.string()));
+        // Dry-run режим для удаления
+        Logger::info(std::format("[DRY RUN] Would remove compressed copies for: {}", path.string()));
+        
+        // Проверяем какие файлы были бы удалены
+        fs::path gz = path.string() + ".gz";
+        fs::path br = path.string() + ".br";
+        
+        try {
+            struct stat st;
+            if (lstat(gz.c_str(), &st) == 0 && S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                Logger::info(std::format("[DRY RUN] Would remove: {} ({} bytes)", gz.string(), st.st_size));
+            }
+            if (lstat(br.c_str(), &st) == 0 && S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                Logger::info(std::format("[DRY RUN] Would remove: {} ({} bytes)", br.string(), st.st_size));
+            }
+        } catch (const std::exception& e) {
+            Logger::warning(std::format("[DRY RUN] Error checking files: {}", e.what()));
+        }
     }
 }
 
