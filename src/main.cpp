@@ -10,6 +10,7 @@
 #include <atomic>
 #include <sys/signalfd.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -27,6 +28,11 @@ namespace std {
 #include <sys/epoll.h>
 
 namespace fs = std::filesystem;
+
+// Forward declarations для функций которые используются в lambda
+TaskPriority determine_priority(const fs::path& path);
+void compress_task(const fs::path& path);
+void delete_task(const fs::path& path);
 
 // Глобальные переменные для обработки сигналов
 std::atomic<bool> g_running{true};
@@ -141,7 +147,7 @@ void handle_signals() {
 void reload_config() {
     Logger::info("Reloading configuration...");
     try {
-        auto old_cfg = std::move(g_cfg);
+        std::unique_ptr<Config> old_cfg = std::move(g_cfg);
         g_cfg = std::make_unique<Config>(load_config(0, nullptr));
         
         Logger::info("Configuration reloaded successfully");
@@ -171,9 +177,7 @@ void reload_config() {
     } catch (const std::exception& e) {
         Logger::error(std::format("Failed to reload configuration: {}", e.what()));
         Logger::warning("Keeping old configuration");
-        if (old_cfg) {
-            g_cfg = std::move(old_cfg);
-        }
+        // old_cfg будет уничтожен при выходе из блока catch
     }
 }
 

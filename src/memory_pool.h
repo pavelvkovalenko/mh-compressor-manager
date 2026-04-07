@@ -5,15 +5,17 @@
 #include <queue>
 #include <optional>
 #include <cstddef>
+#include <atomic>
 
 /**
  * MemoryPool - выделенный пул памяти для буферов сжатия
  * 
  * Оптимизации:
  * - Предварительное выделение памяти для избежания аллокаций в горячем пути
- * - Переиспользование буферов для снижения нагрузки на аллокатор
- * - Потокобезопасность через lock-free очереди где возможно
+ * - Переиспользование буферов без дополнительных аллокаций при release
+ * - Потокобезопасность через mutex
  * - Выравнивание по границе кэш-линии для лучшей производительности
+ * - Прямой доступ к сырым указателям для работы с системными вызовами
  */
 template<typename T, size_t DefaultSize = 262144>
 class MemoryPool {
@@ -22,7 +24,10 @@ public:
         : buffer_size(DefaultSize), alignment(alignof(std::max_align_t)) {
         // Предварительно выделяем буферы
         for (size_t i = 0; i < initial_capacity; ++i) {
-            release(allocate());
+            auto buf = allocate_raw();
+            if (buf) {
+                release_raw(buf);
+            }
         }
     }
     
@@ -34,46 +39,63 @@ public:
             free_buffers_.pop();
             aligned_free(buf);
         }
-        total_allocated_ -= available_buffers_.size();
+        total_allocated_ = 0;
     }
     
-    // Выделение буфера из пула
+    // Выделение буфера из пула (возвращает vector для удобства)
     std::vector<T> allocate() {
+        T* raw_buf = allocate_raw();
+        if (!raw_buf) {
+            throw std::bad_alloc();
+        }
+        return std::vector<T>(raw_buf, raw_buf + buffer_size / sizeof(T));
+    }
+    
+    // Выделение сырого буфера (для прямого использования с read/write)
+    T* allocate_raw() {
         std::unique_lock<std::mutex> lock(mutex_);
         
         if (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
-            --total_allocated_;
-            return std::vector<T>(buf, buf + buffer_size / sizeof(T));
+            return buf;
         }
         
         // Если нет свободных буферов, выделяем новый
-        ++total_allocated_;
         void* ptr = aligned_alloc(alignment, buffer_size);
         if (!ptr) {
-            throw std::bad_alloc();
+            return nullptr;
         }
-        return std::vector<T>(static_cast<T*>(ptr), static_cast<T*>(ptr) + buffer_size / sizeof(T));
+        ++total_allocated_;
+        return static_cast<T*>(ptr);
     }
     
-    // Возврат буфера в пул
+    // Возврат буфера в пул (для vector - копируем данные если нужно)
     void release(std::vector<T>& buffer) {
         if (buffer.size() != buffer_size / sizeof(T)) {
-            // Несоответствующий размер - освобождаем память
+            // Несоответствующий размер - не принимаем
+            return;
+        }
+        
+        T* raw_buf = allocate_raw();
+        if (!raw_buf) {
+            return;
+        }
+        
+        // Копируем данные из vector в переиспользованный буфер
+        std::copy(buffer.begin(), buffer.end(), raw_buf);
+        // Vector уничтожается вызывающей стороной
+    }
+    
+    // Возврат сырого буфера в пул (без копирования -真正的 переиспользование)
+    void release_raw(T* buffer) {
+        if (!buffer) {
             return;
         }
         
         std::unique_lock<std::mutex> lock(mutex_);
-        
-        // Копируем данные обратно в выровненный буфер
-        void* ptr = aligned_alloc(alignment, buffer_size);
-        if (ptr) {
-            std::copy(buffer.begin(), buffer.end(), static_cast<T*>(ptr));
-            free_buffers_.push(static_cast<T*>(ptr));
-            ++total_allocated_;
-        }
-        // Оригинальный вектор будет уничтожен вызывающей стороной
+        free_buffers_.push(buffer);
+        // total_allocated_ не меняется - буфер просто возвращается в пул
     }
     
     // Статистика пула
@@ -85,6 +107,10 @@ public:
     size_t free_count() const {
         std::unique_lock<std::mutex> lock(const_cast<std::mutex&>(mutex_));
         return free_buffers_.size();
+    }
+    
+    size_t get_buffer_size() const {
+        return buffer_size;
     }
     
 private:
@@ -112,7 +138,7 @@ private:
     const size_t alignment;
     mutable std::mutex mutex_;
     std::queue<T*> free_buffers_;
-    size_t total_allocated_{0};
+    std::atomic<size_t> total_allocated_{0};
 };
 
 // Специализация для байтовых буферов (наиболее частый случай)
