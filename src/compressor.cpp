@@ -732,13 +732,14 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         return true;
     };
     
-    // 3. Проверяем и удаляем .gz копию
+    // 3. Проверяем и удаляем .gz копию через lstat (безопасная проверка)
     fs::path gz_path = original_path.string() + ".gz";
-    if (fs::exists(gz_path, ec) && !ec) {
+    struct stat gz_st;
+    if (lstat(gz_path.c_str(), &gz_st) == 0) {
         // Проверка на symlink-атаку для сжатого файла
-        if (is_symlink_attack(gz_path)) {
-            Logger::error(std::format("Refusing to remove {}: potential symlink attack", gz_path.string()));
-        } else {
+        if (S_ISLNK(gz_st.st_mode)) {
+            Logger::error(std::format("SECURITY: Refusing to remove {}: potential symlink attack", gz_path.string()));
+        } else if (S_ISREG(gz_st.st_mode)) {
             // Проверка владельца (пропускаем, если оригинал не существует)
             if (!orig_exists || check_file_ownership(gz_path, expected_uid)) {
                 safe_unlink(gz_path, "gzip");
@@ -748,13 +749,14 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         }
     }
     
-    // 4. Проверяем и удаляем .br копию
+    // 4. Проверяем и удаляем .br копию через lstat (безопасная проверка)
     fs::path br_path = original_path.string() + ".br";
-    if (fs::exists(br_path, ec) && !ec) {
+    struct stat br_st;
+    if (lstat(br_path.c_str(), &br_st) == 0) {
         // Проверка на symlink-атаку для сжатого файла
-        if (is_symlink_attack(br_path)) {
-            Logger::error(std::format("Refusing to remove {}: potential symlink attack", br_path.string()));
-        } else {
+        if (S_ISLNK(br_st.st_mode)) {
+            Logger::error(std::format("SECURITY: Refusing to remove {}: potential symlink attack", br_path.string()));
+        } else if (S_ISREG(br_st.st_mode)) {
             // Проверка владельца (пропускаем, если оригинал не существует)
             if (!orig_exists || check_file_ownership(br_path, expected_uid)) {
                 safe_unlink(br_path, "brotli");
