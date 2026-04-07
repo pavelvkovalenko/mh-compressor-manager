@@ -13,6 +13,7 @@ namespace std {
 #endif
 #include <iostream>
 #include <unistd.h>
+#include <charconv>
 
 static std::string trim(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\r\n");
@@ -60,7 +61,12 @@ Config load_config(int argc, char* argv[]) {
             cfg.cli_exts.insert(cfg.cli_exts.end(), exts.begin(), exts.end());
         }
         else if (arg == "--gzip-level" && i + 1 < argc) {
-            int level = std::stoi(argv[++i]);
+            int level = 0;
+            auto result = std::from_chars(argv[++i], argv[i] + std::strlen(argv[i]), level);
+            if (result.ec != std::errc() || result.ptr != argv[i] + std::strlen(argv[i])) {
+                std::cerr << "Warning: invalid gzip level format, using default 6\n";
+                level = 6;
+            }
             // Валидация диапазона уровня gzip
             if (level < 1 || level > 9) {
                 std::cerr << "Warning: gzip level must be 1-9, using default 6\n";
@@ -69,7 +75,12 @@ Config load_config(int argc, char* argv[]) {
             cfg.cli_gzip_level = level;
         }
         else if (arg == "--brotli-level" && i + 1 < argc) {
-            int level = std::stoi(argv[++i]);
+            int level = 0;
+            auto result = std::from_chars(argv[++i], argv[i] + std::strlen(argv[i]), level);
+            if (result.ec != std::errc() || result.ptr != argv[i] + std::strlen(argv[i])) {
+                std::cerr << "Warning: invalid brotli level format, using default 4\n";
+                level = 4;
+            }
             // Валидация диапазона уровня brotli
             if (level < 1 || level > 11) {
                 std::cerr << "Warning: brotli level must be 1-11, using default 4\n";
@@ -102,8 +113,12 @@ Config load_config(int argc, char* argv[]) {
                     if (key == "target_path") cfg.target_paths = split(val, ';');
                     else if (key == "debug") cfg.debug = (val == "true");
                     else if (key == "threads") {
-                        try {
-                            int threads = std::stoi(val);
+                        int threads = 0;
+                        auto result = std::from_chars(val.data(), val.data() + val.size(), threads);
+                        if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                            Logger::warning("Invalid threads value format, using auto-detect");
+                            cfg.threads = 0;
+                        } else {
                             // Валидация диапазона количества потоков
                             if (threads < 0 || threads > 256) {
                                 Logger::warning(std::format("Invalid threads value {}, using auto-detect", threads));
@@ -111,9 +126,6 @@ Config load_config(int argc, char* argv[]) {
                             } else {
                                 cfg.threads = threads;
                             }
-                        } catch (...) {
-                            Logger::warning("Invalid threads value, using auto-detect");
-                            cfg.threads = 0;
                         }
                     }
                     else if (key == "list") {
@@ -122,67 +134,65 @@ Config load_config(int argc, char* argv[]) {
                     }
                     else if (key == "algorithms") cfg.algorithms = val;
                     else if (key == "gzip_level") {
-                        try {
-                            int level = std::stoi(val);
-                            if (level < 1 || level > 9) {
-                                Logger::warning(std::format("Invalid gzip_level {}, using default 6", level));
-                                level = 6;
-                            }
-                            cfg.gzip_level = level;
-                        } catch (...) {
-                            Logger::warning("Invalid gzip_level, using default 6");
-                            cfg.gzip_level = 6;
+                        int level = 0;
+                        auto result = std::from_chars(val.data(), val.data() + val.size(), level);
+                        if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                            Logger::warning("Invalid gzip_level format, using default 6");
+                            level = 6;
+                        } else if (level < 1 || level > 9) {
+                            Logger::warning(std::format("Invalid gzip_level {}, using default 6", level));
+                            level = 6;
                         }
+                        cfg.gzip_level = level;
                     }
                     else if (key == "brotli_level") {
-                        try {
-                            int level = std::stoi(val);
-                            if (level < 1 || level > 11) {
-                                Logger::warning(std::format("Invalid brotli_level {}, using default 4", level));
-                                level = 4;
-                            }
-                            cfg.brotli_level = level;
-                        } catch (...) {
-                            Logger::warning("Invalid brotli_level, using default 4");
-                            cfg.brotli_level = 4;
+                        int level = 0;
+                        auto result = std::from_chars(val.data(), val.data() + val.size(), level);
+                        if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                            Logger::warning("Invalid brotli_level format, using default 4");
+                            level = 4;
+                        } else if (level < 1 || level > 11) {
+                            Logger::warning(std::format("Invalid brotli_level {}, using default 4", level));
+                            level = 4;
                         }
+                        cfg.brotli_level = level;
                     }
                     else if (key == "debounce_delay") {
-                        try {
-                            int delay = std::stoi(val);
-                            if (delay < 0 || delay > 60) {
-                                Logger::warning(std::format("Invalid debounce_delay {}, using default 2", delay));
-                                delay = 2;
-                            }
-                            cfg.debounce_delay = delay;
-                        } catch (...) {
-                            Logger::warning("Invalid debounce_delay, using default 2");
-                            cfg.debounce_delay = 2;
+                        int delay = 0;
+                        auto result = std::from_chars(val.data(), val.data() + val.size(), delay);
+                        if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                            Logger::warning("Invalid debounce_delay format, using default 2");
+                            delay = 2;
+                        } else if (delay < 0 || delay > 60) {
+                            Logger::warning(std::format("Invalid debounce_delay {}, using default 2", delay));
+                            delay = 2;
                         }
+                        cfg.debounce_delay = delay;
                     }
                     else if (key == "io_delay_us") {
-                        try {
-                            int delay = std::stoi(val);
-                            if (delay < 0 || delay > 1000000) {
-                                Logger::warning(std::format("Invalid io_delay_us {}, using default 0", delay));
-                                delay = 0;
-                            }
-                            cfg.io_delay_us = delay;
-                        } catch (...) {
-                            Logger::warning("Invalid io_delay_us, using default 0");
-                            cfg.io_delay_us = 0;
+                        int delay = 0;
+                        auto result = std::from_chars(val.data(), val.data() + val.size(), delay);
+                        if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                            Logger::warning("Invalid io_delay_us format, using default 0");
+                            delay = 0;
+                        } else if (delay < 0 || delay > 1000000) {
+                            Logger::warning(std::format("Invalid io_delay_us {}, using default 0", delay));
+                            delay = 0;
                         }
+                        cfg.io_delay_us = delay;
                     }
                     else if (key == "max_active_ios") {
-                        try {
-                            cfg.max_active_ios = std::stoull(val);
+                        unsigned long long value = 0;
+                        auto result = std::from_chars(val.data(), val.data() + val.size(), value);
+                        if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                            Logger::warning("Invalid max_active_ios format, using unlimited");
+                            cfg.max_active_ios = 0;
+                        } else {
+                            cfg.max_active_ios = value;
                             if (cfg.max_active_ios > 10000) {
                                 Logger::warning(std::format("max_active_ios {} too high, limiting to 10000", cfg.max_active_ios));
                                 cfg.max_active_ios = 10000;
                             }
-                        } catch (...) {
-                            Logger::warning("Invalid max_active_ios, using unlimited");
-                            cfg.max_active_ios = 0;
                         }
                     }
                 }

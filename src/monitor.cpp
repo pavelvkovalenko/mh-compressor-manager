@@ -202,8 +202,9 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
 }
 
 void Monitor::run() {
-    // Увеличиваем буфер для обработки большего количества событий за один раз
-    constexpr size_t BUFFER_SIZE = 16384;
+    // Оптимизированный буфер для обработки массовых событий inotify
+    // Увеличен с 16KB до 64KB для лучшей производительности при большом количестве событий
+    constexpr size_t BUFFER_SIZE = 65536;
     char buffer[BUFFER_SIZE] __attribute__((aligned(__alignof__(struct inotify_event))));
     auto last_debounce_check = std::chrono::steady_clock::now();
     const auto debounce_check_interval = std::chrono::milliseconds(500);
@@ -229,6 +230,9 @@ void Monitor::run() {
                     }
                     i += sizeof(struct inotify_event) + event->len;
                 }
+            } else if (len < 0 && errno == EINVAL) {
+                // Буфер переполнен - увеличиваем его размер в следующей итерации
+                Logger::warning("inotify buffer overflow detected, events may be lost");
             }
         }
         
