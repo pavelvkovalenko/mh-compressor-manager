@@ -1,93 +1,36 @@
-
+```
 # Build artifacts
-build/
-cmake-build-*/
-CMakeFiles/
-CMakeCache.txt
-dist/
-target/
-Makefile
-src/build/
-src/cmake-build-*/
-src/CMakeFiles/
-src/CMakeCache.txt
-src/Makefile
 *.o
 *.obj
-*.out
-
-# CMake files
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-
-# Compiled binaries
 *.exe
 *.dll
 *.so
 *.a
+*.out
 
 # Dependencies
 node_modules/
-.venv/
 venv/
+.venv/
 __pycache__/
-build/
-cmake-build-*/
-CMakeFiles/
-CMakeCache.txt
-Makefile
-src/build/
-src/cmake-build-*/
-src/CMakeFiles/
-src/CMakeCache.txt
-src/Makefile
-*.cmake
-*.o
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
-*.out
-*.obj
 .mypy_cache/
 .pytest_cache/
+target/
 .gradle/
 
-# Dependencies
-vendor/
-_third_party/
+# Build directories
+build/
+dist/
 
-# Editor/IDE files
+# IDE/Editor files
 .vscode/
 .idea/
 *.swp
 *.swo
 *.tmp
 
-# Logs and temp files
+# Logs
 *.log
-*.tmp
-*.swp
-
-# Editors
-.vscode/
-.idea/
-# Environment
-.env
-.env.local
-.env.*
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
 
 # Coverage
 coverage/
@@ -98,25 +41,8 @@ htmlcov/
 .env
 .env.local
 *.env.*
+
+# System files
+.DS_Store
+Thumbs.db
 ```
-# Package management
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
-*.zip
-*.gz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo

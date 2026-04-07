@@ -84,9 +84,9 @@ void Monitor::scan_existing_files() {
         
         try {
             // skip_symlinks предотвращает следование за symlink при обходе
+            // Примечание: skip_symlinks доступен в C++20+
             for (const auto& entry : fs::recursive_directory_iterator(base_path, 
-                    fs::directory_options::skip_permission_denied | 
-                    fs::directory_options::skip_symlinks)) {
+                    fs::directory_options::skip_permission_denied)) {
                 
                 // Дополнительная проверка через lstat для каждого файла
                 if (lstat(entry.path().c_str(), &st) != 0) {
@@ -184,7 +184,7 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
     try {
         // skip_symlinks предотвращает следование за symlink при обходе
         for (const auto& entry : fs::recursive_directory_iterator(base_path,
-                fs::directory_options::skip_permission_denied | fs::directory_options::skip_symlinks)) {
+                fs::directory_options::skip_permission_denied)) {
             if (entry.is_directory()) {
                 // Дополнительная проверка через lstat для каждой директории
                 if (lstat(entry.path().c_str(), &st) == 0 && !S_ISLNK(st.st_mode) && S_ISDIR(st.st_mode)) {

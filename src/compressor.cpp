@@ -1,6 +1,7 @@
 #include "compressor.h"
 #include "logger.h"
 #include "memory_pool.h"
+#include "async_io.h"
 #include <fstream>
 #include <vector>
 #include <zlib.h>
@@ -24,11 +25,20 @@ namespace std {
 #include <climits>      // Для PATH_MAX
 #include <set>          // Для кэша валидации путей
 #include <atomic>       // Для потокобезопасности
-#include <linux/aio_abi.h>
-#include <libaio.h>
 
-// Размер буфера для потоковой обработки (256KB - оптимизировано для производительности)
-constexpr size_t STREAM_BUFFER_SIZE = 262144;
+// Базовый размер буфера для потоковой обработки (1MB - оптимизировано для производительности)
+constexpr size_t BASE_BUFFER_SIZE = 1048576;
+
+// Минимальный размер буфера для маленьких файлов (64KB)
+constexpr size_t MIN_BUFFER_SIZE = 65536;
+
+// Максимальный размер буфера (4MB)
+constexpr size_t MAX_BUFFER_SIZE = 4194304;
+
+// Порог размера файла для выбора размера буфера
+constexpr uint64_t SMALL_FILE_THRESHOLD = 256 * 1024;      // 256KB
+constexpr uint64_t MEDIUM_FILE_THRESHOLD = 4 * 1024 * 1024; // 4MB
+constexpr uint64_t LARGE_FILE_THRESHOLD = 16 * 1024 * 1024; // 16MB
 
 // Максимальное количество попыток при проверке пути для предотвращения DoS
 constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
@@ -40,10 +50,35 @@ constexpr size_t PROC_FD_PATH_SIZE = 64;
 constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 // Глобальный пул памяти для буферов сжатия (переиспользуется между задачами)
-static ByteBufferPool g_buffer_pool(16);
+static ByteBufferPool g_buffer_pool(32);
 
-// Флаги для Direct I/O
-constexpr int DIRECT_IO_FLAGS = O_DIRECT;
+// Выравнивание для O_DIRECT (должно быть кратно размеру сектора, обычно 512 байт)
+constexpr size_t DIRECT_IO_ALIGNMENT = 4096;
+
+/**
+ * Вычисляет оптимальный размер буфера на основе размера файла
+ * Адаптивный подход улучшает производительность:
+ * - Маленькие файлы: меньшие буферы для экономии памяти
+ * - Большие файлы: большие буферы для уменьшения количества системных вызовов
+ */
+inline size_t calculate_buffer_size(uint64_t file_size) {
+    if (file_size <= SMALL_FILE_THRESHOLD) {
+        return MIN_BUFFER_SIZE;
+    } else if (file_size <= MEDIUM_FILE_THRESHOLD) {
+        return BASE_BUFFER_SIZE / 2;
+    } else if (file_size <= LARGE_FILE_THRESHOLD) {
+        return BASE_BUFFER_SIZE;
+    } else {
+        return MAX_BUFFER_SIZE;
+    }
+}
+
+/**
+ * Выравнивает размер по границе для O_DIRECT
+ */
+inline size_t align_for_direct_io(size_t size) {
+    return (size + DIRECT_IO_ALIGNMENT - 1) & ~(DIRECT_IO_ALIGNMENT - 1);
+}
 
 bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, int level) {
     // Проверка диапазона уровня сжатия (защита от некорректных значений)
@@ -143,52 +178,23 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     
     // Шаг 5: Используем fdopen() для работы с FILE* из уже открытого fd
     // Это полностью устраняет TOCTOU - между проверкой и открытием нет race condition
-    FILE* file_in = fdopen(fd_in, "rb");
-    if (!file_in) {
-        int saved_errno = errno;
-        close(fd_in);
-        Logger::error(std::format("Failed to fdopen file {}: {}", input.string(), strerror(saved_errno)));
-        return false;
-    }
-    // fdopen забирает владение дескриптором, теперь закрывать нужно только fclose(file_in)
+    // Используем прямой системный вызов read вместо FILE* для лучшей производительности
+    // fd_in уже открыт с O_RDONLY | O_NOATIME
 
     // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
     // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
-    // Добавляем O_DIRECT для прямого доступа к диску (минуя кэш страницы)
-    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | DIRECT_IO_FLAGS, st.st_mode & 0666);
+    int flags_out = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW;
+    int fd_out = open(output.c_str(), flags_out, st.st_mode & 0666);
     if (fd_out < 0) {
         int saved_errno = errno;
-        fclose(file_in);
+        close(fd_in);
         if (saved_errno == EEXIST) {
             Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
         } else if (saved_errno == ELOOP) {
             Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
-        } else if (saved_errno == EINVAL) {
-            // O_DIRECT не поддерживается или буфер не выровнен - пробуем без O_DIRECT
-            Logger::debug(std::format("O_DIRECT not supported for {}, trying without direct I/O", output.string()));
-            fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
-            if (fd_out < 0) {
-                saved_errno = errno;
-                if (saved_errno == EEXIST) {
-                    Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
-                } else if (saved_errno == ELOOP) {
-                    Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
-                } else {
-                    Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
-                }
-                return false;
-            }
         } else {
             Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
-            return false;
         }
-    }
-    
-    FILE* file_out = fdopen(fd_out, "wb");
-    if (!file_out) {
-        close(fd_out);
-        fclose(file_in);
-        Logger::error(std::format("Failed to fdopen output file {}: {}", output.string(), strerror(errno)));
         return false;
     }
 
@@ -197,39 +203,59 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
     if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
         Logger::error("Failed to init gzip stream");
-        fclose(file_in);
-        fclose(file_out);
+        close(fd_in);
+        close(fd_out);
         return false;
     }
 
-    // Выделяем буферы один раз вне цикла
-    std::vector<char> in_buffer(STREAM_BUFFER_SIZE);
-    std::vector<char> out_buffer(STREAM_BUFFER_SIZE);
+    // Вычисляем оптимальный размер буфера на основе размера файла
+    size_t buffer_size = calculate_buffer_size(st.st_size);
     
-    int ret;
+    // Выравниваем размер буфера для использования с пулом памяти
+    buffer_size = AsyncIO::align_for_direct_io(buffer_size);
+    
+    // Выделяем буферы из пула один раз вне цикла с оптимальным размером
+    uint8_t* in_buffer = g_buffer_pool.allocate_raw();
+    uint8_t* out_buffer = g_buffer_pool.allocate_raw();
+    
+    if (!in_buffer || !out_buffer) {
+        Logger::error("Failed to allocate buffers from pool");
+        deflateEnd(&strm);
+        close(fd_in);
+        close(fd_out);
+        return false;
+    }
+    
     bool has_error = false;
 
     do {
-        // Читаем порциями из входного файла через fdopen FILE*
-        size_t bytes_read = fread(in_buffer.data(), 1, in_buffer.size(), file_in);
+        // Читаем порциями из входного файла через прямой системный вызов read
+        ssize_t bytes_read = AsyncIO::sync_read(fd_in, in_buffer, buffer_size);
+        
+        if (bytes_read < 0) {
+            Logger::error(std::format("Failed to read input file {}: {}", input.string(), strerror(errno)));
+            has_error = true;
+            break;
+        }
         
         if (bytes_read > 0) {
             strm.avail_in = bytes_read;
-            strm.next_in = (Bytef*)in_buffer.data();
+            strm.next_in = in_buffer;
             
             // Сжимаем и записываем порциями
             do {
-                strm.avail_out = out_buffer.size();
-                strm.next_out = (Bytef*)out_buffer.data();
-                ret = deflate(&strm, feof(file_in) ? Z_FINISH : Z_NO_FLUSH);
+                strm.avail_out = buffer_size;
+                strm.next_out = out_buffer;
+                int ret = deflate(&strm, (bytes_read <= 0 && feof(stdin)) ? Z_FINISH : Z_NO_FLUSH);
                 if (ret == Z_STREAM_ERROR) {
                     Logger::error("Gzip stream error");
                     has_error = true;
                     break;
                 }
-                size_t have = out_buffer.size() - strm.avail_out;
+                size_t have = buffer_size - strm.avail_out;
                 if (have > 0) {
-                    if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
+                    ssize_t written = AsyncIO::sync_write(fd_out, out_buffer, have);
+                    if (written < 0 || static_cast<size_t>(written) != have) {
                         if (errno == ENOSPC) {
                             Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
                         } else {
@@ -243,22 +269,24 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         }
         
         if (has_error) break;
-    } while (!feof(file_in));
+        if (bytes_read == 0) break;  // EOF
+    } while (true);
 
     // Завершаем поток (если не было ошибок)
     if (!has_error) {
         do {
-            strm.avail_out = out_buffer.size();
-            strm.next_out = (Bytef*)out_buffer.data();
-            ret = deflate(&strm, Z_FINISH);
+            strm.avail_out = buffer_size;
+            strm.next_out = out_buffer;
+            int ret = deflate(&strm, Z_FINISH);
             if (ret == Z_STREAM_ERROR) {
                 Logger::error("Gzip stream error");
                 has_error = true;
                 break;
             }
-            size_t have = out_buffer.size() - strm.avail_out;
+            size_t have = buffer_size - strm.avail_out;
             if (have > 0) {
-                if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
+                ssize_t written = AsyncIO::sync_write(fd_out, out_buffer, have);
+                if (written < 0 || static_cast<size_t>(written) != have) {
                     if (errno == ENOSPC) {
                         Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
                     } else {
@@ -272,10 +300,19 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
 
     deflateEnd(&strm);
-    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    fclose(file_out); // Закрываем выходной файл
     
-    if (has_error || fflush(file_out) != 0 || fsync(fd_out) != 0) {
+    // Возвращаем буферы в пул для переиспользования
+    g_buffer_pool.release_raw(in_buffer);
+    g_buffer_pool.release_raw(out_buffer);
+    
+    // Закрываем файлы с синхронизацией
+    close(fd_in);
+    if (!AsyncIO::close_file_sync(fd_out, !has_error)) {
+        Logger::error("Failed to close output file");
+        return false;
+    }
+    
+    if (has_error) {
         Logger::error("Failed to write gzip output");
         return false;
     }
@@ -432,9 +469,18 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     BrotliEncoderSetParameter(state, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
     BrotliEncoderSetParameter(state, BROTLI_PARAM_SIZE_HINT, 0);
 
-    // Выделяем буферы один раз вне цикла
-    std::vector<uint8_t> in_buffer(STREAM_BUFFER_SIZE);
-    std::vector<uint8_t> out_buffer(STREAM_BUFFER_SIZE);
+    // Вычисляем оптимальный размер буфера на основе размера файла
+    size_t buffer_size = calculate_buffer_size(input_st.st_size);
+    
+    // Выравниваем размер буфера для O_DIRECT если используется прямой I/O
+    bool use_direct_io = (fd_out >= 0);
+    if (use_direct_io) {
+        buffer_size = align_for_direct_io(buffer_size);
+    }
+    
+    // Выделяем буферы один раз вне цикла с оптимальным размером
+    std::vector<uint8_t> in_buffer(buffer_size);
+    std::vector<uint8_t> out_buffer(buffer_size);
     bool success = true;
 
     while (true) {

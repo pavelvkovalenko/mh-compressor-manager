@@ -79,6 +79,16 @@ pkg_check_modules(SELINUX libselinux)
 # Seccomp - песочница системных вызовов
 pkg_check_modules(SECCOMP libseccomp)
 
+# io_uring - асинхронный I/O (опционально)
+pkg_check_modules(LIBURING liburing)
+if(LIBURING_FOUND)
+    message(STATUS "io_uring support enabled")
+    set(HAS_IO_URING 1)
+else()
+    message(STATUS "io_uring support disabled (liburing not found), using sync I/O fallback")
+    set(HAS_IO_URING 0)
+endif()
+
 # ============================================================================
 # Исходные файлы
 # ============================================================================
@@ -89,6 +99,7 @@ set(SOURCES
     monitor.cpp
     logger.cpp
     security.cpp
+    async_io.cpp
 )
 
 set(HEADERS
@@ -98,6 +109,8 @@ set(HEADERS
     logger.h
     threadpool.h
     security.h
+    memory_pool.h
+    async_io.h
 )
 
 # ============================================================================
@@ -121,6 +134,15 @@ if(SELINUX_FOUND)
     message(STATUS "SELinux support enabled")
 else()
     message(STATUS "SELinux support disabled (libselinux not found)")
+endif()
+
+# Добавляем io_uring если найден
+if(LIBURING_FOUND)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${LIBURING_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBURING_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAS_IO_URING=1)
+else()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAS_IO_URING=0)
 endif()
 
 # ============================================================================
