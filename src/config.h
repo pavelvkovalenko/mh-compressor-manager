@@ -9,8 +9,8 @@ struct Config {
     int threads = 0; // 0 = auto
     std::vector<std::string> extensions;
     std::string algorithms = "all"; // gzip, brotli, all
-    int gzip_level = 6;
-    int brotli_level = 4;
+    int gzip_level = 9;            // Максимальное сжатие по умолчанию (фоновый режим)
+    int brotli_level = 11;         // Максимальное сжатие по умолчанию (фоновый режим)
     int debounce_delay = 2; // seconds
     std::string config_path = "/etc/mediahive/compressor-manager.conf";
     
