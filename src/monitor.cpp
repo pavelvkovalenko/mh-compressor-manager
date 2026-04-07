@@ -154,8 +154,21 @@ void Monitor::set_delete_handler(std::function<void(const fs::path&)> handler) {
 }
 
 void Monitor::add_watch_recursive(const fs::path& base_path) {
-    if (!fs::exists(base_path) || !fs::is_directory(base_path)) {
-        Logger::warning(std::format("Path does not exist or is not a directory: {}", base_path.string()));
+    // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Используем lstat вместо fs.exists для предотвращения symlink атак ===
+    struct stat st;
+    if (lstat(base_path.c_str(), &st) != 0) {
+        Logger::warning(std::format("Path does not exist or inaccessible: {}", base_path.string()));
+        return;
+    }
+    
+    // Проверка: базовый путь не должен быть symlink
+    if (S_ISLNK(st.st_mode)) {
+        Logger::error(std::format("SECURITY: Base path is a symlink (potential attack): {}", base_path.string()));
+        return;
+    }
+    
+    if (!S_ISDIR(st.st_mode)) {
+        Logger::warning(std::format("Path is not a directory: {}", base_path.string()));
         return;
     }
     
@@ -169,13 +182,17 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
     }
 
     try {
+        // skip_symlinks предотвращает следование за symlink при обходе
         for (const auto& entry : fs::recursive_directory_iterator(base_path,
-                fs::directory_options::skip_permission_denied)) {
+                fs::directory_options::skip_permission_denied | fs::directory_options::skip_symlinks)) {
             if (entry.is_directory()) {
-                int wd_sub = inotify_add_watch(m_fd, entry.path().c_str(), 
-                    IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
-                if (wd_sub >= 0) {
-                    m_wd_path_map[wd_sub] = entry.path().string();
+                // Дополнительная проверка через lstat для каждой директории
+                if (lstat(entry.path().c_str(), &st) == 0 && !S_ISLNK(st.st_mode) && S_ISDIR(st.st_mode)) {
+                    int wd_sub = inotify_add_watch(m_fd, entry.path().c_str(), 
+                        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
+                    if (wd_sub >= 0) {
+                        m_wd_path_map[wd_sub] = entry.path().string();
+                    }
                 }
             }
         }
