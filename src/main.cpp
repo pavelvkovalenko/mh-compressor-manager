@@ -207,32 +207,44 @@ void compress_task(const fs::path& path) {
         
         if (prefer_brotli && (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli")) {
             brotli_success = Compressor::compress_brotli(path, path.string() + ".br", g_cfg->brotli_level);
-            if (brotli_success && fs::exists(path.string() + ".br")) {
-                Compressor::copy_metadata(path, path.string() + ".br");
-                try {
-                    compressed_size += fs::file_size(path.string() + ".br");
-                } catch (...) {}
+            if (brotli_success) {
+                // Безопасная проверка существования файла через lstat после сжатия
+                struct stat br_st;
+                if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
+                    Compressor::copy_metadata(path, path.string() + ".br");
+                    try {
+                        compressed_size += fs::file_size(path.string() + ".br");
+                    } catch (...) {}
+                }
             }
         }
         
         if (g_cfg->algorithms == "all" || g_cfg->algorithms == "gzip") {
             gzip_success = Compressor::compress_gzip(path, path.string() + ".gz", g_cfg->gzip_level);
-            if (gzip_success && fs::exists(path.string() + ".gz")) {
-                Compressor::copy_metadata(path, path.string() + ".gz");
-                try {
-                    compressed_size += fs::file_size(path.string() + ".gz");
-                } catch (...) {}
+            if (gzip_success) {
+                // Безопасная проверка существования файла через lstat после сжатия
+                struct stat gz_st;
+                if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
+                    Compressor::copy_metadata(path, path.string() + ".gz");
+                    try {
+                        compressed_size += fs::file_size(path.string() + ".gz");
+                    } catch (...) {}
+                }
             }
         }
         
         // Если brotli не был выполнен первым (только gzip режим)
         if (!prefer_brotli && (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli")) {
             brotli_success = Compressor::compress_brotli(path, path.string() + ".br", g_cfg->brotli_level);
-            if (brotli_success && fs::exists(path.string() + ".br")) {
-                Compressor::copy_metadata(path, path.string() + ".br");
-                try {
-                    compressed_size += fs::file_size(path.string() + ".br");
-                } catch (...) {}
+            if (brotli_success) {
+                // Безопасная проверка существования файла через lstat после сжатия
+                struct stat br_st;
+                if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
+                    Compressor::copy_metadata(path, path.string() + ".br");
+                    try {
+                        compressed_size += fs::file_size(path.string() + ".br");
+                    } catch (...) {}
+                }
             }
         }
 
