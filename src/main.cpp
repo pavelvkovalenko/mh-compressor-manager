@@ -3,6 +3,7 @@
 #include "compressor.h"
 #include "monitor.h"
 #include "threadpool.h"
+#include "security.h"
 
 #include <systemd/sd-daemon.h>
 #include <csignal>
@@ -406,12 +407,38 @@ int main(int argc, char* argv[]) {
     // Загрузка конфигурации
     g_cfg = std::make_unique<Config>(load_config(argc, argv));
     
-    // Инициализация логгера
+    // Инициализация логгера ДО сброса привилегий (чтобы логи писались от root)
     Logger::init("mh-compressor-manager", g_cfg->debug);
     Logger::info("Starting mh-compressor-manager");
     Logger::info(std::format("Target paths: {}", g_cfg->target_paths.size()));
     for (const auto& p : g_cfg->target_paths) {
         Logger::info(std::format("  - {}", p));
+    }
+
+    // Сброс привилегий и инициализация песочницы (только если запущены от root)
+    if (security::is_running_as_root()) {
+        if (g_cfg->drop_privileges) {
+            Logger::info("Running as root, attempting to drop privileges...");
+            if (!security::drop_privileges(g_cfg->run_as_user, g_cfg->target_paths)) {
+                Logger::error("Failed to drop privileges, exiting for safety");
+                return 1;
+            }
+            Logger::info("Privileges dropped successfully");
+        } else {
+            Logger::warning("Running as root with drop_privileges=false (not recommended)");
+        }
+        
+        // Инициализация seccomp после сброса прав и всех инициализирующих вызовов
+        if (g_cfg->enable_seccomp) {
+            Logger::info("Initializing seccomp sandbox...");
+            if (!security::init_seccomp()) {
+                Logger::warning("Failed to initialize seccomp, continuing without sandbox");
+            } else {
+                Logger::info("Seccomp sandbox active");
+            }
+        }
+    } else {
+        Logger::debug("Not running as root, skipping privilege drop and seccomp");
     }
 
     // Инициализация безопасной обработки сигналов через signalfd

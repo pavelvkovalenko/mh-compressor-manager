@@ -195,6 +195,9 @@ Config load_config(int argc, char* argv[]) {
                             }
                         }
                     }
+                    else if (key == "drop_privileges") cfg.drop_privileges = (val == "true");
+                    else if (key == "enable_seccomp") cfg.enable_seccomp = (val == "true");
+                    else if (key == "run_as_user") cfg.run_as_user = val;
                 }
             }
         }
