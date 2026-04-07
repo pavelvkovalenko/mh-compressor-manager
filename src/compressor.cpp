@@ -56,128 +56,6 @@ static ByteBufferPool g_buffer_pool(32);
 constexpr size_t DIRECT_IO_ALIGNMENT = 4096;
 
 /**
- * Единая функция сжатия для обоих алгоритмов (gzip и brotli)
- * Устраняет дублирование кода между compress_gzip и compress_brotli
- */
-struct CompressionContext {
-    const fs::path& input;
-    const fs::path& output;
-    int level;
-    int dir_fd;
-    int fd_path;
-    int fd_in;
-    struct stat st;
-    bool use_fd_api;  // true = используем fd-based API, false = FILE* API
-};
-
-static bool open_input_file_safely(CompressionContext& ctx) {
-    // Получаем директорию и базовое имя файла
-    fs::path parent_dir = ctx.input.parent_path();
-    std::string basename = ctx.input.filename().string();
-    
-    if (parent_dir.empty()) {
-        parent_dir = ".";
-    }
-    
-    // Открываем директорию с O_RDONLY | O_DIRECTORY | O_NOFOLLOW
-    ctx.dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-    if (ctx.dir_fd < 0) {
-        Logger::error(std::format("Failed to open directory {}: {}", parent_dir.string(), strerror(errno)));
-        return false;
-    }
-    
-    // Открываем файл с O_PATH через openat()
-    ctx.fd_path = openat(ctx.dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
-    if (ctx.fd_path < 0) {
-        int saved_errno = errno;
-        close(ctx.dir_fd);
-        if (saved_errno == ELOOP || saved_errno == EMLINK) {
-            Logger::error(std::format("Symlink attack detected: {} - refusing to open", ctx.input.string()));
-        } else {
-            Logger::error(std::format("Failed to open file reference: {} - {}", ctx.input.string(), strerror(saved_errno)));
-        }
-        return false;
-    }
-    
-    close(ctx.dir_fd);
-    
-    // Проверяем что это обычный файл через fstat
-    if (fstat(ctx.fd_path, &ctx.st) != 0 || !S_ISREG(ctx.st.st_mode)) {
-        close(ctx.fd_path);
-        Logger::error(std::format("Path is not a regular file or is a symlink: {}", ctx.input.string()));
-        return false;
-    }
-    
-    // Проверка на максимальный размер файла
-    if (ctx.st.st_size > MAX_FILE_SIZE) {
-        close(ctx.fd_path);
-        Logger::warning(std::format("File too large: {} (size: {} bytes, max: {} bytes)", 
-                                    ctx.input.string(), ctx.st.st_size, MAX_FILE_SIZE));
-        return false;
-    }
-    
-    // Проверка на hardlink-атаки
-    if (ctx.st.st_nlink > 1) {
-        Logger::warning(std::format("Hardlink detected (nlink={}): {} - potential security risk", 
-                                   ctx.st.st_nlink, ctx.input.string()));
-    }
-    
-    // Проверка прав доступа
-    if ((ctx.st.st_mode & S_IRUSR) == 0 && getuid() != ctx.st.st_uid && getuid() != 0) {
-        close(ctx.fd_path);
-        Logger::warning(std::format("No read permission for file: {}", ctx.input.string()));
-        return false;
-    }
-    
-    // Открываем файл для чтения через /proc/self/fd/
-    char proc_path[PROC_FD_PATH_SIZE];
-    int ret = snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", ctx.fd_path);
-    if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
-        int saved_errno = errno;
-        close(ctx.fd_path);
-        Logger::error(std::format("snprintf failed for proc path: {} - {}", ctx.input.string(), strerror(saved_errno)));
-        return false;
-    }
-    
-    ctx.fd_in = open(proc_path, O_RDONLY | O_NOATIME);
-    if (ctx.fd_in < 0) {
-        int saved_errno = errno;
-        close(ctx.fd_path);
-        Logger::error(std::format("Failed to reopen file for reading: {} - {}", ctx.input.string(), strerror(saved_errno)));
-        return false;
-    }
-    
-    close(ctx.fd_path);
-    posix_fadvise(ctx.fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
-    
-    return true;
-}
-
-static bool open_output_file_safely(int fd_in, const fs::path& output, int& fd_out) {
-    struct stat input_st;
-    if (fstat(fd_in, &input_st) != 0) {
-        Logger::error(std::format("Failed to fstat input file: {}", strerror(errno)));
-        return false;
-    }
-    
-    // Используем O_CREAT | O_EXCL для предотвращения перезаписи
-    fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, input_st.st_mode & 0666);
-    if (fd_out < 0) {
-        int saved_errno = errno;
-        if (saved_errno == EEXIST) {
-            Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
-        } else if (saved_errno == ELOOP) {
-            Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
-        } else {
-            Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
-        }
-        return false;
-    }
-    
-    return true;
-}
-
-/**
  * Вычисляет оптимальный размер буфера на основе размера файла
  * Адаптивный подход улучшает производительность:
  * - Маленькие файлы: меньшие буферы для экономии памяти
@@ -252,7 +130,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
     
     // Проверка на максимальный размер файла для предотвращения DoS атак
-    if (st.st_size > MAX_FILE_SIZE) {
+    if (static_cast<uint64_t>(st.st_size) > MAX_FILE_SIZE) {
         close(fd_path);
         Logger::warning(std::format("File too large: {} (size: {} bytes, max: {} bytes)", 
                                     input.string(), st.st_size, MAX_FILE_SIZE));
@@ -493,7 +371,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
     
     // Проверка на максимальный размер файла для предотвращения DoS атак
-    if (st.st_size > MAX_FILE_SIZE) {
+    if (static_cast<uint64_t>(st.st_size) > MAX_FILE_SIZE) {
         close(fd_path);
         Logger::warning(std::format("File too large: {} (size: {} bytes, max: {} bytes)", 
                                     input.string(), st.st_size, MAX_FILE_SIZE));
@@ -660,8 +538,9 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
 
     BrotliEncoderDestroyInstance(state);
-    // fflush должен вызываться ДО fclose, а не после
-    if (fflush(file_out) != 0 || fsync(fd_out) != 0) {
+    
+    // Flush ДО закрытия файла - правильный порядок
+    if (fflush(file_out) != 0 || fsync(fileno(file_out)) != 0) {
         Logger::error("Failed to flush brotli output");
         fclose(file_in);
         fclose(file_out);
