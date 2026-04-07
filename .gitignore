@@ -1,8 +1,11 @@
 
 # Build artifacts
+build/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
+dist/
+target/
 Makefile
 src/build/
 src/cmake-build-*/
@@ -48,10 +51,20 @@ src/Makefile
 *.exe
 *.out
 *.obj
+.mypy_cache/
+.pytest_cache/
+.gradle/
 
 # Dependencies
 vendor/
 _third_party/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
 
 # Logs and temp files
 *.log
@@ -65,6 +78,10 @@ _third_party/
 .env
 .env.local
 .env.*
+
+# System files
+.DS_Store
+Thumbs.db
 
 # Editors
 .vscode/
@@ -84,6 +101,9 @@ htmlcov/
 ```
 # Package management
 *.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 *.zip
 *.gz
 *.bz2
