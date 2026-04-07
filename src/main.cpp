@@ -162,7 +162,11 @@ TaskPriority determine_priority(const fs::path& path) {
         } else {
             return TaskPriority::LOW;
         }
-    } catch (...) {
+    } catch (const fs::filesystem_error& e) {
+        Logger::warning(std::format("Filesystem error getting file size: {} - {}", path.string(), e.what()));
+        return TaskPriority::NORMAL;
+    } catch (const std::exception& e) {
+        Logger::warning(std::format("Error getting file size: {} - {}", path.string(), e.what()));
         return TaskPriority::NORMAL;
     }
 }
@@ -192,8 +196,10 @@ void compress_task(const fs::path& path) {
     
     try {
         original_size = fs::file_size(path);
-    } catch (...) {
-        Logger::warning(std::format("Cannot get file size: {}", path.string()));
+    } catch (const fs::filesystem_error& e) {
+        Logger::warning(std::format("Cannot get file size: {} - {}", path.string(), e.what()));
+    } catch (const std::exception& e) {
+        Logger::warning(std::format("Error getting file size: {} - {}", path.string(), e.what()));
     }
 
     if (!g_cfg->dry_run) {
@@ -214,7 +220,11 @@ void compress_task(const fs::path& path) {
                     Compressor::copy_metadata(path, path.string() + ".br");
                     try {
                         compressed_size += fs::file_size(path.string() + ".br");
-                    } catch (...) {}
+                    } catch (const fs::filesystem_error& e) {
+                        Logger::warning(std::format("Cannot get compressed file size: {} - {}", path.string() + ".br", e.what()));
+                    } catch (const std::exception& e) {
+                        Logger::warning(std::format("Error getting compressed file size: {} - {}", path.string() + ".br", e.what()));
+                    }
                 }
             }
         }
@@ -228,7 +238,11 @@ void compress_task(const fs::path& path) {
                     Compressor::copy_metadata(path, path.string() + ".gz");
                     try {
                         compressed_size += fs::file_size(path.string() + ".gz");
-                    } catch (...) {}
+                    } catch (const fs::filesystem_error& e) {
+                        Logger::warning(std::format("Cannot get compressed file size: {} - {}", path.string() + ".gz", e.what()));
+                    } catch (const std::exception& e) {
+                        Logger::warning(std::format("Error getting compressed file size: {} - {}", path.string() + ".gz", e.what()));
+                    }
                 }
             }
         }
@@ -243,7 +257,11 @@ void compress_task(const fs::path& path) {
                     Compressor::copy_metadata(path, path.string() + ".br");
                     try {
                         compressed_size += fs::file_size(path.string() + ".br");
-                    } catch (...) {}
+                    } catch (const fs::filesystem_error& e) {
+                        Logger::warning(std::format("Cannot get compressed file size: {} - {}", path.string() + ".br", e.what()));
+                    } catch (const std::exception& e) {
+                        Logger::warning(std::format("Error getting compressed file size: {} - {}", path.string() + ".br", e.what()));
+                    }
                 }
             }
         }
@@ -340,9 +358,6 @@ int main(int argc, char* argv[]) {
         }
     } catch (const std::exception& e) {
         Logger::error(std::format("Exception in main loop: {}", e.what()));
-        g_running = false;
-    } catch (...) {
-        Logger::error("Unknown exception in main loop");
         g_running = false;
     }
 

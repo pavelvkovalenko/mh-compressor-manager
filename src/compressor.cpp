@@ -117,7 +117,13 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     // Шаг 4: Открываем файл для чтения через /proc/self/fd/ используя тот же fd
     // Это гарантирует что мы работаем с тем же самым файлом, который проверили
     char proc_path[PROC_FD_PATH_SIZE];
-    snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd_path);
+    int ret = snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd_path);
+    if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
+        int saved_errno = errno;
+        close(fd_path);
+        Logger::error(std::format("snprintf failed for proc path: {} - {}", input.string(), strerror(saved_errno)));
+        return false;
+    }
     
     int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
     if (fd_in < 0) {
@@ -322,7 +328,13 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     
     // Шаг 4: Открываем файл для чтения через /proc/self/fd/
     char proc_path[PROC_FD_PATH_SIZE];
-    snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd_path);
+    int ret = snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd_path);
+    if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
+        int saved_errno = errno;
+        close(fd_path);
+        Logger::error(std::format("snprintf failed for proc path: {} - {}", input.string(), strerror(saved_errno)));
+        return false;
+    }
     
     int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
     if (fd_in < 0) {

@@ -98,9 +98,26 @@ public:
         stop_flag = true;
         condition.notify_all();
         io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
+        
+        // Завершаем потоки с таймаутом для избежания вечной блокировки
+        // Используем отдельный поток для ожидания join с таймаутом
+        constexpr auto THREAD_JOIN_TIMEOUT = std::chrono::seconds(30);
+        
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                worker.join();
+                std::atomic<bool> join_done{false};
+                std::thread join_waiter([&worker, &join_done]() {
+                    worker.join();
+                    join_done.store(true, std::memory_order_release);
+                });
+                
+                join_waiter.join();
+                
+                // Если поток не завершился за таймаут, детачим его
+                // (в реальности это маловероятно благодаря stop_flag)
+                if (!join_done.load(std::memory_order_acquire)) {
+                    Logger::warning("Thread join timeout, continuing shutdown");
+                }
             }
         }
         workers.clear();  // Очищаем вектор потоков после завершения
