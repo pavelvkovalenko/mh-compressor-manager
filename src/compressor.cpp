@@ -144,20 +144,37 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
     // fdopen забирает владение дескриптором, теперь закрывать нужно только fclose(file_in)
 
+    // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
+    // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
+    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
+    if (fd_out < 0) {
+        int saved_errno = errno;
+        fclose(file_in);
+        if (saved_errno == EEXIST) {
+            Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
+        } else if (saved_errno == ELOOP) {
+            Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
+        } else {
+            Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
+        }
+        return false;
+    }
+    
+    FILE* file_out = fdopen(fd_out, "wb");
+    if (!file_out) {
+        close(fd_out);
+        fclose(file_in);
+        Logger::error(std::format("Failed to fdopen output file {}: {}", output.string(), strerror(errno)));
+        return false;
+    }
+
     z_stream strm = {};
     // Используем Z_HUFFMAN_ONLY для быстрых файлов или Z_DEFAULT_STRATEGY для лучшего сжатия
     int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
     if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
         Logger::error("Failed to init gzip stream");
         fclose(file_in);
-        return false;
-    }
-
-    std::ofstream ofs(output, std::ios::binary);
-    if (!ofs) {
-        deflateEnd(&strm);
-        fclose(file_in);
-        Logger::error(std::format("Failed to open output file: {}", output.string()));
+        fclose(file_out);
         return false;
     }
 
@@ -188,8 +205,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
                 }
                 size_t have = out_buffer.size() - strm.avail_out;
                 if (have > 0) {
-                    ofs.write(out_buffer.data(), have);
-                    if (ofs.fail()) {
+                    if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
                         has_error = true;
                         break;
                     }
@@ -213,8 +229,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             }
             size_t have = out_buffer.size() - strm.avail_out;
             if (have > 0) {
-                ofs.write(out_buffer.data(), have);
-                if (ofs.fail()) {
+                if (fwrite(out_buffer.data(), 1, have, file_out) != have) {
                     has_error = true;
                     break;
                 }
@@ -224,9 +239,9 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
 
     deflateEnd(&strm);
     fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    ofs.close();
+    fclose(file_out); // Закрываем выходной файл
     
-    if (has_error || ofs.fail()) {
+    if (has_error || fflush(file_out) != 0 || fsync(fd_out) != 0) {
         Logger::error("Failed to write gzip output");
         return false;
     }
@@ -332,10 +347,34 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
     // fdopen забирает владение дескриптором
 
-    std::ofstream ofs(output, std::ios::binary);
-    if (!ofs) {
+    // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
+    struct stat input_st;
+    if (fstat(fd_in, &input_st) != 0) {
         fclose(file_in);
-        Logger::error(std::format("Failed to open output file: {}", output.string()));
+        Logger::error(std::format("Failed to fstat input file {}: {}", input.string(), strerror(errno)));
+        return false;
+    }
+    
+    // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
+    int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, input_st.st_mode & 0666);
+    if (fd_out < 0) {
+        int saved_errno = errno;
+        fclose(file_in);
+        if (saved_errno == EEXIST) {
+            Logger::error(std::format("Output file already exists (potential race condition): {}", output.string()));
+        } else if (saved_errno == ELOOP) {
+            Logger::error(std::format("Symlink attack detected on output path: {}", output.string()));
+        } else {
+            Logger::error(std::format("Failed to open output file {}: {}", output.string(), strerror(saved_errno)));
+        }
+        return false;
+    }
+    
+    FILE* file_out = fdopen(fd_out, "wb");
+    if (!file_out) {
+        close(fd_out);
+        fclose(file_in);
+        Logger::error(std::format("Failed to fdopen output file {}: {}", output.string(), strerror(errno)));
         return false;
     }
 
@@ -343,6 +382,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     BrotliEncoderState* state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
     if (!state) {
         fclose(file_in);
+        fclose(file_out);
         Logger::error("Failed to create Brotli encoder");
         return false;
     }
@@ -382,8 +422,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                 
                 size_t written = out_buffer.size() - available_out;
                 if (written > 0) {
-                    ofs.write(reinterpret_cast<char*>(out_buffer.data()), written);
-                    if (ofs.fail()) {
+                    if (fwrite(out_buffer.data(), 1, written, file_out) != written) {
                         success = false;
                         break;
                     }
@@ -409,9 +448,9 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
 
     BrotliEncoderDestroyInstance(state);
     fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    ofs.close();
+    fclose(file_out); // Закрываем выходной файл
 
-    if (ofs.fail()) {
+    if (fflush(file_out) != 0 || fsync(fd_out) != 0) {
         Logger::error("Failed to write brotli output");
         return false;
     }
@@ -433,31 +472,59 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
         return false;
     }
     
-    // 1. Копируем права доступа (режим)
-    if (chmod(dest.c_str(), st.st_mode) != 0) {
+    // Открываем целевой файл через openat для защиты от symlink атак
+    fs::path parent_dir = dest.parent_path();
+    std::string basename = dest.filename().string();
+    if (parent_dir.empty()) {
+        parent_dir = ".";
+    }
+    
+    int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (dir_fd < 0) {
+        Logger::warning(std::format("Failed to open directory {} for metadata copy: {}", parent_dir.string(), strerror(errno)));
+        return false;
+    }
+    
+    // Открываем файл без следования за symlink
+    int dest_fd = openat(dir_fd, basename.c_str(), O_WRONLY | O_NOFOLLOW);
+    close(dir_fd);
+    
+    if (dest_fd < 0) {
+        Logger::warning(std::format("Failed to open destination file {} for metadata copy: {}", dest.string(), strerror(errno)));
+        return false;
+    }
+    
+    // 1. Копируем права доступа (режим) через fchmod
+    if (fchmod(dest_fd, st.st_mode) != 0) {
+        close(dest_fd);
         Logger::warning(std::format("Failed to set permissions on {}: {}", dest.string(), strerror(errno)));
         return false;
     }
     
     // 2. Копируем владельца и группу (только если запускаемся от root или имеем права)
-    // lchown не следует за символическими ссылками
-    if (lchown(dest.c_str(), st.st_uid, st.st_gid) != 0) {
+    // fchown работает с fd, не следует за symlink
+    if (fchown(dest_fd, st.st_uid, st.st_gid) != 0) {
         // Если не удалось сменить владельца (нет прав), логируем, но не считаем это фатальной ошибкой
         if (errno == EPERM) {
             Logger::debug(std::format("No permission to change ownership of {} (running as non-root?)", dest.string()));
         } else {
+            close(dest_fd);
             Logger::warning(std::format("Failed to set ownership on {}: {}", dest.string(), strerror(errno)));
+            return false;
         }
     }
     
-    // 3. Копируем временные метки (atime, mtime)
+    // 3. Копируем временные метки (atime, mtime) через futimens
     struct timespec times[2];
     times[0] = st.st_atim;
     times[1] = st.st_mtim;
-    if (utimensat(AT_FDCWD, dest.c_str(), times, 0) != 0) {
+    if (futimens(dest_fd, times) != 0) {
+        close(dest_fd);
         Logger::warning(std::format("Failed to set timestamps on {}: {}", dest.string(), strerror(errno)));
         return false;
     }
+    
+    close(dest_fd);
     
     // 4. Копируем SELinux-контекст (опционально, если библиотека доступна)
     #ifdef HAVE_SELINUX
@@ -632,6 +699,39 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         Logger::debug(std::format("Original file does not exist, skipping ownership check for compressed copies of {}", original_path.string()));
     }
     
+    // Вспомогательная функция для безопасного удаления файла
+    auto safe_unlink = [](const fs::path& filepath, const char* type) -> bool {
+        fs::path parent_dir = filepath.parent_path();
+        std::string basename = filepath.filename().string();
+        if (parent_dir.empty()) {
+            parent_dir = ".";
+        }
+        
+        // Открываем директорию с O_DIRECTORY | O_NOFOLLOW для защиты от symlink
+        int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (dir_fd < 0) {
+            Logger::error(std::format("Failed to open directory {} for {} removal: {}", 
+                                     parent_dir.string(), type, strerror(errno)));
+            return false;
+        }
+        
+        // Используем unlinkat с AT_REMOVEDIR для удаления без следования за symlink
+        if (unlinkat(dir_fd, basename.c_str(), 0) != 0) {
+            int saved_errno = errno;
+            close(dir_fd);
+            if (saved_errno == ENOENT) {
+                Logger::debug(std::format("{} file does not exist: {}", type, filepath.string()));
+                return true;  // Не ошибка, файл уже удалён
+            }
+            Logger::error(std::format("Failed to unlink {} {}: {}", type, filepath.string(), strerror(saved_errno)));
+            return false;
+        }
+        
+        close(dir_fd);
+        Logger::info(std::format("Removed {} copy: {}", type, filepath.string()));
+        return true;
+    };
+    
     // 3. Проверяем и удаляем .gz копию
     fs::path gz_path = original_path.string() + ".gz";
     if (fs::exists(gz_path, ec) && !ec) {
@@ -641,11 +741,7 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         } else {
             // Проверка владельца (пропускаем, если оригинал не существует)
             if (!orig_exists || check_file_ownership(gz_path, expected_uid)) {
-                if (fs::remove(gz_path, ec) && !ec) {
-                    Logger::info(std::format("Removed compressed copy: {}", gz_path.string()));
-                } else {
-                    Logger::error(std::format("Failed to remove {}: {}", gz_path.string(), ec.message()));
-                }
+                safe_unlink(gz_path, "gzip");
             } else {
                 Logger::error(std::format("Ownership check failed for {}, skipping removal", gz_path.string()));
             }
@@ -661,11 +757,7 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         } else {
             // Проверка владельца (пропускаем, если оригинал не существует)
             if (!orig_exists || check_file_ownership(br_path, expected_uid)) {
-                if (fs::remove(br_path, ec) && !ec) {
-                    Logger::info(std::format("Removed compressed copy: {}", br_path.string()));
-                } else {
-                    Logger::error(std::format("Failed to remove {}: {}", br_path.string(), ec.message()));
-                }
+                safe_unlink(br_path, "brotli");
             } else {
                 Logger::error(std::format("Ownership check failed for {}, skipping removal", br_path.string()));
             }
