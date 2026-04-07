@@ -76,26 +76,30 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     // Подсказка ОС о последовательном чтении и предзагрузке
     posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
     
-    std::ifstream ifs(input, std::ios::binary);
-    if (!ifs) {
+    // ВАЖНО: Используем fdopen() вместо повторного open() для предотвращения TOCTOU-атаки
+    // Повторное открытие файла по пути (input.c_str()) создало бы уязвимость между fstat() и fopen()
+    FILE* file_in = fdopen(fd_in, "rb");
+    if (!file_in) {
+        int saved_errno = errno;
         close(fd_in);
-        Logger::error(std::format("Failed to open file for reading: {}", input.string()));
+        Logger::error(std::format("Failed to fdopen file {}: {}", input.string(), strerror(saved_errno)));
         return false;
     }
+    // fdopen забирает владение дескриптором, теперь закрывать нужно только fclose(file_in)
 
     z_stream strm = {};
     // Используем Z_HUFFMAN_ONLY для быстрых файлов или Z_DEFAULT_STRATEGY для лучшего сжатия
     int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
     if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
         Logger::error("Failed to init gzip stream");
-        close(fd_in);
+        fclose(file_in);
         return false;
     }
 
     std::ofstream ofs(output, std::ios::binary);
     if (!ofs) {
         deflateEnd(&strm);
-        close(fd_in);
+        fclose(file_in);
         Logger::error(std::format("Failed to open output file: {}", output.string()));
         return false;
     }
@@ -108,9 +112,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     bool has_error = false;
 
     do {
-        // Читаем порциями из входного файла
-        ifs.read(in_buffer.data(), in_buffer.size());
-        std::streamsize bytes_read = ifs.gcount();
+        // Читаем порциями из входного файла через fdopen FILE*
+        size_t bytes_read = fread(in_buffer.data(), 1, in_buffer.size(), file_in);
         
         if (bytes_read > 0) {
             strm.avail_in = bytes_read;
@@ -120,7 +123,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             do {
                 strm.avail_out = out_buffer.size();
                 strm.next_out = (Bytef*)out_buffer.data();
-                ret = deflate(&strm, ifs.eof() ? Z_FINISH : Z_NO_FLUSH);
+                ret = deflate(&strm, feof(file_in) ? Z_FINISH : Z_NO_FLUSH);
                 if (ret == Z_STREAM_ERROR) {
                     Logger::error("Gzip stream error");
                     has_error = true;
@@ -138,7 +141,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         }
         
         if (has_error) break;
-    } while (!ifs.eof());
+    } while (!feof(file_in));
 
     // Завершаем поток (если не было ошибок)
     if (!has_error) {
@@ -163,7 +166,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
 
     deflateEnd(&strm);
-    close(fd_in);
+    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
     ofs.close();
     
     if (has_error || ofs.fail()) {
@@ -212,16 +215,19 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     // Подсказка ОС о последовательном чтении и предзагрузке
     posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
     
-    std::ifstream ifs(input, std::ios::binary);
-    if (!ifs) {
+    // ВАЖНО: Используем fdopen() вместо повторного open() для предотвращения TOCTOU-атаки
+    FILE* file_in = fdopen(fd_in, "rb");
+    if (!file_in) {
+        int saved_errno = errno;
         close(fd_in);
-        Logger::error(std::format("Failed to open file for reading: {}", input.string()));
+        Logger::error(std::format("Failed to fdopen file {}: {}", input.string(), strerror(saved_errno)));
         return false;
     }
+    // fdopen забирает владение дескриптором
 
     std::ofstream ofs(output, std::ios::binary);
     if (!ofs) {
-        close(fd_in);
+        fclose(file_in);
         Logger::error(std::format("Failed to open output file: {}", output.string()));
         return false;
     }
@@ -229,7 +235,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     // Создаем поток сжатия Brotli
     BrotliEncoderState* state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
     if (!state) {
-        close(fd_in);
+        fclose(file_in);
         Logger::error("Failed to create Brotli encoder");
         return false;
     }
@@ -245,21 +251,20 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     bool success = true;
 
     while (true) {
-        // Читаем порцию из входного файла
-        ifs.read(reinterpret_cast<char*>(in_buffer.data()), in_buffer.size());
-        std::streamsize bytes_read = ifs.gcount();
+        // Читаем порцию из входного файла через fdopen FILE*
+        size_t bytes_read = fread(in_buffer.data(), 1, in_buffer.size(), file_in);
         
         const uint8_t* next_in = in_buffer.data();
         size_t available_in = bytes_read;
         
         // Обрабатываем прочитанные данные
-        if (bytes_read > 0 || !ifs.eof()) {
+        if (bytes_read > 0 || !feof(file_in)) {
             while (available_in > 0 || !BrotliEncoderIsFinished(state)) {
                 size_t available_out = out_buffer.size();
                 uint8_t* next_out = out_buffer.data();
                 
                 if (!BrotliEncoderCompressStream(state,
-                        ifs.eof() ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS,
+                        feof(file_in) ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS,
                         &available_in, &next_in,
                         &available_out, &next_out,
                         nullptr)) {
@@ -277,7 +282,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                     }
                 }
                 
-                if (available_in == 0 && !ifs.eof()) {
+                if (available_in == 0 && !feof(file_in)) {
                     break;
                 }
                 
@@ -290,13 +295,13 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         if (!success) break;
         
         // Если достигнут конец файла и поток завершен
-        if (ifs.eof() && BrotliEncoderIsFinished(state)) {
+        if (feof(file_in) && BrotliEncoderIsFinished(state)) {
             break;
         }
     }
 
     BrotliEncoderDestroyInstance(state);
-    close(fd_in);
+    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
     ofs.close();
 
     if (ofs.fail()) {
