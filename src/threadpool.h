@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <future>
+#include "logger.h"
 
 // Приоритеты задач
 enum class TaskPriority : uint8_t {
