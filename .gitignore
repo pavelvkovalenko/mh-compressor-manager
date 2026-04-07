@@ -1,59 +1,9 @@
+```
 # Build artifacts
 build/
-cmake-build-*/
-CMakeFiles/
 CMakeCache.txt
-Makefile
-*.cmake
-*.o
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
-*.out
-*.obj
+CMakeFiles/
 
-# Dependencies
-vendor/
-_third_party/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Package management
-*.tar.gz
-*.zip
-*.gz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
+# Executables
+mh-compressor-manager
+```

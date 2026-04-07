@@ -289,4 +289,6 @@ CMakeFiles/mh-compressor-manager.dir/compressor.cpp.o: \
  /usr/include/c++/12/bits/ranges_algo.h \
  /usr/include/c++/12/bits/ranges_util.h \
  /usr/include/c++/12/pstl/glue_algorithm_defs.h /usr/include/pwd.h \
- /usr/include/grp.h
+ /usr/include/grp.h /usr/include/c++/12/set \
+ /usr/include/c++/12/bits/stl_tree.h /usr/include/c++/12/bits/stl_set.h \
+ /usr/include/c++/12/bits/stl_multiset.h

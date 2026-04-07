@@ -494,9 +494,9 @@ ZLIB_zlib_PREFIX:INTERNAL=
 ZLIB_zlib_VERSION:INTERNAL=
 //linker supports push/pop state
 _CMAKE_LINKER_PUSHPOP_STATE_SUPPORTED:INTERNAL=TRUE
-__pkg_config_arguments_BROTLI:INTERNAL=REQUIRED;libbrotlienc;libbrotlicommon
-__pkg_config_arguments_SYSTEMD:INTERNAL=REQUIRED;libsystemd
-__pkg_config_arguments_ZLIB:INTERNAL=REQUIRED;zlib
+__pkg_config_arguments_BROTLI:INTERNAL=QUIET;libbrotlienc;libbrotlicommon
+__pkg_config_arguments_SYSTEMD:INTERNAL=QUIET;libsystemd
+__pkg_config_arguments_ZLIB:INTERNAL=QUIET;zlib
 __pkg_config_checked_BROTLI:INTERNAL=1
 __pkg_config_checked_SELINUX:INTERNAL=1
 __pkg_config_checked_SYSTEMD:INTERNAL=1

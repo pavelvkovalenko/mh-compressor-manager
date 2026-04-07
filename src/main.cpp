@@ -19,14 +19,15 @@ namespace std {
 #include <thread>
 #include <chrono>
 #include <unordered_map>
+#include <memory>
 
 namespace fs = std::filesystem;
 
 // Глобальные переменные для обработки сигналов
 std::atomic<bool> g_running{true};
-ThreadPool* g_pool = nullptr;
-Monitor* g_monitor = nullptr;
-Config* g_cfg = nullptr;
+std::unique_ptr<ThreadPool> g_pool;
+std::unique_ptr<Monitor> g_monitor;
+std::unique_ptr<Config> g_cfg;
 
 // Метрики производительности
 struct PerformanceMetrics {
@@ -243,14 +244,13 @@ void delete_task(const fs::path& path) {
 
 int main(int argc, char* argv[]) {
     // Загрузка конфигурации
-    Config cfg = load_config(argc, argv);
-    g_cfg = &cfg;
+    g_cfg = std::make_unique<Config>(load_config(argc, argv));
     
     // Инициализация логгера
-    Logger::init("mh-compressor-manager", cfg.debug);
+    Logger::init("mh-compressor-manager", g_cfg->debug);
     Logger::info("Starting mh-compressor-manager");
-    Logger::info(std::format("Target paths: {}", cfg.target_paths.size()));
-    for (const auto& p : cfg.target_paths) {
+    Logger::info(std::format("Target paths: {}", g_cfg->target_paths.size()));
+    for (const auto& p : g_cfg->target_paths) {
         Logger::info(std::format("  - {}", p));
     }
 
@@ -259,40 +259,38 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signal_handler);
 
     // Настройка пула потоков с ограничением размера очереди и I/O
-    int threads = cfg.threads;
+    int threads = g_cfg->threads;
     if (threads == 0) threads = std::thread::hardware_concurrency();
     if (threads == 0) threads = 2;
     constexpr size_t MAX_QUEUE_SIZE = 1000;  // Максимум задач в очереди
-    size_t max_ios = cfg.max_active_ios > 0 ? cfg.max_active_ios : 0;
+    size_t max_ios = g_cfg->max_active_ios > 0 ? g_cfg->max_active_ios : 0;
     Logger::info(std::format("Thread pool size: {}, max queue size: {}, max active I/O: {}", 
                              threads, MAX_QUEUE_SIZE, max_ios > 0 ? max_ios : SIZE_MAX));
 
-    ThreadPool pool(threads, MAX_QUEUE_SIZE, max_ios);
-    g_pool = &pool;
+    g_pool = std::make_unique<ThreadPool>(threads, MAX_QUEUE_SIZE, max_ios);
 
     // Инициализация монитора
-    Monitor monitor(cfg);
-    g_monitor = &monitor;
+    g_monitor = std::make_unique<Monitor>(*g_cfg);
 
     // Регистрация обработчиков событий с проверкой переполнения очереди и приоритетами
-    monitor.set_task_handler([&pool](const fs::path& p) {
+    g_monitor->set_task_handler([](const fs::path& p) {
         TaskPriority priority = determine_priority(p);
-        if (!pool.enqueue([p]() { compress_task(p); }, priority)) {
+        if (!g_pool->enqueue([p]() { compress_task(p); }, priority)) {
             Logger::warning(std::format("Task queue full, skipping: {}", p.string()));
         }
     });
-    monitor.set_delete_handler([&pool](const fs::path& p) {
+    g_monitor->set_delete_handler([](const fs::path& p) {
         // Задачи удаления имеют высокий приоритет
-        if (!pool.enqueue([p]() { delete_task(p); }, TaskPriority::HIGH)) {
+        if (!g_pool->enqueue([p]() { delete_task(p); }, TaskPriority::HIGH)) {
             Logger::warning(std::format("Delete task queue full, skipping: {}", p.string()));
         }
     });
 
     // Запуск мониторинга
-    monitor.start();
+    g_monitor->start();
     
     // Начальное сканирование существующих файлов
-    monitor.scan_existing_files();
+    g_monitor->scan_existing_files();
 
     // Уведомление systemd о готовности
     sd_notify(0, "READY=1");
@@ -317,9 +315,9 @@ int main(int argc, char* argv[]) {
     Logger::info("Service stopped");
     
     // Корректное завершение работы с очисткой глобальных указателей
-    g_monitor = nullptr;
-    g_pool = nullptr;
-    g_cfg = nullptr;
+    g_monitor.reset();
+    g_pool.reset();
+    g_cfg.reset();
     
     // Корректное завершение работы логгера
     Logger::shutdown();
