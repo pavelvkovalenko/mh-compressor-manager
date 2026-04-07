@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![C++ Standard](https://img.shields.io/badge/C%2B%2B-23-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux%20(Fedora%2038%2B)-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -27,7 +27,7 @@
 | Версия | Год | Особенности |
 |--------|-----|-------------|
 | **0.x** | 2014 | Только Gzip, без логов, без многопоточности |
-| **1.0.0** | 2026 | Gzip + Brotli, systemd, многопоточность, полное логирование |
+| **1.1.0** | 2026 | Gzip + Brotli, systemd, многопоточность, полное логирование |
 
 > 📌 **Примечание:** Программа разработана специально для **Fedora 43** с учётом всех современных требований к безопасности и производительности.
 
@@ -95,10 +95,10 @@
 sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel pkgconf-pkg-config cmake gcc-c++ rpm-build
 
 # 2. Сборка RPM-пакета
-./build-rpm.sh 1.0.0
+./build-rpm.sh 1.1.0
 
 # 3. Установка пакета
-sudo dnf install ~/rpmbuild/RPMS/x86_64/mh-compressor-manager-1.0.0-1.fc43.x86_64.rpm
+sudo dnf install ~/rpmbuild/RPMS/x86_64/mh-compressor-manager-1.1.0-1.fc43.x86_64.rpm
 
 # 4. Активация службы
 sudo systemctl daemon-reload
@@ -276,7 +276,7 @@ sudo journalctl -u mh-compressor-manager -o short-iso
 
 ```bash
 # 1. Установка
-sudo dnf install mh-compressor-manager-1.0.0-1.fc43.x86_64.rpm
+sudo dnf install mh-compressor-manager-1.1.0-1.fc43.x86_64.rpm
 sudo systemctl daemon-reload
 
 # 2. Запуск службы
@@ -505,7 +505,7 @@ SOFTWARE.
 | Параметр | Значение |
 |----------|----------|
 | **Проект** | mh-compressor-manager |
-| **Версия** | 1.0.0 |
+| **Версия** | 1.1.0 |
 | **Стандарт** | C++23 |
 | **Платформа** | Linux (Fedora 43+, Fedora 38+, CentOS, Ubuntu) |
 | **Компилятор** | GCC 13+ или Clang 16+ |
@@ -529,7 +529,7 @@ SOFTWARE.
 
 <div align="center">
 
-**mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 2
+**mh-compressor-manager v1.1.0** | Документация соответствует ТЗ версия 2
 
 © 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Лицензия MIT.
 
