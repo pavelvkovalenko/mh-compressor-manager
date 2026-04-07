@@ -7,6 +7,8 @@
 #include <systemd/sd-daemon.h>
 #include <csignal>
 #include <atomic>
+#include <sys/signalfd.h>
+#include <unistd.h>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -20,14 +22,18 @@ namespace std {
 #include <chrono>
 #include <unordered_map>
 #include <memory>
+#include <fcntl.h>
+#include <sys/epoll.h>
 
 namespace fs = std::filesystem;
 
 // Глобальные переменные для обработки сигналов
 std::atomic<bool> g_running{true};
+std::atomic<bool> g_reload_config{false};
 std::unique_ptr<ThreadPool> g_pool;
 std::unique_ptr<Monitor> g_monitor;
 std::unique_ptr<Config> g_cfg;
+int g_signal_fd = -1;
 
 // Метрики производительности
 struct PerformanceMetrics {
@@ -63,12 +69,111 @@ struct PerformanceMetrics {
 
 PerformanceMetrics g_metrics;
 
-// Обработчик сигналов завершения
+// Обработчик сигналов завершения (минималистичный - только установка флага)
 void signal_handler(int sig) {
-    Logger::info(std::format("Received signal {}", sig));
-    g_running = false;
-    if (g_monitor) g_monitor->stop();
-    if (g_pool) g_pool->stop();
+    // Только устанавливаем флаг, вся обработка в event loop через signalfd
+    if (sig == SIGTERM || sig == SIGINT) {
+        g_running = false;
+    } else if (sig == SIGHUP) {
+        g_reload_config = true;
+    }
+}
+
+// Инициализация signalfd для безопасной обработки сигналов (без race conditions)
+bool init_signal_fd() {
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGTERM);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGHUP);
+    
+    // Блокируем сигналы для стандартной обработки, чтобы они шли в signalfd
+    if (sigprocmask(SIG_BLOCK, &mask, nullptr) == -1) {
+        Logger::error("Failed to block signals");
+        return false;
+    }
+    
+    g_signal_fd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
+    if (g_signal_fd == -1) {
+        Logger::error(std::format("Failed to create signalfd: {}", strerror(errno)));
+        return false;
+    }
+    
+    Logger::info("Signal FD initialized for safe signal handling");
+    return true;
+}
+
+// Обработка сигналов через signalfd (безопасно, без race conditions)
+void handle_signals() {
+    struct signalfd_siginfo fdsi;
+    ssize_t s = read(g_signal_fd, &fdsi, sizeof(fdsi));
+    if (s != sizeof(fdsi)) {
+        return;
+    }
+    
+    switch (fdsi.ssi_signo) {
+        case SIGTERM:
+        case SIGINT:
+            Logger::info(std::format("Received signal {} ({}), initiating graceful shutdown", 
+                                     fdsi.ssi_signo, strsignal(fdsi.ssi_signo)));
+            g_running = false;
+            if (g_monitor) {
+                Logger::info("Stopping monitor...");
+                g_monitor->stop();
+            }
+            if (g_pool) {
+                Logger::info("Stopping thread pool (waiting for active tasks)...");
+                g_pool->stop();  // ThreadPool ждет завершения активных задач
+            }
+            break;
+        case SIGHUP:
+            Logger::info("Received SIGHUP, scheduling config reload...");
+            g_reload_config = true;
+            break;
+        default:
+            Logger::warning(std::format("Received unexpected signal: {}", fdsi.ssi_signo));
+            break;
+    }
+}
+
+// Горячая перезагрузка конфигурации (SIGHUP handler)
+void reload_config() {
+    Logger::info("Reloading configuration...");
+    try {
+        auto old_cfg = std::move(g_cfg);
+        g_cfg = std::make_unique<Config>(load_config(0, nullptr));
+        
+        Logger::info("Configuration reloaded successfully");
+        Logger::info(std::format("New target paths: {}", g_cfg->target_paths.size()));
+        
+        if (g_monitor) {
+            g_monitor->stop();
+            g_monitor = std::make_unique<Monitor>(*g_cfg);
+            
+            g_monitor->set_task_handler([](const fs::path& p) {
+                TaskPriority priority = determine_priority(p);
+                if (!g_pool->enqueue([p]() { compress_task(p); }, priority)) {
+                    Logger::warning(std::format("Task queue full, skipping: {}", p.string()));
+                }
+            });
+            g_monitor->set_delete_handler([](const fs::path& p) {
+                if (!g_pool->enqueue([p]() { delete_task(p); }, TaskPriority::HIGH)) {
+                    Logger::warning(std::format("Delete task queue full, skipping: {}", p.string()));
+                }
+            });
+            
+            g_monitor->start();
+            g_monitor->scan_existing_files();
+        }
+        
+        Logger::info("Monitor restarted with new configuration");
+    } catch (const std::exception& e) {
+        Logger::error(std::format("Failed to reload configuration: {}", e.what()));
+        Logger::warning("Keeping old configuration");
+        if (old_cfg) {
+            g_cfg = std::move(old_cfg);
+        }
+    }
 }
 
 // Проверка необходимости сжатия (идемпотентность)
@@ -309,9 +414,13 @@ int main(int argc, char* argv[]) {
         Logger::info(std::format("  - {}", p));
     }
 
-    // Обработчики сигналов
-    signal(SIGTERM, signal_handler);
-    signal(SIGINT, signal_handler);
+    // Инициализация безопасной обработки сигналов через signalfd
+    if (!init_signal_fd()) {
+        Logger::error("Failed to initialize signal handling, falling back to basic signals");
+        signal(SIGTERM, signal_handler);
+        signal(SIGINT, signal_handler);
+        signal(SIGHUP, signal_handler);
+    }
 
     // Настройка пула потоков с ограничением размера очереди и I/O
     int threads = g_cfg->threads;
@@ -351,10 +460,41 @@ int main(int argc, char* argv[]) {
     sd_notify(0, "READY=1");
     Logger::info("Service ready (sd_notify sent)");
 
-    // Главный цикл с обработкой исключений
+    // Главный цикл с использованием epoll для обработки сигналов через signalfd
     try {
         while (g_running) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            // Проверяем необходимость перезагрузки конфигурации
+            if (g_reload_config) {
+                g_reload_config = false;
+                reload_config();
+            }
+            
+            // Если signalfd инициализирован, используем epoll для ожидания сигналов
+            if (g_signal_fd >= 0) {
+                struct epoll_event ev;
+                ev.events = EPOLLIN;
+                ev.data.fd = g_signal_fd;
+                
+                int epfd = epoll_create1(EPOLL_CLOEXEC);
+                if (epfd >= 0) {
+                    epoll_ctl(epfd, EPOLL_CTL_ADD, g_signal_fd, &ev);
+                    
+                    struct epoll_event events[1];
+                    int nfds = epoll_wait(epfd, events, 1, 1000);  // Таймаут 1 секунда
+                    
+                    if (nfds > 0 && events[0].events & EPOLLIN) {
+                        handle_signals();
+                    }
+                    
+                    close(epfd);
+                } else {
+                    // Fallback если epoll не работает
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            } else {
+                // Fallback для старой обработки сигналов
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
         }
     } catch (const std::exception& e) {
         Logger::error(std::format("Exception in main loop: {}", e.what()));
@@ -364,12 +504,18 @@ int main(int argc, char* argv[]) {
     // Вывод метрик производительности
     g_metrics.log_summary();
 
-    Logger::info("Service stopped");
+    Logger::info("Service stopped gracefully");
     
     // Корректное завершение работы с очисткой глобальных указателей
     g_monitor.reset();
     g_pool.reset();
     g_cfg.reset();
+    
+    // Закрываем signalfd если был открыт
+    if (g_signal_fd >= 0) {
+        close(g_signal_fd);
+        g_signal_fd = -1;
+    }
     
     // Корректное завершение работы логгера
     Logger::shutdown();
