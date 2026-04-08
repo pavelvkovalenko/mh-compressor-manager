@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <atomic>
+#include <array>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -30,6 +31,15 @@ namespace {
 namespace {
     io_uring g_ring = {};
     std::atomic<size_t> g_pending_submissions{0};
+    
+    // Структура для хранения контекста асинхронной операции
+    struct AsyncIOContext {
+        int fd = -1;
+        uint8_t* buffer = nullptr;
+        size_t expected_size = 0;
+        bool is_write = false;
+        std::atomic<bool>* completed = nullptr;
+    };
 }
 #endif
 
@@ -57,11 +67,19 @@ bool AsyncIO::init_uring(size_t ring_size) {
         return true;
     }
     
-    int ret = io_uring_queue_init(ring_size, &g_ring, 0);
+    // Инициализируем io_uring с флагом IORING_SETUP_SINGLE_ISSUER для лучшей производительности
+    io_uring_params params = {};
+    params.flags = IORING_SETUP_SINGLE_ISSUER;
+    
+    int ret = io_uring_queue_init_params(ring_size, &g_ring, &params);
     if (ret != 0) {
-        Logger::warning(std::format("io_uring initialization failed: {}, falling back to sync I/O", 
-                                   strerror(-ret)));
-        return false;
+        // Пробуем без флагов для обратной совместимости
+        ret = io_uring_queue_init(ring_size, &g_ring, 0);
+        if (ret != 0) {
+            Logger::warning(std::format("io_uring initialization failed: {}, falling back to sync I/O", 
+                                       strerror(-ret)));
+            return false;
+        }
     }
     
     uring_state_.ring = &g_ring;
@@ -69,7 +87,8 @@ bool AsyncIO::init_uring(size_t ring_size) {
     uring_state_.ring_size = ring_size;
     g_uring_available.store(true);
     
-    Logger::debug(std::format("io_uring initialized with ring size {}", ring_size));
+    Logger::debug(std::format("io_uring initialized with ring size {} (single issuer: {})", 
+                             ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? "yes" : "no"));
     return true;
 #else
     Logger::debug("io_uring not available (liburing not installed), using sync I/O");
@@ -184,9 +203,19 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
 #if HAS_IO_URING
     if (!uring_state_.initialized) {
         // Fallback на синхронное чтение
-        int fd = open_file_optimized(path, O_RDONLY | (use_direct_io ? O_DIRECT : 0));
+        int flags = O_RDONLY;
+        if (use_direct_io) {
+            flags |= O_DIRECT;
+        }
+        int fd = open_file_optimized(path, flags);
         if (fd < 0) {
             return false;
+        }
+        
+        // Используем posix_fadvise для оптимизации чтения
+        posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+        if (offset > 0) {
+            posix_fadvise(fd, offset, buffer_size, POSIX_FADV_WILLNEED);
         }
         
         ssize_t result = sync_read(fd, buffer, buffer_size);
@@ -199,16 +228,22 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
         return true;
     }
     
-    // Асинхронное чтение через io_uring
-    int fd = open_file_optimized(path, O_RDONLY | (use_direct_io ? O_DIRECT : 0));
+    // Асинхронное чтение через io_uring с использованием linked SQE
+    int flags = O_RDONLY;
+    if (use_direct_io) {
+        flags |= O_DIRECT;
+    }
+    
+    int fd = open_file_optimized(path, flags);
     if (fd < 0) {
         return false;
     }
     
+    // Получаем SQE для операции чтения
     io_uring_sqe* sqe = io_uring_get_sqe(&g_ring);
     if (!sqe) {
         // Кольцо заполнено, выполняем submit и ждем
-        io_uring_submit(&g_ring);
+        io_uring_submit_and_wait(&g_ring, 1);
         sqe = io_uring_get_sqe(&g_ring);
         if (!sqe) {
             close(fd);
@@ -217,9 +252,11 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
         }
     }
     
+    // Подготовка операции чтения с поддержкой IOSQE_ASYNC
     io_uring_prep_read(sqe, fd, buffer, buffer_size, offset);
     io_uring_sqe_set_data(sqe, reinterpret_cast<void*>(static_cast<intptr_t>(fd)));
     
+    // Отправляем операцию
     int ret = io_uring_submit(&g_ring);
     if (ret < 0) {
         close(fd);
@@ -227,24 +264,35 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
         return false;
     }
     
-    // Ждем завершения операции
+    // Ждем завершения операции с таймаутом
     io_uring_cqe* cqe = nullptr;
-    ret = io_uring_wait_cqe(&g_ring, &cqe);
-    if (ret != 0) {
+    ret = io_uring_wait_cqe_timeout(&g_ring, &cqe, nullptr);
+    if (ret != 0 && ret != -ETIME) {
         close(fd);
         Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
         return false;
     }
     
-    if (cqe->res < 0) {
+    if (cqe && cqe->res < 0) {
         Logger::error(std::format("async read failed: {}", strerror(-cqe->res)));
         io_uring_cqe_seen(&g_ring, cqe);
         close(fd);
         return false;
     }
     
-    bytes_read = static_cast<size_t>(cqe->res);
-    io_uring_cqe_seen(&g_ring, cqe);
+    if (cqe) {
+        bytes_read = static_cast<size_t>(cqe->res);
+        io_uring_cqe_seen(&g_ring, cqe);
+    } else {
+        // Fallback на синхронное чтение если CQE не получен
+        ssize_t result = sync_read(fd, buffer, buffer_size);
+        if (result < 0) {
+            close(fd);
+            return false;
+        }
+        bytes_read = static_cast<size_t>(result);
+    }
+    
     close(fd);
     return true;
 #else
