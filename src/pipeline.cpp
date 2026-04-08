@@ -126,26 +126,30 @@ bool CompressionPipeline::compress(
     posix_fadvise(input_fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
     posix_fadvise(input_fd_, 0, 0, POSIX_FADV_NOREUSE);
     
-    // Создание выходных файлов
-    gzip_output_fd_ = open(gzip_output_path.c_str(), 
+    // Создание выходных файлов через временные файлы для атомарности
+    fs::path gzip_temp_path = gzip_output_path.string() + ".tmp";
+    fs::path brotli_temp_path = brotli_output_path.string() + ".tmp";
+    
+    gzip_output_fd_ = open(gzip_temp_path.c_str(), 
                            O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
                            0644);
     if (gzip_output_fd_ < 0) {
-        LOG_ERROR("Не удалось создать файл {}: {}", gzip_output_path.string(), strerror(errno));
+        LOG_ERROR("Не удалось создать файл {}: {}", gzip_temp_path.string(), strerror(errno));
         close(input_fd_);
         input_fd_ = -1;
         return false;
     }
     
-    brotli_output_fd_ = open(brotli_output_path.c_str(),
+    brotli_output_fd_ = open(brotli_temp_path.c_str(),
                              O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
                              0644);
     if (brotli_output_fd_ < 0) {
-        LOG_ERROR("Не удалось создать файл {}: {}", brotli_output_path.string(), strerror(errno));
+        LOG_ERROR("Не удалось создать файл {}: {}", brotli_temp_path.string(), strerror(errno));
         close(gzip_output_fd_);
         close(input_fd_);
         gzip_output_fd_ = -1;
         input_fd_ = -1;
+        fs::remove(gzip_temp_path);
         return false;
     }
     
@@ -182,9 +186,20 @@ bool CompressionPipeline::compress(
     
     if (error_occurred_) {
         LOG_ERROR("Конвейер сжатия завершен с ошибкой. Время работы: {} мс", total_time);
-        // Удаление частичных файлов при ошибке
-        fs::remove(gzip_output_path);
-        fs::remove(brotli_output_path);
+        // Удаление временных файлов при ошибке
+        fs::remove(gzip_temp_path);
+        fs::remove(brotli_temp_path);
+        return false;
+    }
+    
+    // Атомарное переименование временных файлов в целевые
+    try {
+        fs::rename(gzip_temp_path, gzip_output_path);
+        fs::rename(brotli_temp_path, brotli_output_path);
+    } catch (const fs::filesystem_error& e) {
+        LOG_ERROR("Ошибка переименования файлов: {}", e.what());
+        fs::remove(gzip_temp_path);
+        fs::remove(brotli_temp_path);
         return false;
     }
     
@@ -231,6 +246,15 @@ void CompressionPipeline::reader_stage(const fs::path& input_path) {
             
             if (bytes_read < 0) {
                 if (errno == EINTR) continue;
+                // Обработка удаления файла пользователем во время чтения
+                if (errno == ENOENT || errno == EBADF) {
+                    LOG_WARN("Файл {} был удален или стал недоступен во время чтения", input_path.string());
+                    error_occurred_ = true;
+                    block.has_error = true;
+                    block.error_message = "Файл удален пользователем";
+                    read_to_compress_.push(std::move(block));
+                    break;
+                }
                 LOG_ERROR("Ошибка чтения файла {}: {}", input_path.string(), strerror(errno));
                 error_occurred_ = true;
                 block.has_error = true;
@@ -468,6 +492,12 @@ void CompressionPipeline::writer_stage(
             if (!block.gzip_data.empty()) {
                 ssize_t written = write(gzip_output_fd_, block.gzip_data.data(), block.gzip_data.size());
                 if (written < 0) {
+                    // Обработка удаления выходного файла пользователем
+                    if (errno == EBADF || errno == EIO) {
+                        LOG_WARN("Выходной файл GZIP был удален или стал недоступен во время записи");
+                        error_occurred_ = true;
+                        break;
+                    }
                     LOG_ERROR("Ошибка записи GZIP: {}", strerror(errno));
                     error_occurred_ = true;
                     break;
@@ -479,6 +509,12 @@ void CompressionPipeline::writer_stage(
             if (!block.brotli_data.empty()) {
                 ssize_t written = write(brotli_output_fd_, block.brotli_data.data(), block.brotli_data.size());
                 if (written < 0) {
+                    // Обработка удаления выходного файла пользователем
+                    if (errno == EBADF || errno == EIO) {
+                        LOG_WARN("Выходной файл Brotli был удален или стал недоступен во время записи");
+                        error_occurred_ = true;
+                        break;
+                    }
                     LOG_ERROR("Ошибка записи Brotli: {}", strerror(errno));
                     error_occurred_ = true;
                     break;
