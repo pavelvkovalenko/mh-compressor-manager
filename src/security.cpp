@@ -18,6 +18,13 @@
 #define HAVE_SECCOMP 0
 #endif
 
+#if __has_include(<sys/capability.h>)
+#include <sys/capability.h>
+#define HAVE_LIBCAP 1
+#else
+#define HAVE_LIBCAP 0
+#endif
+
 namespace security {
 
 bool is_running_as_root() {

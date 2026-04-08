@@ -300,10 +300,9 @@ private:
             return;
         }
         
-        // Пытаемся освободить через munmap (для Huge Pages), иначе free
-        if (munmap(ptr, buffer_size) != 0) {
-            free(ptr);
-        }
+        // Память выделена через posix_memalign, освобождаем через free
+        // munmap можно использовать только для памяти выделенной через mmap
+        free(ptr);
 #endif
     }
     
