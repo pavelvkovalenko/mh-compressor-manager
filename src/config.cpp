@@ -47,7 +47,8 @@ Config load_config(int argc, char* argv[]) {
                       << "  --gzip-level <N>  Gzip level (1-9)\n"
                       << "  --brotli-level <N> Brotli level (1-11)\n"
                       << "  --dry-run         Dry run mode\n"
-                      << "  --version         Show version\n";
+                      << "  --version         Show version\n"
+                      << "  --process-without-ext  Process files without extensions\n";
             exit(0);
         }
         if (arg == "--version" || arg == "-v") {
@@ -89,6 +90,7 @@ Config load_config(int argc, char* argv[]) {
             cfg.cli_brotli_level = level;
         }
         else if (arg == "--dry-run") cfg.dry_run = true;
+        else if (arg == "--process-without-ext") cfg.process_files_without_extensions = true;
     }
 
     // Load INI
@@ -198,6 +200,7 @@ Config load_config(int argc, char* argv[]) {
                     else if (key == "drop_privileges") cfg.drop_privileges = (val == "true");
                     else if (key == "enable_seccomp") cfg.enable_seccomp = (val == "true");
                     else if (key == "run_as_user") cfg.run_as_user = val;
+                    else if (key == "process_files_without_extensions") cfg.process_files_without_extensions = (val == "true");
                 }
             }
         }
