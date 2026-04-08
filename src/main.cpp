@@ -337,9 +337,15 @@ TaskPriority determine_priority(const fs::path& path) {
 void compress_task(const fs::path& path) {
     if (!g_cfg) return;
     
-    // I/O троттлинг - задержка между файлами
-    if (g_cfg->io_delay_us > 0) {
-        std::this_thread::sleep_for(std::chrono::microseconds(g_cfg->io_delay_us));
+    // Получаем настройки для конкретного пути (с учетом переопределений)
+    const FolderOverride* override = get_folder_override(*g_cfg, path.string());
+    
+    // I/O троттлинг - задержка между файлами (с учетом переопределений для папки)
+    int io_delay = override && override->io_delay_us.has_value() 
+        ? *override->io_delay_us 
+        : g_cfg->io_delay_us;
+    if (io_delay > 0) {
+        std::this_thread::sleep_for(std::chrono::microseconds(io_delay));
     }
     
     g_metrics.total_tasks++;
@@ -370,11 +376,19 @@ void compress_task(const fs::path& path) {
         bool gzip_success = false;
         bool brotli_success = false;
 
+        // Определяем уровни сжатия с учетом переопределений для папки
+        int gzip_level = override && override->compression_level_gzip.has_value()
+            ? *override->compression_level_gzip
+            : g_cfg->gzip_level;
+        int brotli_level = override && override->compression_level_brotli.has_value()
+            ? *override->compression_level_brotli
+            : g_cfg->brotli_level;
+
         // Приоритет brotli если включен - сначала сжимаем brotli (лучшее сжатие)
         bool prefer_brotli = (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli");
         
         if (prefer_brotli && (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli")) {
-            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", g_cfg->brotli_level);
+            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", brotli_level);
             if (brotli_success) {
                 // Безопасная проверка существования файла через lstat после сжатия
                 struct stat br_st;
@@ -392,7 +406,7 @@ void compress_task(const fs::path& path) {
         }
         
         if (g_cfg->algorithms == "all" || g_cfg->algorithms == "gzip") {
-            gzip_success = Compressor::compress_gzip(path, path.string() + ".gz", g_cfg->gzip_level);
+            gzip_success = Compressor::compress_gzip(path, path.string() + ".gz", gzip_level);
             if (gzip_success) {
                 // Безопасная проверка существования файла через lstat после сжатия
                 struct stat gz_st;
@@ -411,7 +425,7 @@ void compress_task(const fs::path& path) {
         
         // Если brotli не был выполнен первым (только gzip режим)
         if (!prefer_brotli && (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli")) {
-            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", g_cfg->brotli_level);
+            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", brotli_level);
             if (brotli_success) {
                 // Безопасная проверка существования файла через lstat после сжатия
                 struct stat br_st;
