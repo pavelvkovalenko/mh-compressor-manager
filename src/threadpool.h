@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <future>
+#include <csignal>
 #include "logger.h"
 #include "performance_optimizer.h"
 
@@ -43,7 +44,7 @@ struct PrioritizedTask {
 class ThreadPool {
 public:
     ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0) 
-        : stop_flag(false), max_queue_size(max_queue_size), active_tasks(0), 
+        : stop_flag(false), force_stop_flag(false), max_queue_size(max_queue_size), active_tasks(0), 
           m_max_active_ios(max_ios), io_slots_available(max_ios > 0 ? max_ios : SIZE_MAX) {
         // Резервируем память с учетом кэш-линий для предотвращения false sharing
         workers.reserve(threads);
@@ -65,13 +66,13 @@ public:
                         if (m_max_active_ios > 0) {
                             auto wait_result = io_slot_available.wait_for(lock, 
                                 std::chrono::seconds(5),  // Таймаут 5 секунд для предотвращения deadlock
-                                [this] { return io_slots_available > 0 || stop_flag; });
+                                [this] { return io_slots_available > 0 || stop_flag || force_stop_flag; });
                             
                             // Если таймаут истек, проверяем не нужно ли завершаться
-                            if (!wait_result && !stop_flag) {
+                            if (!wait_result && !stop_flag && !force_stop_flag) {
                                 Logger::warning("I/O slot wait timeout, possible deadlock detected");
                             }
-                            if (stop_flag && tasks.empty()) return;
+                            if ((stop_flag || force_stop_flag) && tasks.empty()) return;
                         }
                         
                         auto& top = tasks.top();
@@ -119,8 +120,7 @@ public:
         condition.notify_all();
         io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
         
-        // Завершаем потоки с таймаутом для избежания вечной блокировки
-        // Используем std::async с wait_for для реального таймаута
+        // Ждем завершения всех задач с таймаутом
         constexpr auto THREAD_JOIN_TIMEOUT = std::chrono::seconds(30);
         
         for (std::thread& worker : workers) {
@@ -132,10 +132,24 @@ public:
                 
                 // Ждем завершения с таймаутом
                 if (join_future.wait_for(THREAD_JOIN_TIMEOUT) == std::future_status::timeout) {
-                    Logger::warning("Thread join timeout, detaching thread");
-                    // Детачим поток если не завершился за таймаут
-                    // Примечание: это не идеально, но предотвращает зависание
-                    worker.detach();
+                    Logger::warning("Thread join timeout, requesting forced stop");
+                    // Устанавливаем флаг принудительной остановки для потоков
+                    force_stop_flag = true;
+                    condition.notify_all();
+                    io_slot_available.notify_all();
+                    
+                    // Повторно ждем с меньшим таймаутом
+                    auto force_join_future = std::async(std::launch::async, [&worker]() {
+                        worker.join();
+                    });
+                    
+                    if (force_join_future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+                        Logger::error("Forced thread join timeout, thread may be stuck");
+                        // Не используем detach() - оставляем поток в joinable состоянии
+                        // Это предотвращает утечку ресурсов и неопределенное поведение
+                    } else {
+                        Logger::info("Thread joined after forced stop request");
+                    }
                 }
             }
         }
@@ -168,6 +182,7 @@ private:
     std::condition_variable task_done;
     std::condition_variable io_slot_available;
     std::atomic<bool> stop_flag;
+    std::atomic<bool> force_stop_flag;  // Флаг принудительной остановки потоков
     size_t max_queue_size;
     size_t active_tasks;
     size_t m_max_active_ios;

@@ -28,6 +28,7 @@ namespace std {
 #include <atomic>       // Для потокобезопасности
 #include <thread>       // Для std::thread в compress_dual
 #include <future>       // Для std::async в compress_dual
+#include <system_error> // Для std::error_code
 
 // Базовый размер буфера для потоковой обработки (1MB - оптимизировано для производительности)
 constexpr size_t BASE_BUFFER_SIZE = 1048576;
@@ -1143,15 +1144,30 @@ bool Compressor::validate_path_in_directory(const fs::path& path, const std::vec
     }
     
     // Проверяем существование родительской директории
-    if (!fs::exists(parent, ec) || !fs::is_directory(parent, ec)) {
-        Logger::warning(std::format("Parent directory does not exist or is not a directory: {}", parent.string()));
+    try {
+        if (!fs::exists(parent, ec) || ec) {
+            Logger::warning(std::format("Parent directory does not exist: {}", parent.string()));
+            return false;
+        }
+        if (!fs::is_directory(parent, ec) || ec) {
+            Logger::warning(std::format("Parent path is not a directory: {}", parent.string()));
+            return false;
+        }
+    } catch (const fs::filesystem_error& e) {
+        Logger::error(std::format("Filesystem error checking parent directory {}: {}", parent.string(), e.what()));
         return false;
     }
     
     // Получаем канонический путь родительской директории
-    fs::path canonical_parent = fs::canonical(parent, ec);
-    if (ec) {
-        Logger::warning(std::format("Failed to get canonical path for {}: {}", parent.string(), ec.message()));
+    fs::path canonical_parent;
+    try {
+        canonical_parent = fs::canonical(parent, ec);
+        if (ec) {
+            Logger::warning(std::format("Failed to get canonical path for {}: {}", parent.string(), ec.message()));
+            return false;
+        }
+    } catch (const fs::filesystem_error& e) {
+        Logger::error(std::format("Filesystem error getting canonical path for {}: {}", parent.string(), e.what()));
         return false;
     }
     
@@ -1163,21 +1179,24 @@ bool Compressor::validate_path_in_directory(const fs::path& path, const std::vec
     for (const auto& allowed : allowed_dirs) {
         try {
             fs::path canonical_allowed = fs::canonical(allowed, ec);
-            if (!ec) {
-                std::string allowed_str = canonical_allowed.string();
-                // Проверяем, что путь начинается с разрешённой директории
-                if (resolved_str.find(allowed_str) == 0) {
-                    // Дополнительная проверка: убедимся, что это действительно поддиректория
-                    // (например, /home/user должен соответствовать /home/user/file.txt,
-                    // но не /home/users/file.txt)
-                    if (resolved_str.length() == allowed_str.length() ||
-                        resolved_str[allowed_str.length()] == '/') {
-                        return true;
-                    }
+            if (ec) {
+                Logger::debug(std::format("Cannot canonicalize allowed dir {}: {}", allowed, ec.message()));
+                continue;
+            }
+            std::string allowed_str = canonical_allowed.string();
+            // Проверяем, что путь начинается с разрешённой директории
+            if (resolved_str.find(allowed_str) == 0) {
+                // Дополнительная проверка: убедимся, что это действительно поддиректория
+                // (например, /home/user должен соответствовать /home/user/file.txt,
+                // но не /home/users/file.txt)
+                if (resolved_str.length() == allowed_str.length() ||
+                    resolved_str[allowed_str.length()] == '/') {
+                    return true;
                 }
             }
         } catch (const fs::filesystem_error& e) {
             Logger::debug(std::format("Cannot canonicalize allowed dir {}: {}", allowed, e.what()));
+            continue;
         }
     }
     

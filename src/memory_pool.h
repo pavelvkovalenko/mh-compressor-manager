@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <sys/mman.h>
 #include <immintrin.h>
+#include <unordered_set>
 #include "performance_optimizer.h"
 #include "numa_utils.h"
 
@@ -69,6 +70,7 @@ public:
         while (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
+            allocated_set_.erase(buf);  // Удаляем из множества отслеживания
             aligned_free(buf);
         }
         
@@ -122,6 +124,9 @@ public:
             ptr = NumaUtils::allocate_on_node(buffer_size, numa_node_id_);
             if (ptr) {
                 ++total_allocated_;
+                // Добавляем в множество отслеживания для O(1) проверки double-free
+                std::lock_guard<std::mutex> lock(mutex_);
+                allocated_set_.insert(static_cast<T*>(ptr));
                 return static_cast<T*>(ptr);
             }
             // Fallback на стандартное выделение если NUMA аллокация не удалась
@@ -142,7 +147,13 @@ public:
             return nullptr;
         }
         ++total_allocated_;
-        return static_cast<T*>(ptr);
+        T* result = static_cast<T*>(ptr);
+        // Добавляем в множество отслеживания для O(1) проверки double-free
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            allocated_set_.insert(result);
+        }
+        return result;
     }
     
     // Возврат буфера в пул (для vector - переиспользуем напрямую без копирования)
@@ -205,34 +216,21 @@ public:
             // Пул переполнен - освобождаем память сразу вместо добавления в пул
             // Это предотвращает неограниченный рост потребления памяти при большом количестве файлов
             aligned_free(buffer);
+            allocated_set_.erase(buffer);  // Удаляем из множества отслеживания
             --total_allocated_;
             return;
         }
         
-        // Простая защита от double-free: проверяем не находится ли уже буфер в очереди
-        // Note: Это O(n) операция, но для защиты от corruption это приемлемо
-        // Для production можно использовать unordered_set для O(1) проверки
-        std::queue<T*> temp_queue;
-        bool already_free = false;
-        while (!free_buffers_.empty()) {
-            T* front = free_buffers_.front();
-            free_buffers_.pop();
-            if (front == buffer) {
-                already_free = true;
-                // Используем fprintf вместо Logger чтобы избежать зависимости
-                fprintf(stderr, "WARNING: Double-free attempt detected in MemoryPool - ignoring\n");
-            }
-            temp_queue.push(front);
-        }
-        // Восстанавливаем очередь
-        while (!temp_queue.empty()) {
-            free_buffers_.push(temp_queue.front());
-            temp_queue.pop();
+        // O(1) защита от double-free с использованием unordered_set
+        if (allocated_set_.find(buffer) == allocated_set_.end()) {
+            // Буфер не был выделен из этого пула или уже был освобожден
+            fprintf(stderr, "WARNING: Double-free or invalid buffer detected in MemoryPool - ignoring\n");
+            return;
         }
         
-        if (!already_free) {
-            free_buffers_.push(buffer);
-        }
+        // Удаляем из множества отслеживания и добавляем в пул
+        allocated_set_.erase(buffer);
+        free_buffers_.push(buffer);
         // total_allocated_ не меняется - буфер просто возвращается в пул
     }
     
@@ -312,6 +310,7 @@ private:
     const size_t max_pool_size_;  // Максимальный размер пула для предотвращения чрезмерного потребления памяти
     mutable std::mutex mutex_;
     std::queue<T*> free_buffers_;
+    std::unordered_set<T*> allocated_set_;  // Множество для O(1) проверки double-free
     std::atomic<size_t> total_allocated_{0};
 };
 
