@@ -26,6 +26,7 @@
  * - Per-thread кэши свободных блоков для устранения блокировок
  * - SIMD-ускоренные операции копирования и обнуления памяти
  * - Prefetching данных для снижения латентности доступа к памяти
+ * - Ограничение максимального размера пула для предотвращения чрезмерного потребления памяти
  */
 template<typename T, size_t DefaultSize = 262144>
 class MemoryPool {
@@ -36,10 +37,15 @@ public:
     // Размер per-thread кэша (количество буферов на поток)
     static constexpr size_t THREAD_CACHE_SIZE = 4;
     
-    explicit MemoryPool(size_t initial_capacity = 8, int numa_node_id = -1) 
+    // Максимальное количество буферов в пуле для предотвращения чрезмерного потребления памяти
+    // При размере буфера 256KB: 64 буфера = 16MB максимум на пул
+    static constexpr size_t MAX_POOL_SIZE = 64;
+    
+    explicit MemoryPool(size_t initial_capacity = 8, int numa_node_id = -1, size_t max_size = MAX_POOL_SIZE) 
         : buffer_size(DefaultSize), 
           alignment(std::max(alignof(std::max_align_t), CACHE_LINE_SIZE)),
-          numa_node_id_(numa_node_id) {
+          numa_node_id_(numa_node_id),
+          max_pool_size_(max_size) {
         // Инициализация NUMA если доступен
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
             // Привязка текущего потока к NUMA узлу
@@ -47,7 +53,9 @@ public:
         }
         
         // Предварительно выделяем буферы с использованием Huge Pages если доступны
-        for (size_t i = 0; i < initial_capacity; ++i) {
+        // Ограничиваем начальную емкость максимальным размером пула
+        size_t actual_initial = std::min(initial_capacity, max_pool_size_);
+        for (size_t i = 0; i < actual_initial; ++i) {
             auto buf = allocate_raw();
             if (buf) {
                 release_raw(buf);
@@ -65,12 +73,9 @@ public:
         }
         
         // Освобождаем буферы из per-thread кэшей
-        for (auto& cache : thread_caches_) {
-            for (auto* buf : cache) {
-                aligned_free(buf);
-            }
-        }
-        thread_caches_.clear();
+        // Примечание: thread_local кэши очищаются автоматически при уничтожении потоков,
+        // но мы можем принудительно освободить их через итерацию по известным потокам
+        // В данной реализации thread_caches_ был удален в пользу thread_local переменной
         total_allocated_ = 0;
     }
     
@@ -194,6 +199,16 @@ public:
         // Если per-thread кэш полон, помещаем в глобальный пул
         std::unique_lock<std::mutex> lock(mutex_);
         
+        // ЗАЩИТА ОТ ЧРЕЗМЕРНОГО ПОТРЕБЛЕНИЯ ПАМЯТИ:
+        // Не принимаем буфер если пул уже достиг максимального размера
+        if (free_buffers_.size() >= max_pool_size_) {
+            // Пул переполнен - освобождаем память сразу вместо добавления в пул
+            // Это предотвращает неограниченный рост потребления памяти при большом количестве файлов
+            aligned_free(buffer);
+            --total_allocated_;
+            return;
+        }
+        
         // Простая защита от double-free: проверяем не находится ли уже буфер в очереди
         // Note: Это O(n) операция, но для защиты от corruption это приемлемо
         // Для production можно использовать unordered_set для O(1) проверки
@@ -295,6 +310,7 @@ private:
     const size_t buffer_size;
     const size_t alignment;
     const int numa_node_id_;  // NUMA узел для выделения памяти (-1 если не используется)
+    const size_t max_pool_size_;  // Максимальный размер пула для предотвращения чрезмерного потребления памяти
     mutable std::mutex mutex_;
     std::queue<T*> free_buffers_;
     std::atomic<size_t> total_allocated_{0};

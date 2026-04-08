@@ -90,7 +90,7 @@ else()
 endif()
 
 # NUMA - оптимизация для многопроцессорных систем (опционально)
-pkg_check_modules(NUMA libnuma)
+pkg_check_modules(NUMA numa)
 if(NUMA_FOUND)
     message(STATUS "NUMA support enabled")
     set(HAS_NUMA 1)

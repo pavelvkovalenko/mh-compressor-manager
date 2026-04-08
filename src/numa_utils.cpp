@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <map>
+#include <sys/mman.h>  // Для mbind
 #if __has_include(<format>)
 #include <format>
 #else
