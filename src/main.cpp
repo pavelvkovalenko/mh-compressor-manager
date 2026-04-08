@@ -26,8 +26,15 @@ namespace std {
 #include <memory>
 #include <fcntl.h>
 #include <sys/epoll.h>
+#include <future>
 
 namespace fs = std::filesystem;
+
+// ============================================================================
+// КОНСТАНТЫ GRACEFUL SHUTDOWN
+// ============================================================================
+constexpr std::chrono::seconds SHUTDOWN_TIMEOUT{30};  // Максимальное время на завершение задач
+constexpr std::chrono::milliseconds SHUTDOWN_CHECK_INTERVAL{100};  // Интервал проверки статуса
 
 // Forward declarations для функций которые используются в lambda
 TaskPriority determine_priority(const fs::path& path);
@@ -125,13 +132,10 @@ void handle_signals() {
                                      fdsi.ssi_signo, strsignal(fdsi.ssi_signo)));
             g_running = false;
             if (g_monitor) {
-                Logger::info("Stopping monitor...");
+                Logger::info("Stopping monitor (no new tasks will be accepted)...");
                 g_monitor->stop();
             }
-            if (g_pool) {
-                Logger::info("Stopping thread pool (waiting for active tasks)...");
-                g_pool->stop();  // ThreadPool ждет завершения активных задач
-            }
+            // ThreadPool.stop() теперь вызывается в graceful_shutdown_with_timeout()
             break;
         case SIGHUP:
             Logger::info("Received SIGHUP, scheduling config reload...");
@@ -141,6 +145,56 @@ void handle_signals() {
             Logger::warning(std::format("Received unexpected signal: {}", fdsi.ssi_signo));
             break;
     }
+}
+
+// Graceful shutdown с таймаутом
+// Останавливает прием новых задач, ждет завершения текущих (не более SHUTDOWN_TIMEOUT)
+void graceful_shutdown_with_timeout() {
+    Logger::info("Starting graceful shutdown sequence...");
+    
+    auto shutdown_start = std::chrono::steady_clock::now();
+    
+    // Шаг 1: Останавливаем монитор (если еще не остановлен)
+    if (g_monitor) {
+        Logger::info("Stopping monitor to prevent new task submissions...");
+        g_monitor->stop();
+    }
+    
+    // Шаг 2: Ждем завершения активных задач с таймаутом
+    Logger::info(std::format("Waiting for active tasks to complete (timeout: {} seconds)...", 
+                             SHUTDOWN_TIMEOUT.count()));
+    
+    while (g_pool && g_pool->active_count() > 0) {
+        auto elapsed = std::chrono::steady_clock::now() - shutdown_start;
+        if (elapsed >= SHUTDOWN_TIMEOUT) {
+            Logger::warning(std::format("Graceful shutdown timeout reached ({} seconds). "
+                                       "Active tasks: {}. Forcing termination.",
+                                       std::chrono::duration_cast<std::chrono::seconds>(elapsed).count(),
+                                       g_pool->active_count()));
+            break;
+        }
+        
+        size_t active = g_pool->active_count();
+        size_t queued = g_pool->queue_size();
+        
+        if (active > 0 || queued > 0) {
+            Logger::debug(std::format("Waiting for tasks: {} active, {} queued", active, queued));
+        }
+        
+        std::this_thread::sleep_for(SHUTDOWN_CHECK_INTERVAL);
+    }
+    
+    // Шаг 3: Останавливаем пул потоков
+    if (g_pool) {
+        Logger::info("Stopping thread pool...");
+        g_pool->stop();
+    }
+    
+    auto shutdown_end = std::chrono::steady_clock::now();
+    auto shutdown_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        shutdown_end - shutdown_start).count();
+    
+    Logger::info(std::format("Graceful shutdown completed in {} ms", shutdown_duration));
 }
 
 // Горячая перезагрузка конфигурации (SIGHUP handler)
@@ -591,12 +645,16 @@ int main(int argc, char* argv[]) {
         g_running = false;
     }
 
+    // Graceful shutdown с таймаутом вместо немедленной остановки
+    graceful_shutdown_with_timeout();
+
     // Вывод метрик производительности
     g_metrics.log_summary();
 
     Logger::info("Service stopped gracefully");
     
     // Корректное завершение работы с очисткой глобальных указателей
+    // (graceful_shutdown_with_timeout уже остановил monitor и pool)
     g_monitor.reset();
     g_pool.reset();
     g_cfg.reset();

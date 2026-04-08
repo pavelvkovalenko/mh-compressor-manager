@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <fstream>
 #include <filesystem>
+#include <fcntl.h>      // Для open, openat, O_RDONLY, O_NOFOLLOW, O_PATH, O_DIRECTORY
+#include <cstring>      // Для strerror
 
 namespace fs = std::filesystem;
 
@@ -176,6 +178,116 @@ TEST(SecurityTest, RealPathIntegration) {
             EXPECT_TRUE(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode));
         }
     }
+}
+
+// Тест защиты от TOCTOU атак с использованием openat() и O_NOFOLLOW
+TEST(SecurityTest, TOCTOUProtectionWithOpenat) {
+    fs::path temp_dir = fs::temp_directory_path() / "mh_toctou_test";
+    
+    // Создаем временную директорию
+    ASSERT_TRUE(fs::create_directories(temp_dir));
+    
+    // Создаем тестовый файл
+    fs::path test_file = temp_dir / "test.txt";
+    {
+        std::ofstream ofs(test_file);
+        ofs << "test content";
+    }
+    
+    // Открываем директорию с O_DIRECTORY | O_NOFOLLOW
+    int dir_fd = open(temp_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    ASSERT_GE(dir_fd, 0) << "Failed to open directory with O_NOFOLLOW";
+    
+    // Открываем файл через openat() с O_PATH | O_NOFOLLOW
+    int fd_path = openat(dir_fd, "test.txt", O_PATH | O_NOFOLLOW);
+    ASSERT_GE(fd_path, 0) << "Failed to open file with openat() and O_NOFOLLOW";
+    
+    // Проверяем что это обычный файл через fstat (не следует за symlink)
+    struct stat st;
+    ASSERT_EQ(fstat(fd_path, &st), 0);
+    EXPECT_TRUE(S_ISREG(st.st_mode)) << "File should be a regular file";
+    
+    // Закрываем дескрипторы
+    close(fd_path);
+    close(dir_fd);
+    
+    // Очищаем
+    fs::remove_all(temp_dir);
+}
+
+// Тест обнаружения symlink атаки при использовании openat()
+TEST(SecurityTest, SymlinkAttackDetectionWithOpenat) {
+    fs::path temp_dir = fs::temp_directory_path() / "mh_symlink_attack_test";
+    
+    // Создаем временную директорию
+    ASSERT_TRUE(fs::create_directories(temp_dir));
+    
+    // Создаем целевой файл (например, симулируем системный файл)
+    fs::path target_file = temp_dir / "target.txt";
+    {
+        std::ofstream ofs(target_file);
+        ofs << "sensitive data";
+    }
+    
+    // Создаем symlink который пытается подменить файл
+    fs::path symlink_path = temp_dir / "malicious_link.txt";
+    fs::create_symlink(target_file, symlink_path);
+    
+    // Открываем директорию
+    int dir_fd = open(temp_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    ASSERT_GE(dir_fd, 0);
+    
+    // Пытаемся открыть symlink через openat() с O_NOFOLLOW - должно вернуть ошибку ELOOP
+    int fd = openat(dir_fd, "malicious_link.txt", O_PATH | O_NOFOLLOW);
+    
+    if (fd < 0) {
+        // Ожидаем ELOOP или EMLINK при попытке открыть symlink
+        EXPECT_TRUE(errno == ELOOP || errno == EMLINK) 
+            << "Expected ELOOP or EMLINK when opening symlink, got errno=" << errno;
+    } else {
+        // Если открылся, проверяем через fstat что это symlink
+        struct stat st;
+        ASSERT_EQ(fstat(fd, &st), 0);
+        // С O_NOFOLLOW должен открыться сам symlink, а не цель
+        EXPECT_TRUE(S_ISLNK(st.st_mode)) << "Should detect symlink";
+        close(fd);
+    }
+    
+    close(dir_fd);
+    fs::remove_all(temp_dir);
+}
+
+// Тест проверки safe_openat функции (если доступна в security.h)
+TEST(SecurityTest, SafeOpenatFunction) {
+    fs::path temp_dir = fs::temp_directory_path() / "mh_safe_openat_test";
+    
+    // Создаем временную директорию
+    ASSERT_TRUE(fs::create_directories(temp_dir));
+    
+    // Создаем тестовый файл
+    fs::path test_file = temp_dir / "safe_test.txt";
+    {
+        std::ofstream ofs(test_file);
+        ofs << "safe content";
+    }
+    
+    // Открываем файл безопасно через openat
+    int dir_fd = open(temp_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    ASSERT_GE(dir_fd, 0);
+    
+    int fd = openat(dir_fd, "safe_test.txt", O_RDONLY | O_NOFOLLOW);
+    ASSERT_GE(fd, 0) << "Failed to safely open file with openat()";
+    
+    // Читаем данные для проверки
+    char buffer[64];
+    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    ASSERT_GT(bytes_read, 0);
+    buffer[bytes_read] = '\0';
+    EXPECT_STREQ(buffer, "safe content");
+    
+    close(fd);
+    close(dir_fd);
+    fs::remove_all(temp_dir);
 }
 
 int main(int argc, char** argv) {

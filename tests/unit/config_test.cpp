@@ -42,7 +42,7 @@ brotli_level = 4
 )");
     
     // Сохраняем текущий argv[0]
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -61,7 +61,7 @@ brotli_level = 4
 
 // Тест на безопасность: проверка на пустой путь файла конфигурации
 TEST_F(ConfigTest, EmptyConfigPath) {
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg};
     int argc = 1;
     
@@ -76,7 +76,7 @@ TEST_F(ConfigTest, EmptyConfigPath) {
 
 // Тест на безопасность: несуществующий файл конфигурации
 TEST_F(ConfigTest, NonExistentConfigFile) {
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>("/nonexistent/config/path.conf")};
     int argc = 2;
     
@@ -93,7 +93,7 @@ gzip_level = 15
 brotli_level = 20
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -118,7 +118,7 @@ gzip_level = -5
 brotli_level = -3
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -139,7 +139,7 @@ target_paths = []
 extensions = ["txt"]
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -159,7 +159,7 @@ target_paths = ["/tmp/absolute", "relative/path", "../parent"]
 extensions = ["txt"]
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -201,7 +201,7 @@ target_paths = [")" + symlink_dir.string() + R"("]
 extensions = ["txt"]
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -223,7 +223,7 @@ target_paths = ["/tmp/test path", "/tmp/test\ttab", "/tmp/test\nnewline"]
 extensions = ["txt"]
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -243,7 +243,7 @@ target_paths = ["/tmp"]
 extensions = ["txt", "LOG", "Data", "UPPERCASE"]
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -271,7 +271,7 @@ target_paths = [")" + long_path + R"("]
 extensions = ["txt"]
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -292,7 +292,7 @@ extensions = ["txt"]
 algorithms = "invalid_algorithm"
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
@@ -314,7 +314,7 @@ extensions = ["txt"]
 dry_run = true
 )");
     
-    char test_arg[] = const_cast<char*>("config_test");
+    char* test_arg = const_cast<char*>("config_test");
     char* argv[] = {test_arg, const_cast<char*>(temp_config_path.c_str())};
     int argc = 2;
     
