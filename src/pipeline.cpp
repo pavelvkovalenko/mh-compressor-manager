@@ -1,0 +1,442 @@
+#include "pipeline.h"
+#include "logger.h"
+#include "security.h"
+#include "compressor.h"
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <cstring>
+#include <chrono>
+#include <algorithm>
+#if __has_include(<format>)
+#include <format>
+#else
+#include <fmt/format.h>
+namespace std {
+    using fmt::format;
+}
+#endif
+
+#ifdef HAVE_LIBBROTLI
+#include <brotli/encode.h>
+#endif
+
+#ifdef HAVE_ZLIB
+#include <zlib.h>
+#endif
+
+#define LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
+#define LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
+#define LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
+#define LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
+
+/**
+ * @brief Конструктор конвейера
+ */
+CompressionPipeline::CompressionPipeline(
+    size_t read_buffer_size,
+    size_t compress_buffer_size,
+    size_t block_size
+)
+    : read_to_compress_(read_buffer_size)
+    , compress_to_write_(compress_buffer_size)
+    , block_size_(block_size)
+{
+    LOG_INFO("Конвейер сжатия инициализирован: буфер чтения={}, буфер сжатия={}, размер блока={}",
+             read_buffer_size, compress_buffer_size, block_size);
+}
+
+/**
+ * @brief Деструктор
+ */
+CompressionPipeline::~CompressionPipeline() {
+    stop();
+}
+
+/**
+ * @brief Остановка конвейера
+ */
+void CompressionPipeline::stop() {
+    running_ = false;
+    read_to_compress_.stop();
+    compress_to_write_.stop();
+    
+    if (reader_thread_.joinable()) {
+        reader_thread_.join();
+    }
+    if (compressor_thread_.joinable()) {
+        compressor_thread_.join();
+    }
+    if (writer_thread_.joinable()) {
+        writer_thread_.join();
+    }
+    
+    if (input_fd_ >= 0) {
+        close(input_fd_);
+        input_fd_ = -1;
+    }
+    if (gzip_output_fd_ >= 0) {
+        close(gzip_output_fd_);
+        gzip_output_fd_ = -1;
+    }
+    if (brotli_output_fd_ >= 0) {
+        close(brotli_output_fd_);
+        brotli_output_fd_ = -1;
+    }
+}
+
+/**
+ * @brief Выполнить сжатие файла
+ */
+bool CompressionPipeline::compress(
+    const fs::path& input_path,
+    const fs::path& gzip_output_path,
+    const fs::path& brotli_output_path,
+    int compression_level
+) {
+    LOG_INFO("Запуск конвейера сжатия: {} -> {}, {}", 
+             input_path.string(), gzip_output_path.string(), brotli_output_path.string());
+    
+    // Проверка безопасности входного файла
+    if (!SecurityUtils::validate_file_for_compression(input_path)) {
+        LOG_ERROR("Проверка безопасности не пройдена для файла: {}", input_path.string());
+        return false;
+    }
+    
+    // Открытие входного файла с защитой от TOCTOU
+    input_fd_ = SecurityUtils::safe_open_file(input_path, O_RDONLY);
+    if (input_fd_ < 0) {
+        LOG_ERROR("Не удалось открыть файл {}: {}", input_path.string(), strerror(errno));
+        return false;
+    }
+    
+    // Получение размера файла
+    struct stat st;
+    if (fstat(input_fd_, &st) < 0) {
+        LOG_ERROR("Не удалось получить размер файла: {}", strerror(errno));
+        close(input_fd_);
+        input_fd_ = -1;
+        return false;
+    }
+    size_t file_size = st.st_size;
+    
+    // Подсказки ядру для последовательного чтения
+    posix_fadvise(input_fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
+    posix_fadvise(input_fd_, 0, 0, POSIX_FADV_NOREUSE);
+    
+    // Создание выходных файлов
+    gzip_output_fd_ = open(gzip_output_path.c_str(), 
+                           O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
+                           0644);
+    if (gzip_output_fd_ < 0) {
+        LOG_ERROR("Не удалось создать файл {}: {}", gzip_output_path.string(), strerror(errno));
+        close(input_fd_);
+        input_fd_ = -1;
+        return false;
+    }
+    
+    brotli_output_fd_ = open(brotli_output_path.c_str(),
+                             O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
+                             0644);
+    if (brotli_output_fd_ < 0) {
+        LOG_ERROR("Не удалось создать файл {}: {}", brotli_output_path.string(), strerror(errno));
+        close(gzip_output_fd_);
+        close(input_fd_);
+        gzip_output_fd_ = -1;
+        input_fd_ = -1;
+        return false;
+    }
+    
+    // Предварительное выделение места (опционально)
+    // fallocate(gzip_output_fd_, 0, 0, file_size);
+    // fallocate(brotli_output_fd_, 0, 0, file_size);
+    
+    // Запуск потоков конвейера
+    running_ = true;
+    error_occurred_ = false;
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    reader_thread_ = std::thread(&CompressionPipeline::reader_stage, this, input_path);
+    compressor_thread_ = std::thread(&CompressionPipeline::compressor_stage, this, compression_level);
+    writer_thread_ = std::thread(&CompressionPipeline::writer_stage, this, 
+                                  gzip_output_path, brotli_output_path);
+    
+    // Ожидание завершения потоков
+    reader_thread_.join();
+    compressor_thread_.join();
+    writer_thread_.join();
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    
+    // Закрытие файлов
+    close(input_fd_);
+    close(gzip_output_fd_);
+    close(brotli_output_fd_);
+    input_fd_ = -1;
+    gzip_output_fd_ = -1;
+    brotli_output_fd_ = -1;
+    
+    if (error_occurred_) {
+        LOG_ERROR("Конвейер сжатия завершен с ошибкой. Время работы: {} мс", total_time);
+        // Удаление частичных файлов при ошибке
+        fs::remove(gzip_output_path);
+        fs::remove(brotli_output_path);
+        return false;
+    }
+    
+    // Обновление временных меток после успешной записи
+    utimensat(AT_FDCWD, gzip_output_path.c_str(), nullptr, 0);
+    utimensat(AT_FDCWD, brotli_output_path.c_str(), nullptr, 0);
+    
+    LOG_INFO("Конвейер сжатия успешно завершен. Время: {} мс, прочитано: {} байт, "
+             "GZIP: {} байт, Brotli: {} байт",
+             total_time,
+             stats_.total_bytes_read,
+             stats_.total_bytes_compressed_gzip,
+             stats_.total_bytes_compressed_brotli);
+    
+    return true;
+}
+
+/**
+ * @brief Этап чтения
+ * 
+ * Читает данные из входного файла блоками и передает их в буфер сжатия.
+ */
+void CompressionPipeline::reader_stage(const fs::path& input_path) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    size_t total_read = 0;
+    size_t offset = 0;
+    
+    try {
+        while (running_ && !error_occurred_) {
+            DataBlock block(block_size_);
+            block.offset = offset;
+            
+            // Чтение данных
+            ssize_t bytes_read = read(input_fd_, block.data.data(), block_size_);
+            
+            if (bytes_read < 0) {
+                if (errno == EINTR) continue;
+                LOG_ERROR("Ошибка чтения файла {}: {}", input_path.string(), strerror(errno));
+                error_occurred_ = true;
+                block.has_error = true;
+                block.error_message = strerror(errno);
+                read_to_compress_.push(std::move(block));
+                break;
+            }
+            
+            if (bytes_read == 0) {
+                // Конец файла - отправляем последний пустой блок
+                block.is_last = true;
+                block.size = 0;
+                read_to_compress_.push(std::move(block));
+                break;
+            }
+            
+            block.size = static_cast<size_t>(bytes_read);
+            total_read += bytes_read;
+            offset += bytes_read;
+            
+            read_to_compress_.push(std::move(block));
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR("Исключение в потоке чтения: {}", e.what());
+        error_occurred_ = true;
+    }
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0;
+    
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    stats_.total_bytes_read = total_read;
+    stats_.read_time_ms = elapsed;
+}
+
+/**
+ * @brief Этап сжатия
+ * 
+ * Получает блоки из буфера чтения, сжимает их в GZIP и Brotli,
+ * затем передает в буфер записи.
+ */
+void CompressionPipeline::compressor_stage(int compression_level) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    size_t blocks_processed = 0;
+    
+    try {
+        while (true) {
+            DataBlock block = read_to_compress_.pop();
+            
+            // Проверка на окончание потока
+            if (block.is_last && block.size == 0) {
+                // Отправляем сигнал окончания записи
+                CompressedBlock compressed;
+                compressed.is_last = true;
+                compressed.original_size = 0;
+                compress_to_write_.push(std::move(compressed));
+                break;
+            }
+            
+            if (read_to_compress_.is_stopped() && block.size == 0) {
+                break;
+            }
+            
+            CompressedBlock compressed;
+            compressed.offset = block.offset;
+            compressed.original_size = block.size;
+            compressed.is_last = block.is_last;
+            
+            if (block.has_error) {
+                compressed.has_error = true;
+                compressed.error_message = block.error_message;
+                compress_to_write_.push(std::move(compressed));
+                error_occurred_ = true;
+                continue;
+            }
+            
+            // Сжатие GZIP
+#ifdef HAVE_ZLIB
+            compressed.gzip_data.resize(compressBound(block.size));
+            z_stream strm = {};
+            if (deflateInit2(&strm, compression_level, Z_DEFLATED, -MAX_WBITS, 8, 
+                            Z_DEFAULT_STRATEGY) == Z_OK) {
+                strm.next_in = reinterpret_cast<Bytef*>(block.data.data());
+                strm.avail_in = block.size;
+                strm.next_out = reinterpret_cast<Bytef*>(compressed.gzip_data.data());
+                strm.avail_out = compressed.gzip_data.size();
+                
+                if (deflate(&strm, Z_FINISH) == Z_STREAM_END) {
+                    compressed.gzip_data.resize(strm.total_out);
+                    compressed.gzip_size = strm.total_out;
+                } else {
+                    LOG_ERROR("Ошибка сжатия GZIP");
+                    compressed.has_error = true;
+                }
+                deflateEnd(&strm);
+            } else {
+                LOG_ERROR("Не удалось инициализировать GZIP");
+                compressed.has_error = true;
+            }
+#else
+            compressed.has_error = true;
+            compressed.error_message = "ZLIB не доступен";
+#endif
+            
+            // Сжатие Brotli
+#ifdef HAVE_LIBBROTLI
+            size_t encoded_size = BrotliEncoderMaxCompressedSize(block.size);
+            compressed.brotli_data.resize(encoded_size);
+            
+            size_t input_size = block.size;
+            const uint8_t* input_buffer = reinterpret_cast<const uint8_t*>(block.data.data());
+            uint8_t* output_buffer = reinterpret_cast<uint8_t*>(compressed.brotli_data.data());
+            
+            if (BrotliEncoderCompress(compression_level, BROTLI_DEFAULT_WINDOW, 
+                                      BROTLI_DEFAULT_MODE, input_size, input_buffer,
+                                      &encoded_size, output_buffer)) {
+                compressed.brotli_data.resize(encoded_size);
+                compressed.brotli_size = encoded_size;
+            } else {
+                LOG_ERROR("Ошибка сжатия Brotli");
+                compressed.has_error = true;
+            }
+#else
+            compressed.has_error = true;
+            compressed.error_message = "Brotli не доступен";
+#endif
+            
+            if (compressed.has_error) {
+                error_occurred_ = true;
+            }
+            
+            blocks_processed++;
+            compress_to_write_.push(std::move(compressed));
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR("Исключение в потоке сжатия: {}", e.what());
+        error_occurred_ = true;
+    }
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0;
+    
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    stats_.blocks_processed = blocks_processed;
+    stats_.compress_time_ms = elapsed;
+}
+
+/**
+ * @brief Этап записи
+ * 
+ * Получает сжатые блоки из буфера и записывает их в выходные файлы.
+ */
+void CompressionPipeline::writer_stage(
+    const fs::path& gzip_output_path,
+    const fs::path& brotli_output_path
+) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    size_t total_gzip = 0;
+    size_t total_brotli = 0;
+    
+    try {
+        while (true) {
+            CompressedBlock block = compress_to_write_.pop();
+            
+            if (block.is_last && block.original_size == 0) {
+                break;
+            }
+            
+            if (compress_to_write_.is_stopped() && block.original_size == 0) {
+                break;
+            }
+            
+            if (block.has_error) {
+                LOG_ERROR("Блок с ошибкой, пропуск записи");
+                error_occurred_ = true;
+                continue;
+            }
+            
+            // Запись GZIP
+            if (!block.gzip_data.empty()) {
+                ssize_t written = write(gzip_output_fd_, block.gzip_data.data(), block.gzip_data.size());
+                if (written < 0) {
+                    LOG_ERROR("Ошибка записи GZIP: {}", strerror(errno));
+                    error_occurred_ = true;
+                    break;
+                }
+                total_gzip += written;
+            }
+            
+            // Запись Brotli
+            if (!block.brotli_data.empty()) {
+                ssize_t written = write(brotli_output_fd_, block.brotli_data.data(), block.brotli_data.size());
+                if (written < 0) {
+                    LOG_ERROR("Ошибка записи Brotli: {}", strerror(errno));
+                    error_occurred_ = true;
+                    break;
+                }
+                total_brotli += written;
+            }
+        }
+        
+        // Синхронизация данных на диске
+        fsync(gzip_output_fd_);
+        fsync(brotli_output_fd_);
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("Исключение в потоке записи: {}", e.what());
+        error_occurred_ = true;
+    }
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0;
+    
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    stats_.total_bytes_compressed_gzip = total_gzip;
+    stats_.total_bytes_compressed_brotli = total_brotli;
+    stats_.write_time_ms = elapsed;
+}
