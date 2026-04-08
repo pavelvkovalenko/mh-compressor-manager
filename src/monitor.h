@@ -25,8 +25,10 @@ public:
 private:
     void run();
     void add_watch_recursive(const fs::path& path);
-    void process_event(int wd, uint32_t mask, const std::string& name);
+    void process_event(int wd, uint32_t mask, const std::string& name, uint32_t cookie = 0);
     bool is_target_extension(const std::string& filename);
+    bool is_compressed_extension(const std::string& filename);
+    std::string get_original_path_from_compressed(const fs::path& compressed_path);
     
     Config m_cfg;
     int m_fd;
@@ -38,4 +40,14 @@ private:
     std::mutex m_debounce_mutex;
     std::map<int, std::string> m_wd_path_map;
     std::unordered_set<std::string> m_extensions_cache;  // Кэш расширений для быстрого поиска
+    std::unordered_set<std::string> m_compressed_extensions;  // Расширения сжатых файлов (.gz, .br)
+    
+    // Отслеживание событий перемещения по cookie
+    struct MoveCookieData {
+        std::string path;
+        std::chrono::steady_clock::time_point timestamp;
+    };
+    std::map<uint32_t, MoveCookieData> m_move_cookies;  // cookie -> данные о перемещении
+    std::mutex m_move_mutex;
+    static constexpr uint32_t MOVE_COOKIE_TIMEOUT_MS = 100;  // Таймаут для связки событий перемещения
 };
