@@ -1071,9 +1071,25 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     }
     
     // Дополнительная проверка: resolving пути и проверка что он в допустимой зоне
-    // Используем realpath для получения канонического пути
+    // Используем безопасную альтернативу realpath() с O_PATH для защиты от TOCTOU
+    // Открываем файл через O_PATH|O_NOFOLLOW, затем используем /proc/self/fd/ для readlink
+    int fd = open(target, O_PATH|O_NOFOLLOW);
+    if (fd < 0) {
+        // Файл может не существовать - это нормально для некоторых случаев
+        Logger::warning(std::format(\"Cannot open target {} for verification: {}\", target, strerror(errno)));
+        return false;  // Не можем проверить - считаем безопасным
+    }
+    
+    // Читаем symlink через /proc/self/fd/ для получения канонического пути
+    char proc_path[64];
+    snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd);
+    
     char resolved_target[PATH_MAX];
-    if (realpath(target, resolved_target) != nullptr) {
+    ssize_t resolved_len = readlink(proc_path, resolved_target, sizeof(resolved_target) - 1);
+    close(fd);
+    
+    if (resolved_len > 0) {
+        resolved_target[resolved_len] = '\0';
         std::string resolved_str(resolved_target);
         // Проверяем что целевой путь не ведет к системным файлам после разрешения symlink
         if (resolved_str.find("/etc/") == 0 || 
