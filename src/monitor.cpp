@@ -27,12 +27,16 @@ struct MoveEvent {
 };
 
 Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
-    // Кэшируем расширения исходных файлов для быстрого поиска O(1)
-    for (const auto& ext : m_cfg.extensions) {
-        std::string lower_ext = ext;
-        std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
-        m_extensions_cache.insert(lower_ext);
-    }
+    update_compressed_extensions();
+    Logger::info(std::format("Initialized monitor with {} compressed extensions based on algorithms: {}", 
+                             m_compressed_extensions.size(), m_cfg.algorithms));
+}
+
+void Monitor::update_compressed_extensions() {
+    std::lock_guard<std::mutex> lock(m_config_mutex);
+    
+    // Очищаем текущий кэш расширений
+    m_compressed_extensions.clear();
     
     // Динамически определяем расширения сжатых файлов на основе включенных алгоритмов
     // Это позволяет использовать пользовательские расширения если они изменены в настройках
@@ -44,15 +48,35 @@ Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
     
     if (use_gzip) {
         m_compressed_extensions.insert("gz");
-        Logger::info("Monitoring for .gz files (gzip algorithm enabled)");
+        Logger::debug("Monitoring for .gz files (gzip algorithm enabled)");
     }
     if (use_brotli) {
         m_compressed_extensions.insert("br");
-        Logger::info("Monitoring for .br files (brotli algorithm enabled)");
+        Logger::debug("Monitoring for .br files (brotli algorithm enabled)");
+    }
+}
+
+void Monitor::reload_config(const Config& new_cfg) {
+    std::lock_guard<std::mutex> lock(m_config_mutex);
+    
+    Logger::info("Reloading monitor configuration...");
+    
+    // Обновляем конфигурацию
+    m_cfg = new_cfg;
+    
+    // Обновляем кэш расширений исходных файлов
+    m_extensions_cache.clear();
+    for (const auto& ext : m_cfg.extensions) {
+        std::string lower_ext = ext;
+        std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
+        m_extensions_cache.insert(lower_ext);
     }
     
-    Logger::info(std::format("Initialized monitor with {} compressed extensions based on algorithms: {}", 
-                             m_compressed_extensions.size(), m_cfg.algorithms));
+    // Обновляем кэш расширений сжатых файлов
+    update_compressed_extensions();
+    
+    Logger::info(std::format("Monitor configuration reloaded: {} source extensions, {} compressed extensions", 
+                             m_extensions_cache.size(), m_compressed_extensions.size()));
 }
 
 Monitor::~Monitor() {

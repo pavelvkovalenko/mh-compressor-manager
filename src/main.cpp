@@ -208,26 +208,14 @@ void reload_config() {
         Logger::info(std::format("New target paths: {}", g_cfg->target_paths.size()));
         
         if (g_monitor) {
-            g_monitor->stop();
-            g_monitor = std::make_unique<Monitor>(*g_cfg);
+            // ИСПОЛЬЗУЕМ HOT RELOAD вместо полной пересоздания монитора
+            // Это сохраняет состояние inotify и не требует остановки/запуска потока
+            g_monitor->reload_config(*g_cfg);
             
-            g_monitor->set_task_handler([](const fs::path& p) {
-                TaskPriority priority = determine_priority(p);
-                if (!g_pool->enqueue([p]() { compress_task(p); }, priority)) {
-                    Logger::warning(std::format("Task queue full, skipping: {}", p.string()));
-                }
-            });
-            g_monitor->set_delete_handler([](const fs::path& p) {
-                if (!g_pool->enqueue([p]() { delete_task(p); }, TaskPriority::HIGH)) {
-                    Logger::warning(std::format("Delete task queue full, skipping: {}", p.string()));
-                }
-            });
-            
-            g_monitor->start();
-            g_monitor->scan_existing_files();
+            Logger::info("Monitor configuration updated via hot reload (no restart needed)");
         }
         
-        Logger::info("Monitor restarted with new configuration");
+        Logger::info("Configuration reload completed successfully");
     } catch (const std::exception& e) {
         Logger::error(std::format("Failed to reload configuration: {}", e.what()));
         Logger::warning("Keeping old configuration");

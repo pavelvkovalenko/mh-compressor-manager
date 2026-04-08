@@ -21,6 +21,9 @@ public:
     void scan_existing_files();  // <--- ДОБАВЛЕНО: начальное сканирование
     void set_task_handler(std::function<void(const fs::path&)> handler);
     void set_delete_handler(std::function<void(const fs::path&)> handler);
+    
+    // Динамическое обновление конфигурации (hot reload)
+    void reload_config(const Config& new_cfg);
 
 private:
     void run();
@@ -29,6 +32,7 @@ private:
     bool is_target_extension(const std::string& filename);
     bool is_compressed_extension(const std::string& filename);
     std::string get_original_path_from_compressed(const fs::path& compressed_path);
+    void update_compressed_extensions();  // Обновление кэша расширений сжатых файлов
     
     Config m_cfg;
     int m_fd;
@@ -38,6 +42,7 @@ private:
     std::function<void(const fs::path&)> m_on_delete;
     std::map<std::string, std::chrono::steady_clock::time_point> m_debounce_map;
     std::mutex m_debounce_mutex;
+    std::mutex m_config_mutex;  // Защита от гонок при обновлении конфигурации
     std::map<int, std::string> m_wd_path_map;
     std::unordered_set<std::string> m_extensions_cache;  // Кэш расширений для быстрого поиска
     std::unordered_set<std::string> m_compressed_extensions;  // Расширения сжатых файлов (.gz, .br)
