@@ -58,6 +58,7 @@ public:
 private:
     void run();
     void add_watch_recursive(const fs::path& path);
+    void add_watch_recursive_impl(const fs::path& path, size_t depth);  // Внутренняя реализация с ограничением глубины
     void process_event(int wd, uint32_t mask, const std::string& name, uint32_t cookie = 0);
     void cleanup_expired_cookies();  // Очистка устаревших cookie
     bool is_target_extension(const std::string& filename);
@@ -86,4 +87,5 @@ private:
     std::unordered_map<uint32_t, MoveCookieData> m_move_cookies;  // cookie -> данные о перемещении
     mutable std::shared_mutex m_move_mutex;  // Потокобезопасный доступ к cookie
     static constexpr uint32_t MOVE_COOKIE_TIMEOUT_MS = 100;  // Таймаут для связки событий перемещения
+    static constexpr size_t MAX_RECURSION_DEPTH = 20;  // Максимальная глубина рекурсии для защиты от DoS
 };

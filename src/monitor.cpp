@@ -232,21 +232,32 @@ void Monitor::set_delete_handler(std::function<void(const fs::path&)> handler) {
 }
 
 void Monitor::add_watch_recursive(const fs::path& base_path) {
+    add_watch_recursive_impl(base_path, 0);
+}
+
+void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) {
+    // Ограничение глубины рекурсии для защиты от DoS-атаки через глубокие директории
+    if (depth > MAX_RECURSION_DEPTH) {
+        Logger::warning(std::format(\"Maximum recursion depth ({}) exceeded at: {} - skipping subdirectories\", 
+                                     MAX_RECURSION_DEPTH, base_path.string()));
+        return;
+    }
+    
     // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Используем lstat вместо fs.exists для предотвращения symlink атак ===
     struct stat st;
     if (lstat(base_path.c_str(), &st) != 0) {
-        Logger::warning(std::format("Path does not exist or inaccessible: {}", base_path.string()));
+        Logger::warning(std::format(\"Path does not exist or inaccessible: {}\", base_path.string()));
         return;
     }
     
     // Проверка: базовый путь не должен быть symlink
     if (S_ISLNK(st.st_mode)) {
-        Logger::error(std::format("SECURITY: Base path is a symlink (potential attack): {}", base_path.string()));
+        Logger::error(std::format(\"SECURITY: Base path is a symlink (potential attack): {}\", base_path.string()));
         return;
     }
     
     if (!S_ISDIR(st.st_mode)) {
-        Logger::warning(std::format("Path is not a directory: {}", base_path.string()));
+        Logger::warning(std::format(\"Path is not a directory: {}\", base_path.string()));
         return;
     }
     
@@ -254,9 +265,9 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
     if (wd >= 0) {
         m_wd_path_map[wd] = base_path.string();
-        Logger::info(std::format("Watching directory: {}", base_path.string()));
+        Logger::info(std::format(\"Watching directory: {} (depth: {})\", base_path.string(), depth));
     } else {
-        Logger::error(std::format("Failed to add watch for: {}", base_path.string()));
+        Logger::error(std::format(\"Failed to add watch for: {}\", base_path.string()));
     }
 
     try {
@@ -271,11 +282,13 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
                     if (wd_sub >= 0) {
                         m_wd_path_map[wd_sub] = entry.path().string();
                     }
+                    // Рекурсивный вызов с увеличением глубины
+                    add_watch_recursive_impl(entry.path(), depth + 1);
                 }
             }
         }
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format("Directory access error: {}", e.what()));
+        Logger::warning(std::format(\"Directory access error: {}\", e.what()));
     }
 }
 
@@ -417,6 +430,8 @@ bool Monitor::is_target_extension(const std::string& filename) {
     
     if (ext == "gz" || ext == "br") return false;
     
+    // Блокировка для потокобезопасного доступа к кэшу расширений (защита от race condition)
+    std::shared_lock<std::shared_mutex> lock(m_config_mutex);
     // Используем кэш расширений для быстрого поиска O(1)
     return m_extensions_cache.count(ext) > 0;
 }
@@ -428,6 +443,8 @@ bool Monitor::is_compressed_extension(const std::string& filename) {
     std::string ext = filename.substr(dot + 1);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
+    // Блокировка для потокобезопасного доступа к кэшу сжатых расширений (защита от race condition)
+    std::shared_lock<std::shared_mutex> lock(m_config_mutex);
     // Используем кэш сжатых расширений для быстрого поиска O(1)
     return m_compressed_extensions.count(ext) > 0;
 }
@@ -459,6 +476,18 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     }
 
     fs::path full_path = fs::path(base_path) / name;
+    
+    // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Проверка и очистка пути для защиты от Path Traversal ===
+    // Нормализуем путь и проверяем что он находится внутри базовой директории
+    std::string normalized_path = fs::weakly_canonical(full_path).string();
+    std::string normalized_base = fs::weakly_canonical(fs::path(base_path)).string();
+    
+    // Проверяем что нормализованный путь начинается с базовой директории
+    if (normalized_path.find(normalized_base) != 0) {
+        Logger::warning(std::format("SECURITY: Path traversal attempt detected: {} (base: {})", 
+                                     normalized_path, normalized_base));
+        return;
+    }
     
     // Проверяем является ли файл целевым (исходным) или сжатым
     bool is_target = is_target_extension(name);

@@ -47,7 +47,10 @@ constexpr uint64_t LARGE_FILE_THRESHOLD = 16 * 1024 * 1024; // 16MB
 constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
 
 // Буфер для /proc/self/fd/<fd> путей (достаточно для большинства систем)
-constexpr size_t PROC_FD_PATH_SIZE = 64;
+// Размер буфера для пути /proc/self/fd/NNN (достаточно для больших PID)
+// Формат: "/proc/self/fd/" + номер FD (до 10 цифр) + '\0' = ~25 байт
+// Увеличено до 128 для запаса и защиты от переполнения
+constexpr size_t PROC_FD_PATH_SIZE = 128;
 
 // Максимальный размер файла для сжатия (100MB) - защита от DoS атак
 constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;

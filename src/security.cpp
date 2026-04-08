@@ -113,6 +113,23 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         return false;
     }
     
+    // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Явный сброс capabilities перед установкой NO_NEW_PRIVS ===
+    // Это предотвращает возможность получения привилегий через execve даже если какие-то
+    // capabilities остались после drop_privileges
+#if HAVE_LIBCAP
+    #include <sys/capability.h>
+    cap_t caps = cap_init();  // Создаем пустую структуру capabilities
+    if (caps == NULL) {
+        Logger::warning(std::string("Failed to initialize capabilities structure: ") + strerror(errno));
+    } else {
+        // Устанавливаем пустые capabilities (полный сброс)
+        if (cap_set_proc(caps) != 0) {
+            Logger::warning(std::string("Failed to clear capabilities: ") + strerror(errno));
+        }
+        cap_free(caps);  // Освобождаем память
+    }
+#endif
+    
     // Запрещаем получение привилегий через execve
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
         Logger::error(std::string("Failed to set NO_NEW_PRIVS: ") + strerror(errno));
