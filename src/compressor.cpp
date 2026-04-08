@@ -1083,7 +1083,12 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     
     // Читаем symlink через /proc/self/fd/ для получения канонического пути
     char proc_path[64];
-    snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd);
+    int ret = snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd);
+    if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
+        close(fd);
+        Logger::warning(std::format("snprintf failed for proc path in verify_no_symlink_attack: {}", strerror(errno)));
+        return false;
+    }
     
     char resolved_target[PATH_MAX];
     ssize_t resolved_len = readlink(proc_path, resolved_target, sizeof(resolved_target) - 1);
