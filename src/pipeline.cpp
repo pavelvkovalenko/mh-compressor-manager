@@ -206,6 +206,7 @@ bool CompressionPipeline::compress(
  * @brief Этап чтения
  * 
  * Читает данные из входного файла блоками и передает их в буфер сжатия.
+ * Реализует передачу "хвоста" предыдущего блока для контекстного сжатия.
  */
 void CompressionPipeline::reader_stage(const fs::path& input_path) {
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -216,6 +217,14 @@ void CompressionPipeline::reader_stage(const fs::path& input_path) {
         while (running_ && !error_occurred_) {
             DataBlock block(block_size_);
             block.offset = offset;
+            
+            // Добавляем хвост предыдущего блока для контекстного сжатия
+            {
+                std::lock_guard<std::mutex> lock(tail_mutex_);
+                if (!previous_tail_.empty()) {
+                    block.prev_tail = previous_tail_;
+                }
+            }
             
             // Чтение данных
             ssize_t bytes_read = read(input_fd_, block.data.data(), block_size_);
@@ -241,6 +250,24 @@ void CompressionPipeline::reader_stage(const fs::path& input_path) {
             block.size = static_cast<size_t>(bytes_read);
             total_read += bytes_read;
             offset += bytes_read;
+            
+            // Сохраняем хвост текущего блока для следующего блока
+            {
+                std::lock_guard<std::mutex> lock(tail_mutex_);
+                if (bytes_read > static_cast<ssize_t>(CONTEXT_TAIL_SIZE)) {
+                    // Сохраняем последние CONTEXT_TAIL_SIZE байт
+                    previous_tail_.assign(
+                        block.data.begin() + (bytes_read - CONTEXT_TAIL_SIZE),
+                        block.data.end()
+                    );
+                } else {
+                    // Сохраняем весь блок если он меньше CONTEXT_TAIL_SIZE
+                    previous_tail_.assign(
+                        block.data.begin(),
+                        block.data.begin() + bytes_read
+                    );
+                }
+            }
             
             read_to_compress_.push(std::move(block));
         }
@@ -298,51 +325,88 @@ void CompressionPipeline::compressor_stage(int compression_level) {
                 continue;
             }
             
-            // Сжатие GZIP
+            // Сжатие GZIP с использованием контекста предыдущего блока
 #ifdef HAVE_ZLIB
-            compressed.gzip_data.resize(compressBound(block.size));
-            z_stream strm = {};
-            if (deflateInit2(&strm, compression_level, Z_DEFLATED, -MAX_WBITS, 8, 
-                            Z_DEFAULT_STRATEGY) == Z_OK) {
-                strm.next_in = reinterpret_cast<Bytef*>(block.data.data());
-                strm.avail_in = block.size;
-                strm.next_out = reinterpret_cast<Bytef*>(compressed.gzip_data.data());
-                strm.avail_out = compressed.gzip_data.size();
-                
-                if (deflate(&strm, Z_FINISH) == Z_STREAM_END) {
-                    compressed.gzip_data.resize(strm.total_out);
-                    compressed.gzip_size = strm.total_out;
+            {
+                // Объединяем хвост предыдущего блока с текущими данными для лучшего сжатия
+                std::vector<uint8_t> input_data;
+                if (!block.prev_tail.empty()) {
+                    input_data.reserve(block.prev_tail.size() + block.size);
+                    input_data.insert(input_data.end(), 
+                                     reinterpret_cast<uint8_t*>(block.prev_tail.data()),
+                                     reinterpret_cast<uint8_t*>(block.prev_tail.data()) + block.prev_tail.size());
+                    input_data.insert(input_data.end(),
+                                     reinterpret_cast<uint8_t*>(block.data.data()),
+                                     reinterpret_cast<uint8_t*>(block.data.data()) + block.size);
                 } else {
-                    LOG_ERROR("Ошибка сжатия GZIP");
+                    input_data.reserve(block.size);
+                    input_data.insert(input_data.end(),
+                                     reinterpret_cast<uint8_t*>(block.data.data()),
+                                     reinterpret_cast<uint8_t*>(block.data.data()) + block.size);
+                }
+                
+                compressed.gzip_data.resize(compressBound(input_data.size()));
+                z_stream strm = {};
+                if (deflateInit2(&strm, compression_level, Z_DEFLATED, -MAX_WBITS, 8, 
+                                Z_DEFAULT_STRATEGY) == Z_OK) {
+                    strm.next_in = reinterpret_cast<Bytef*>(input_data.data());
+                    strm.avail_in = input_data.size();
+                    strm.next_out = reinterpret_cast<Bytef*>(compressed.gzip_data.data());
+                    strm.avail_out = compressed.gzip_data.size();
+                    
+                    if (deflate(&strm, Z_FINISH) == Z_STREAM_END) {
+                        compressed.gzip_data.resize(strm.total_out);
+                        compressed.gzip_size = strm.total_out;
+                    } else {
+                        LOG_ERROR("Ошибка сжатия GZIP");
+                        compressed.has_error = true;
+                    }
+                    deflateEnd(&strm);
+                } else {
+                    LOG_ERROR("Не удалось инициализировать GZIP");
                     compressed.has_error = true;
                 }
-                deflateEnd(&strm);
-            } else {
-                LOG_ERROR("Не удалось инициализировать GZIP");
-                compressed.has_error = true;
             }
 #else
             compressed.has_error = true;
             compressed.error_message = "ZLIB не доступен";
 #endif
             
-            // Сжатие Brotli
+            // Сжатие Brotli с использованием контекста предыдущего блока
 #ifdef HAVE_LIBBROTLI
-            size_t encoded_size = BrotliEncoderMaxCompressedSize(block.size);
-            compressed.brotli_data.resize(encoded_size);
-            
-            size_t input_size = block.size;
-            const uint8_t* input_buffer = reinterpret_cast<const uint8_t*>(block.data.data());
-            uint8_t* output_buffer = reinterpret_cast<uint8_t*>(compressed.brotli_data.data());
-            
-            if (BrotliEncoderCompress(compression_level, BROTLI_DEFAULT_WINDOW, 
-                                      BROTLI_DEFAULT_MODE, input_size, input_buffer,
-                                      &encoded_size, output_buffer)) {
+            {
+                // Объединяем хвост предыдущего блока с текущими данными для лучшего сжатия
+                std::vector<uint8_t> input_data;
+                if (!block.prev_tail.empty()) {
+                    input_data.reserve(block.prev_tail.size() + block.size);
+                    input_data.insert(input_data.end(), 
+                                     reinterpret_cast<uint8_t*>(block.prev_tail.data()),
+                                     reinterpret_cast<uint8_t*>(block.prev_tail.data()) + block.prev_tail.size());
+                    input_data.insert(input_data.end(),
+                                     reinterpret_cast<uint8_t*>(block.data.data()),
+                                     reinterpret_cast<uint8_t*>(block.data.data()) + block.size);
+                } else {
+                    input_data.reserve(block.size);
+                    input_data.insert(input_data.end(),
+                                     reinterpret_cast<uint8_t*>(block.data.data()),
+                                     reinterpret_cast<uint8_t*>(block.data.data()) + block.size);
+                }
+                
+                size_t encoded_size = BrotliEncoderMaxCompressedSize(input_data.size());
                 compressed.brotli_data.resize(encoded_size);
-                compressed.brotli_size = encoded_size;
-            } else {
-                LOG_ERROR("Ошибка сжатия Brotli");
-                compressed.has_error = true;
+                
+                const uint8_t* input_buffer = reinterpret_cast<const uint8_t*>(input_data.data());
+                uint8_t* output_buffer = reinterpret_cast<uint8_t*>(compressed.brotli_data.data());
+                
+                if (BrotliEncoderCompress(compression_level, BROTLI_DEFAULT_WINDOW, 
+                                          BROTLI_DEFAULT_MODE, input_data.size(), input_buffer,
+                                          &encoded_size, output_buffer)) {
+                    compressed.brotli_data.resize(encoded_size);
+                    compressed.brotli_size = encoded_size;
+                } else {
+                    LOG_ERROR("Ошибка сжатия Brotli");
+                    compressed.has_error = true;
+                }
             }
 #else
             compressed.has_error = true;

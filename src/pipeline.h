@@ -123,6 +123,7 @@ struct DataBlock {
     bool is_last = false;             // Последний блок файла
     std::string error_message;        // Сообщение об ошибке (если есть)
     bool has_error = false;           // Флаг ошибки
+    std::vector<char> prev_tail;      // Хвост предыдущего блока для контекстного сжатия
     
     DataBlock() = default;
     explicit DataBlock(size_t block_size) : data(block_size) {}
@@ -226,6 +227,11 @@ private:
     
     // Параметры
     size_t block_size_;
+    static constexpr size_t CONTEXT_TAIL_SIZE = 32 * 1024;  // Размер хвоста для контекста (32KB)
+    
+    // Контекст для блочного сжатия
+    std::vector<char> previous_tail_;  // Хвост предыдущего блока
+    std::mutex tail_mutex_;            // Защита доступа к хвосту
     
     // Потоки
     std::thread reader_thread_;
