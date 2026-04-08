@@ -142,14 +142,51 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
 
 bool init_seccomp() {
 #if HAVE_SECCOMP
-    scmp_filter_ctx ctx;
+    // RAII-паттерн для автоматического освобождения seccomp контекста
+    struct SeccompContext {
+        scmp_filter_ctx ctx;
+        bool initialized;
+        
+        explicit SeccompContext() : ctx(nullptr), initialized(false) {}
+        
+        ~SeccompContext() {
+            if (ctx != nullptr) {
+                seccomp_release(ctx);
+            }
+        }
+        
+        bool init(scmp_filter_ctx new_ctx) {
+            ctx = new_ctx;
+            initialized = (ctx != nullptr);
+            return initialized;
+        }
+        
+        bool add_rule(uint32_t action, int syscall) {
+            if (!initialized || ctx == nullptr) return false;
+            int rc = seccomp_rule_add(ctx, action, syscall, 0);
+            return (rc >= 0);
+        }
+        
+        bool load() {
+            if (!initialized || ctx == nullptr) return false;
+            int rc = seccomp_load(ctx);
+            return (rc >= 0);
+        }
+    };
+    
+    SeccompContext ctx_wrapper;
     
     // Инициализируем фильтр с действием по умолчанию: ЗАПРЕЩАТЬ всё (SCMP_ACT_ERRNO)
     // Затем добавляем правила разрешения для необходимых вызовов
     // Это более безопасный подход - разрешаем только то что нужно
-    ctx = seccomp_init(SCMP_ACT_ERRNO(EPERM));
+    scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_ERRNO(EPERM));
     if (ctx == nullptr) {
         Logger::error("Failed to initialize seccomp context");
+        return false;
+    }
+    
+    if (!ctx_wrapper.init(ctx)) {
+        Logger::error("Failed to initialize seccomp wrapper");
         return false;
     }
     
@@ -157,234 +194,144 @@ bool init_seccomp() {
     // Минимальный набор для безопасности (принцип наименьших привилегий)
     
     // Базовые вызовы для работы с файлами
-    int rc;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(open), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(read), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lseek), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fsync), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fdatasync), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(open))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(openat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(close))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(read))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(write))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(lseek))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fsync))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fdatasync))) return false;
     
     // Вызовы для stat/fstat/lstat
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(stat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fstat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(lstat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(newfstatat), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(stat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fstat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(lstat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(newfstatat))) return false;
     
     // Вызовы для работы с директориями
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getdents), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getdents64), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getdents))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getdents64))) return false;
     
     // Вызовы для доступа к файлам через /proc/self/fd/
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(readlink), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(readlinkat), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(readlink))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(readlinkat))) return false;
     
     // Вызовы для управления правами и владельцами
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(chmod), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fchmod), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fchmodat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(chown), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fchown), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fchownat), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(chmod))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fchmod))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fchmodat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(chown))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fchown))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fchownat))) return false;
     
     // Вызовы для работы с временными метками
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(utimensat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(futimens), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(utimensat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(futimens))) return false;
     
     // Вызовы для удаления файлов
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlink), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(unlinkat), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(unlink))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(unlinkat))) return false;
     
     // Вызовы для работы с памятью
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mmap), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(munmap), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mprotect), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(brk), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(mmap))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(munmap))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(mprotect))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(brk))) return false;
     
     // Вызовы для потоков
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(futex), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(set_robust_list), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(get_robust_list), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(futex))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(set_robust_list))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(get_robust_list))) return false;
     
     // Вызовы для epoll/select/poll (используется в threadpool/monitor)
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(epoll_create), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(epoll_create1), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(epoll_ctl), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(epoll_wait), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(epoll_pwait), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(select), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pselect6), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(poll), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ppoll), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(epoll_create))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(epoll_create1))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(epoll_ctl))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(epoll_wait))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(epoll_pwait))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(select))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(pselect6))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(poll))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(ppoll))) return false;
     
     // Вызовы для работы с сигналами
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sigaltstack), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sigaltstack))) return false;
     
     // Вызовы для getrusage/gettimeofday/clock_gettime
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(gettimeofday), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clock_gettime), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clock_getres), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clock_nanosleep), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(nanosleep), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(gettimeofday))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clock_gettime))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clock_getres))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clock_nanosleep))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(nanosleep))) return false;
     
     // Вызовы для getuid/getgid/geteuid/getegid
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getuid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getgid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(geteuid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getegid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getpid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(gettid), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getuid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getgid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(geteuid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getegid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getpid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(gettid))) return false;
     
     // Вызовы для syslog (только sendto для локального syslog, без socket/connect)
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendto), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sendto))) return false;
     
     // Вызовы для prctl (NO_NEW_PRIVS)
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(prctl), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(prctl))) return false;
     
     // Вызовы для setuid/setgid при сбросе привилегий
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setuid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setgid), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(setgroups), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(setuid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(setgid))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(setgroups))) return false;
     
     // Вызовы для posix_fadvise
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fadvise64), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fadvise64))) return false;
     
     // Вызовы для getrandom
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getrandom), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getrandom))) return false;
     
     // Вызовы для access/faccessat (проверка прав доступа)
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(access), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(faccessat), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(faccessat2), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(access))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(faccessat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(faccessat2))) return false;
     
     // Вызовы для readv/writev
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(readv), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(writev), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pread64), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(pwrite64), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(readv))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(writev))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(pread64))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(pwrite64))) return false;
     
     // Вызовы для dup/dup2/dup3
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup2), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup3), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(dup))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(dup2))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(dup3))) return false;
     
     // Вызовы для fcntl
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fcntl), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fcntl))) return false;
     
     // Вызовы для wait4 (если используются дочерние процессы)
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(wait4), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(wait4))) return false;
     
     // Вызовы для uname/getcwd/readahead
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(uname), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(getcwd), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(readahead), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(uname))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getcwd))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(readahead))) return false;
     
     // Вызовы для sync_file_range/fallocate
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sync_file_range), 0);
-    if (rc < 0) goto error;
-    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fallocate), 0);
-    if (rc < 0) goto error;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sync_file_range))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fallocate))) return false;
     
     // Применяем фильтр
-    rc = seccomp_load(ctx);
-    if (rc < 0) {
-        Logger::error(std::string("Failed to load seccomp filter: ") + strerror(-rc));
-        seccomp_release(ctx);
+    if (!ctx_wrapper.load()) {
+        Logger::error("Failed to load seccomp filter");
         return false;
     }
     
-    seccomp_release(ctx);
     Logger::info("Seccomp sandbox initialized successfully (minimal syscall whitelist)");
     return true;
-    
-error:
-    Logger::error(std::string("Failed to add seccomp rule: ") + strerror(-rc));
-    seccomp_release(ctx);
-    return false;
 #else
     Logger::warning("Seccomp support not available (libseccomp not installed)");
     return false;
