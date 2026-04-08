@@ -10,9 +10,10 @@
 #include <cstdio>
 #include <sys/mman.h>
 #include "performance_optimizer.h"
+#include "numa_utils.h"
 
 /**
- * MemoryPool - выделенный пул памяти для буферов сжатия
+ * MemoryPool - выделенный пул памяти для буферов сжатия с поддержкой NUMA
  * 
  * Оптимизации:
  * - Предварительное выделение памяти для избежания аллокаций в горячем пути
@@ -20,6 +21,7 @@
  * - Потокобезопасность через mutex
  * - Выравнивание по границе кэш-линии для лучшей производительности
  * - Прямой доступ к сырым указателям для работы с системными вызовами
+ * - NUMA-aware выделение памяти для снижения задержек доступа к памяти
  */
 template<typename T, size_t DefaultSize = 262144>
 class MemoryPool {
@@ -27,8 +29,16 @@ public:
     // Выравнивание по кэш-линии для предотвращения false sharing (обычно 64 байта)
     static constexpr size_t CACHE_LINE_SIZE = 64;
     
-    explicit MemoryPool(size_t initial_capacity = 8) 
-        : buffer_size(DefaultSize), alignment(std::max(alignof(std::max_align_t), CACHE_LINE_SIZE)) {
+    explicit MemoryPool(size_t initial_capacity = 8, int numa_node_id = -1) 
+        : buffer_size(DefaultSize), 
+          alignment(std::max(alignof(std::max_align_t), CACHE_LINE_SIZE)),
+          numa_node_id_(numa_node_id) {
+        // Инициализация NUMA если доступен
+        if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
+            // Привязка текущего потока к NUMA узлу
+            NumaUtils::bind_current_thread_to_node(numa_node_id_);
+        }
+        
         // Предварительно выделяем буферы с использованием Huge Pages если доступны
         for (size_t i = 0; i < initial_capacity; ++i) {
             auto buf = allocate_raw();
@@ -71,6 +81,17 @@ public:
         // Если нет свободных буферов, выделяем новый с использованием Huge Pages если доступны
         void* ptr = nullptr;
         size_t alloc_size = buffer_size;
+        
+        // NUMA-aware выделение памяти
+        if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
+            // Выделяем память на указанном NUMA узле
+            ptr = NumaUtils::allocate_on_node(buffer_size, numa_node_id_);
+            if (ptr) {
+                ++total_allocated_;
+                return static_cast<T*>(ptr);
+            }
+            // Fallback на стандартное выделение если NUMA аллокация не удалась
+        }
         
         // Пытаемся использовать Huge Pages для больших буферов
         if (buffer_size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
@@ -184,6 +205,14 @@ private:
 #if defined(_MSC_VER)
         ptr = _aligned_malloc(size, alignment);
 #else
+        // NUMA-aware выделение если указан узел
+        if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
+            ptr = NumaUtils::allocate_on_node(size, numa_node_id_);
+            if (ptr) {
+                return ptr;
+            }
+        }
+        
         // Пробуем использовать Huge Pages через mmap для больших выделений
         if (size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
             PerformanceOptimizer::is_huge_pages_available()) {
@@ -206,6 +235,12 @@ private:
 #if defined(_MSC_VER)
         _aligned_free(ptr);
 #else
+        // Освобождаем через NUMA если память была выделена через NUMA
+        if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
+            NumaUtils::free_on_node(ptr, buffer_size);
+            return;
+        }
+        
         // Пытаемся освободить через munmap (для Huge Pages), иначе free
         if (munmap(ptr, buffer_size) != 0) {
             free(ptr);
@@ -215,6 +250,7 @@ private:
     
     const size_t buffer_size;
     const size_t alignment;
+    const int numa_node_id_;  // NUMA узел для выделения памяти (-1 если не используется)
     mutable std::mutex mutex_;
     std::queue<T*> free_buffers_;
     std::atomic<size_t> total_allocated_{0};
