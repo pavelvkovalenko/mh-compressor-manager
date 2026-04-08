@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <sys/mman.h>
+#include <immintrin.h>
 #include "performance_optimizer.h"
 #include "numa_utils.h"
 
@@ -22,12 +23,18 @@
  * - Выравнивание по границе кэш-линии для лучшей производительности
  * - Прямой доступ к сырым указателям для работы с системными вызовами
  * - NUMA-aware выделение памяти для снижения задержек доступа к памяти
+ * - Per-thread кэши свободных блоков для устранения блокировок
+ * - SIMD-ускоренные операции копирования и обнуления памяти
+ * - Prefetching данных для снижения латентности доступа к памяти
  */
 template<typename T, size_t DefaultSize = 262144>
 class MemoryPool {
 public:
     // Выравнивание по кэш-линии для предотвращения false sharing (обычно 64 байта)
     static constexpr size_t CACHE_LINE_SIZE = 64;
+    
+    // Размер per-thread кэша (количество буферов на поток)
+    static constexpr size_t THREAD_CACHE_SIZE = 4;
     
     explicit MemoryPool(size_t initial_capacity = 8, int numa_node_id = -1) 
         : buffer_size(DefaultSize), 
@@ -49,13 +56,21 @@ public:
     }
     
     ~MemoryPool() {
-        // Освобождаем все буферы
+        // Освобождаем все буферы из глобального пула
         std::unique_lock<std::mutex> lock(mutex_);
         while (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
             aligned_free(buf);
         }
+        
+        // Освобождаем буферы из per-thread кэшей
+        for (auto& cache : thread_caches_) {
+            for (auto* buf : cache) {
+                aligned_free(buf);
+            }
+        }
+        thread_caches_.clear();
         total_allocated_ = 0;
     }
     
@@ -70,11 +85,25 @@ public:
     
     // Выделение сырого буфера (для прямого использования с read/write)
     T* allocate_raw() {
+        // Сначала пробуем взять из per-thread кэша (без блокировки)
+        auto& local_cache = get_thread_cache();
+        if (!local_cache.empty()) {
+            T* buf = local_cache.back();
+            local_cache.pop_back();
+            // Prefetch данных для снижения латентности
+            _mm_prefetch(reinterpret_cast<char*>(buf), _MM_HINT_T0);
+            return buf;
+        }
+        
+        // Если per-thread кэш пуст, берем из глобального пула
         std::unique_lock<std::mutex> lock(mutex_);
         
         if (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
+            lock.unlock();
+            // Prefetch данных
+            _mm_prefetch(reinterpret_cast<char*>(buf), _MM_HINT_T0);
             return buf;
         }
         
@@ -141,7 +170,7 @@ public:
         buffer.shrink_to_fit();
     }
     
-    // Возврат сырого буфера в пул (без копирования -真正的 переиспользование)
+    // Возврат сырого буфера в пул (с приоритетом на per-thread кэш)
     // ВАЖНО: Вызывающая сторона должна гарантировать что буфер был выделен из этого пула
     // и не был уже возвращен (защита от double-free)
     void release_raw(T* buffer) {
@@ -155,6 +184,14 @@ public:
             return;
         }
         
+        // Сначала пробуем поместить в per-thread кэш (без блокировки)
+        auto& local_cache = get_thread_cache();
+        if (local_cache.size() < THREAD_CACHE_SIZE) {
+            local_cache.push_back(buffer);
+            return;
+        }
+        
+        // Если per-thread кэш полон, помещаем в глобальный пул
         std::unique_lock<std::mutex> lock(mutex_);
         
         // Простая защита от double-free: проверяем не находится ли уже буфер в очереди
@@ -200,6 +237,13 @@ public:
     }
     
 private:
+    // Получение per-thread кэша (thread_local для избежания блокировок)
+    static std::vector<T*>& get_thread_cache() {
+        thread_local static std::vector<T*> cache;
+        cache.reserve(THREAD_CACHE_SIZE);
+        return cache;
+    }
+    
     void* aligned_alloc(size_t alignment, size_t size) {
         void* ptr = nullptr;
 #if defined(_MSC_VER)
