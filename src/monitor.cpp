@@ -18,6 +18,13 @@ namespace std {
 #include <cstring>
 #include <cerrno>
 #include <climits>      // Для PATH_MAX
+#include <map>          // Для хранения cookie событий перемещения
+
+// Структура для отслеживания событий перемещения
+struct MoveEvent {
+    std::string path;
+    std::chrono::steady_clock::time_point timestamp;
+};
 
 Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
     // Кэшируем расширения в unordered_set для быстрого поиска O(1)
@@ -26,6 +33,9 @@ Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
         std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
         m_extensions_cache.insert(lower_ext);
     }
+    // Добавляем расширения сжатых файлов
+    m_compressed_extensions.insert("gz");
+    m_compressed_extensions.insert("br");
 }
 
 Monitor::~Monitor() {
@@ -236,7 +246,12 @@ void Monitor::run() {
     std::vector<char> buffer(INITIAL_BUFFER_SIZE);
     
     // ОПТИМИЗАЦИЯ: Выносим вектор событий наружу для переиспользования памяти
-    std::vector<std::pair<int, std::string>> batch_events;
+    struct BatchEvent {
+        int wd;
+        std::string name;
+        uint32_t cookie;
+    };
+    std::vector<BatchEvent> batch_events;
     batch_events.reserve(64);  // Предварительно резервируем память
     
     auto last_debounce_check = std::chrono::steady_clock::now();
@@ -273,14 +288,39 @@ void Monitor::run() {
                     while (i < len) {
                         struct inotify_event* event = (struct inotify_event*)&buffer[i];
                         if (event->len > 0) {
-                            batch_events.emplace_back(event->wd, std::string(event->name));
+                            batch_events.emplace_back(event->wd, std::string(event->name), event->cookie);
                         }
                         i += sizeof(struct inotify_event) + event->len;
                     }
                     
-                    // Пакетная обработка событий
-                    for (const auto& [wd, name] : batch_events) {
-                        process_event(wd, 0, name);
+                    // Пакетная обработка событий с передачей cookie
+                    for (const auto& [wd, name, cookie] : batch_events) {
+                        process_event(wd, 0, name, cookie);
+                    }
+                    
+                    // Очищаем старые cookie перемещения (таймаут)
+                    {
+                        std::lock_guard<std::mutex> lock(m_move_mutex);
+                        auto now = std::chrono::steady_clock::now();
+                        for (auto it = m_move_cookies.begin(); it != m_move_cookies.end(); ) {
+                            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                now - it->second.timestamp).count();
+                            if (elapsed > MOVE_COOKIE_TIMEOUT_MS) {
+                                // Таймаут истек - файл был перемещен за пределы monitored зоны или удален
+                                Logger::info(std::format("Move timeout expired for compressed file: {}, treating as deletion", 
+                                                         it->second.path));
+                                
+                                // Добавляем оригинал в очередь на сжатие
+                                std::string original_path = get_original_path_from_compressed(fs::path(it->second.path));
+                                if (!original_path.empty() && m_on_compress) {
+                                    m_on_compress(fs::path(original_path));
+                                }
+                                
+                                it = m_move_cookies.erase(it);
+                            } else {
+                                ++it;
+                            }
+                        }
                     }
                     
                     // Проверяем есть ли ещё данные (неблокирующий read)
@@ -340,7 +380,32 @@ bool Monitor::is_target_extension(const std::string& filename) {
     return m_extensions_cache.count(ext) > 0;
 }
 
-void Monitor::process_event(int wd, uint32_t mask, const std::string& name) {
+bool Monitor::is_compressed_extension(const std::string& filename) {
+    size_t dot = filename.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    
+    std::string ext = filename.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    
+    // Используем кэш сжатых расширений для быстрого поиска O(1)
+    return m_compressed_extensions.count(ext) > 0;
+}
+
+std::string Monitor::get_original_path_from_compressed(const fs::path& compressed_path) {
+    // Удаляем расширение .gz или .br чтобы получить путь к оригиналу
+    std::string path_str = compressed_path.string();
+    
+    if (path_str.size() > 3 && path_str.substr(path_str.size() - 3) == ".gz") {
+        return path_str.substr(0, path_str.size() - 3);
+    }
+    if (path_str.size() > 3 && path_str.substr(path_str.size() - 3) == ".br") {
+        return path_str.substr(0, path_str.size() - 3);
+    }
+    
+    return "";  // Не распознано как сжатый файл
+}
+
+void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint32_t cookie) {
     if (name.empty()) return;
 
     std::string base_path = "";
@@ -354,12 +419,60 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name) {
 
     fs::path full_path = fs::path(base_path) / name;
     
-    if (!is_target_extension(name)) {
+    // Проверяем является ли файл целевым (исходным) или сжатым
+    bool is_target = is_target_extension(name);
+    bool is_compressed = is_compressed_extension(name);
+    
+    if (!is_target && !is_compressed) {
         return;
     }
 
-    Logger::debug(std::format("Event detected: mask={}, path={}", mask, full_path.string()));
+    Logger::debug(std::format("Event detected: mask={}, path={}, type={}, cookie={}", 
+                              mask, full_path.string(), 
+                              is_compressed ? "compressed" : "target",
+                              cookie));
 
+    // Обработка событий для сжатых файлов (.gz, .br)
+    if (is_compressed) {
+        if (mask & IN_DELETE) {
+            // Сжатый файл удален - добавляем оригинал в очередь на сжатие
+            std::string original_path = get_original_path_from_compressed(full_path);
+            if (!original_path.empty()) {
+                Logger::info(std::format("Compressed file deleted: {}, queuing original for re-compression: {}", 
+                                         full_path.string(), original_path));
+                if (m_on_compress) {
+                    m_on_compress(fs::path(original_path));
+                }
+            }
+        } else if (mask & IN_MOVED_FROM) {
+            // Сохраняем cookie и путь для последующей связки с IN_MOVED_TO
+            std::lock_guard<std::mutex> lock(m_move_mutex);
+            m_move_cookies[cookie] = {
+                full_path.string(),
+                std::chrono::steady_clock::now()
+            };
+            
+            Logger::debug(std::format("IN_MOVED_FROM for compressed file: {} (cookie: {})", 
+                                      full_path.string(), cookie));
+        } else if (mask & IN_MOVED_TO) {
+            // Проверяем есть ли соответствующее событие IN_MOVED_FROM с тем же cookie
+            std::lock_guard<std::mutex> lock(m_move_mutex);
+            auto it_cookie = m_move_cookies.find(cookie);
+            if (it_cookie != m_move_cookies.end()) {
+                // Это перемещение внутри monitored зоны - удаляем из списка ожидающих
+                Logger::info(std::format("Compressed file moved within monitored directory: {} -> {}", 
+                                         it_cookie->second.path, full_path.string()));
+                m_move_cookies.erase(it_cookie);
+            } else {
+                // Файл перемещен в monitored директорию извне - можно добавить в очередь проверки
+                Logger::info(std::format("Compressed file moved into directory from outside: {}", full_path.string()));
+            }
+        }
+        
+        return;  // Для сжатых файлов дальше не обрабатываем
+    }
+
+    // Обработка событий для целевых (исходных) файлов
     if (mask & IN_DELETE) {
         if (m_on_delete) m_on_delete(full_path);
     } else if (mask & IN_MOVED_FROM) {
