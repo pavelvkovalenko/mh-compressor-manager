@@ -2,6 +2,20 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <optional>
+
+// Структура настроек для конкретной папки
+struct FolderOverride {
+    std::string path;
+    std::optional<int> compression_level_gzip;      // Уровень сжатия gzip (переопределяет глобальный)
+    std::optional<int> compression_level_brotli;    // Уровень сжатия brotli (переопределяет глобальный)
+    std::vector<std::string> extensions;            // Список расширений для этой папки
+    bool process_files_without_extensions = false;  // Обрабатывать файлы без расширений
+    bool recursive = true;                          // Рекурсивная обработка подпапок
+    std::optional<int> rate_limit;                  // Лимит операций в минуту (0 = без лимита)
+    std::optional<int> io_delay_us;                 // Задержка I/O для этой папки
+    std::optional<size_t> max_active_ios;           // Лимит параллельных I/O для этой папки
+};
 
 struct Config {
     std::vector<std::string> target_paths;
@@ -14,7 +28,7 @@ struct Config {
     int debounce_delay = 2; // seconds
     std::string config_path = "/etc/mediahive/compressor-manager.conf";
     
-    // Ограничение I/O нагрузки
+    // Ограничение I/O нагрузки (глобальные настройки)
     int io_delay_us = 0;         // Задержка между файлами (микросекунды)
     size_t max_active_ios = 0;   // Лимит параллельных I/O операций (0 = без лимита)
     
@@ -23,8 +37,11 @@ struct Config {
     bool enable_seccomp = true;       // Включить песочницу seccomp (по умолчанию true)
     std::string run_as_user = "";     // Явный пользователь для сброса прав (пусто = авто)
     
-    // Поддержка файлов без расширений
+    // Поддержка файлов без расширений (глобальная настройка)
     bool process_files_without_extensions = false;  // Обрабатывать файлы без расширений
+    
+    // Индивидуальные настройки для папок (переопределяют глобальные)
+    std::vector<FolderOverride> folder_overrides;
     
     // CLI overrides
     std::vector<std::string> cli_dirs;
@@ -35,3 +52,6 @@ struct Config {
 };
 
 Config load_config(int argc, char* argv[]);
+
+// Получить настройки для конкретного пути (с учетом переопределений)
+const FolderOverride* get_folder_override(const Config& cfg, const std::string& path);
