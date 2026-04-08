@@ -31,6 +31,23 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
  */
 bool is_running_as_root();
 
+/**
+ * Проверяет файл на безопасность перед сжатием.
+ * 
+ * @param path Путь к файлу
+ * @return true если файл безопасен для сжатия
+ */
+bool validate_file_for_compression(const std::string& path);
+
+/**
+ * Безопасно открывает файл с защитой от TOCTOU атак.
+ * 
+ * @param path Путь к файлу
+ * @param flags Флаги открытия
+ * @return Дескриптор файла или -1 при ошибке
+ */
+int safe_open_file(const std::string& path, int flags);
+
 } // namespace security
 
 #endif // SECURITY_H

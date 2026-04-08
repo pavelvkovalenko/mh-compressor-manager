@@ -8,6 +8,8 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <sys/mman.h>
+#include "performance_optimizer.h"
 
 /**
  * MemoryPool - выделенный пул памяти для буферов сжатия
@@ -22,9 +24,12 @@
 template<typename T, size_t DefaultSize = 262144>
 class MemoryPool {
 public:
+    // Выравнивание по кэш-линии для предотвращения false sharing (обычно 64 байта)
+    static constexpr size_t CACHE_LINE_SIZE = 64;
+    
     explicit MemoryPool(size_t initial_capacity = 8) 
-        : buffer_size(DefaultSize), alignment(alignof(std::max_align_t)) {
-        // Предварительно выделяем буферы
+        : buffer_size(DefaultSize), alignment(std::max(alignof(std::max_align_t), CACHE_LINE_SIZE)) {
+        // Предварительно выделяем буферы с использованием Huge Pages если доступны
         for (size_t i = 0; i < initial_capacity; ++i) {
             auto buf = allocate_raw();
             if (buf) {
@@ -63,8 +68,21 @@ public:
             return buf;
         }
         
-        // Если нет свободных буферов, выделяем новый
-        void* ptr = aligned_alloc(alignment, buffer_size);
+        // Если нет свободных буферов, выделяем новый с использованием Huge Pages если доступны
+        void* ptr = nullptr;
+        size_t alloc_size = buffer_size;
+        
+        // Пытаемся использовать Huge Pages для больших буферов
+        if (buffer_size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
+            PerformanceOptimizer::is_huge_pages_available()) {
+            ptr = PerformanceOptimizer::allocate_aligned_memory(alloc_size, true);
+        }
+        
+        // Fallback на стандартное выделение
+        if (!ptr) {
+            ptr = aligned_alloc(alignment, buffer_size);
+        }
+        
         if (!ptr) {
             return nullptr;
         }
@@ -166,6 +184,15 @@ private:
 #if defined(_MSC_VER)
         ptr = _aligned_malloc(size, alignment);
 #else
+        // Пробуем использовать Huge Pages через mmap для больших выделений
+        if (size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
+            PerformanceOptimizer::is_huge_pages_available()) {
+            ptr = PerformanceOptimizer::allocate_aligned_memory(size, true);
+            if (ptr) {
+                return ptr;
+            }
+        }
+        // Fallback на posix_memalign
         if (posix_memalign(&ptr, alignment, size) != 0) {
             ptr = nullptr;
         }
@@ -174,10 +201,15 @@ private:
     }
     
     void aligned_free(void* ptr) {
+        if (!ptr) return;
+        
 #if defined(_MSC_VER)
         _aligned_free(ptr);
 #else
-        free(ptr);
+        // Пытаемся освободить через munmap (для Huge Pages), иначе free
+        if (munmap(ptr, buffer_size) != 0) {
+            free(ptr);
+        }
 #endif
     }
     

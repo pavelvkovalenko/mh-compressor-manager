@@ -1,8 +1,10 @@
 #include "numa_utils.h"
 #include "logger.h"
 
+#if HAVE_NUMA
 #include <numa.h>
 #include <numaif.h>
+#endif
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>

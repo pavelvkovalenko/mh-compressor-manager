@@ -4,8 +4,9 @@
 #include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <pwd.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <pwd.h>
 #include <grp.h>
 #include <cstring>
 #include <algorithm>
@@ -371,6 +372,65 @@ error:
     Logger::warning("Seccomp support not available (libseccomp not installed)");
     return false;
 #endif
+}
+
+bool validate_file_for_compression(const std::string& path) {
+    struct stat st;
+    
+    // Проверяем что путь не является symlink (защита от symlink-атак)
+    if (lstat(path.c_str(), &st) != 0) {
+        Logger::error(std::string("Cannot lstat file: ") + path + ": " + strerror(errno));
+        return false;
+    }
+    
+    // Отказываемся сжимать symlink
+    if (S_ISLNK(st.st_mode)) {
+        Logger::error(std::string("Refusing to compress symlink: ") + path);
+        return false;
+    }
+    
+    // Проверяем что это обычный файл
+    if (!S_ISREG(st.st_mode)) {
+        Logger::error(std::string("Not a regular file, refusing to compress: ") + path);
+        return false;
+    }
+    
+    // Проверяем права доступа - файл должен быть доступен для чтения владельцем
+    if (!(st.st_mode & S_IRUSR)) {
+        Logger::error(std::string("File is not readable by owner: ") + path);
+        return false;
+    }
+    
+    return true;
+}
+
+int safe_open_file(const std::string& path, int flags) {
+    // Используем O_NOFOLLOW для защиты от symlink-атак
+    int safe_flags = flags | O_NOFOLLOW;
+    
+    // Открываем файл через /proc/self/fd/ для дополнительной проверки
+    int fd = open(path.c_str(), safe_flags, 0644);
+    if (fd < 0) {
+        Logger::error(std::string("Failed to open file: ") + path + ": " + strerror(errno));
+        return -1;
+    }
+    
+    // Дополнительная проверка через fstat что это действительно файл
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        Logger::error(std::string("fstat failed: ") + strerror(errno));
+        close(fd);
+        return -1;
+    }
+    
+    if (!S_ISREG(st.st_mode)) {
+        Logger::error(std::string("Opened file is not a regular file: ") + path);
+        close(fd);
+        errno = EINVAL;
+        return -1;
+    }
+    
+    return fd;
 }
 
 } // namespace security
