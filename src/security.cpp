@@ -10,6 +10,7 @@
 #include <grp.h>
 #include <cstring>
 #include <algorithm>
+#include <climits>
 
 #if __has_include(<seccomp.h>)
 #include <seccomp.h>
@@ -26,6 +27,112 @@
 #endif
 
 namespace security {
+
+// Глобальный rate limiter: 100 операций за 60 секунд
+RateLimiter g_compression_rate_limiter(100, 60);
+
+// ============================================================================
+// RateLimiter Implementation
+// ============================================================================
+
+RateLimiter::RateLimiter(size_t max_operations, size_t window_seconds)
+    : m_max_operations(max_operations)
+    , m_window_seconds(window_seconds) {
+}
+
+void RateLimiter::cleanup_old_entries() {
+    auto now = std::chrono::steady_clock::now();
+    auto window_start = now - std::chrono::seconds(m_window_seconds);
+    
+    // Удаляем все записи старше окна времени
+    while (!m_timestamps.empty() && m_timestamps.front() < window_start) {
+        m_timestamps.erase(m_timestamps.begin());
+    }
+}
+
+bool RateLimiter::try_acquire() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
+    cleanup_old_entries();
+    
+    if (m_timestamps.size() >= m_max_operations) {
+        // Лимит превышен
+        return false;
+    }
+    
+    // Регистрируем операцию
+    m_timestamps.push_back(std::chrono::steady_clock::now());
+    return true;
+}
+
+void RateLimiter::reset() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_timestamps.clear();
+}
+
+size_t RateLimiter::available() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
+    // Создаем не-const копию для cleanup
+    auto& mutable_this = const_cast<RateLimiter*>(this);
+    mutable_this->cleanup_old_entries();
+    
+    if (m_timestamps.size() >= m_max_operations) {
+        return 0;
+    }
+    return m_max_operations - m_timestamps.size();
+}
+
+// ============================================================================
+// Filename Validation (Null-byte injection protection)
+// ============================================================================
+
+bool validate_filename(const std::string& filename) {
+    // Проверка на пустое имя
+    if (filename.empty()) {
+        return false;
+    }
+    
+    // Проверка на null-byte инъекции (символы \x00 в строке)
+    // В C++ std::string может содержать null-байты, поэтому проверяем явно
+    for (char c : filename) {
+        if (c == '\0') {
+            // Null-byte в имени файла - потенциальная атака
+            return false;
+        }
+    }
+    
+    // Проверка на опасные символы которые могут быть использованы для атак
+    // Разрешаем только безопасные символы: буквы, цифры, точка, дефис, подчеркивание
+    for (char c : filename) {
+        // Разрешаем ASCII буквы, цифры и некоторые безопасные символы
+        if ((c >= 'a' && c <= 'z') || 
+            (c >= 'A' && c <= 'Z') || 
+            (c >= '0' && c <= '9') ||
+            c == '.' || c == '-' || c == '_' || c == '+') {
+            continue;
+        }
+        // Все остальные символы считаем подозрительными
+        // Это включает: /, \, :, *, ?, ", <, >, |, пробелы, управляющие символы
+        return false;
+    }
+    
+    // Проверка что имя не начинается с точки (скрытые файлы могут быть опасны)
+    // Но разрешаем .gz и .br расширения для сжатых файлов
+    if (filename[0] == '.') {
+        // Разрешаем только если это расширение сжатого файла
+        if (filename != ".gz" && filename != ".br") {
+            // Проверяем что это не скрытый файл с расширением
+            size_t dot = filename.find_last_of('.');
+            if (dot == 0) {
+                // Скрытый файл без расширения после точки
+                return false;
+            }
+        }
+    }
+    
+    return true;
+}
 
 bool is_running_as_root() {
     return geteuid() == 0;

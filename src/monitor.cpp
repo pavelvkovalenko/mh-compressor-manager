@@ -1,5 +1,6 @@
 #include "monitor.h"
 #include "logger.h"
+#include "security.h"
 #include <sys/inotify.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -19,6 +20,7 @@ namespace std {
 #include <cerrno>
 #include <climits>      // Для PATH_MAX
 #include <map>          // Для хранения cookie событий перемещения
+#include <shared_mutex> // Для shared_lock
 
 // Структура для отслеживания событий перемещения
 struct MoveEvent {
@@ -207,6 +209,13 @@ void Monitor::scan_existing_files() {
                             }
                             
                             if (need_compress) {
+                                // Проверка rate limiting перед запуском сжатия (DoS protection)
+                                if (!security::g_compression_rate_limiter.try_acquire()) {
+                                    Logger::warning(std::format("Rate limit exceeded, skipping compression: {}", 
+                                                                entry.path().string()));
+                                    continue;
+                                }
+                                
                                 to_compress++;
                                 m_on_compress(entry.path());
                             }
@@ -366,8 +375,15 @@ void Monitor::run() {
                                 
                                 // Добавляем оригинал в очередь на сжатие
                                 std::string original_path = get_original_path_from_compressed(fs::path(it->second.path));
-                                if (!original_path.empty() && m_on_compress) {
-                                    m_on_compress(fs::path(original_path));
+                                if (!original_path.empty()) {
+                                    // Проверка rate limiting перед запуском сжатия (DoS protection)
+                                    if (security::g_compression_rate_limiter.try_acquire()) {
+                                        if (m_on_compress) {
+                                            m_on_compress(fs::path(original_path));
+                                        }
+                                    } else {
+                                        Logger::warning(std::format("Rate limit exceeded, skipping re-compression: {}", original_path));
+                                    }
                                 }
                                 
                                 it = m_move_cookies.erase(it);
@@ -411,7 +427,15 @@ void Monitor::run() {
             for (auto it = m_debounce_map.begin(); it != m_debounce_map.end(); ) {
                 if (now >= it->second) {
                     Logger::debug(std::format("Debounce expired for: {}", it->first));
-                    if (m_on_compress) m_on_compress(fs::path(it->first));
+                    // Проверка rate limiting перед запуском сжатия (DoS protection)
+                    if (security::g_compression_rate_limiter.try_acquire()) {
+                        if (m_on_compress) {
+                            m_on_compress(fs::path(it->first));
+                        }
+                    } else {
+                        Logger::warning(std::format("Rate limit exceeded, skipping compression after debounce: {}", 
+                                                    it->first));
+                    }
                     it = m_debounce_map.erase(it);
                 } else {
                     ++it;
@@ -422,10 +446,22 @@ void Monitor::run() {
 }
 
 bool Monitor::is_target_extension(const std::string& filename) {
+    // Проверка имени файла на null-byte инъекции и опасные символы
+    if (!security::validate_filename(filename)) {
+        Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filename));
+        return false;
+    }
+    
     size_t dot = filename.find_last_of('.');
-    if (dot == std::string::npos) return false;
+    if (dot == std::string::npos || dot >= filename.size() - 1) return false;
     
     std::string ext = filename.substr(dot + 1);
+    
+    // Дополнительная проверка расширения на null-байты
+    if (ext.empty() || ext.find('\0') != std::string::npos) {
+        return false;
+    }
+    
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
     if (ext == "gz" || ext == "br") return false;
@@ -437,10 +473,21 @@ bool Monitor::is_target_extension(const std::string& filename) {
 }
 
 bool Monitor::is_compressed_extension(const std::string& filename) {
+    // Проверка имени файла на null-byte инъекции и опасные символы
+    if (!security::validate_filename(filename)) {
+        return false;
+    }
+    
     size_t dot = filename.find_last_of('.');
-    if (dot == std::string::npos) return false;
+    if (dot == std::string::npos || dot >= filename.size() - 1) return false;
     
     std::string ext = filename.substr(dot + 1);
+    
+    // Дополнительная проверка расширения на null-байты
+    if (ext.empty() || ext.find('\0') != std::string::npos) {
+        return false;
+    }
+    
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
     // Блокировка для потокобезопасного доступа к кэшу сжатых расширений (защита от race condition)
@@ -510,8 +557,13 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
             if (!original_path.empty()) {
                 Logger::info(std::format("Compressed file deleted: {}, queuing original for re-compression: {}", 
                                          full_path.string(), original_path));
-                if (m_on_compress) {
-                    m_on_compress(fs::path(original_path));
+                // Проверка rate limiting перед запуском сжатия (DoS protection)
+                if (security::g_compression_rate_limiter.try_acquire()) {
+                    if (m_on_compress) {
+                        m_on_compress(fs::path(original_path));
+                    }
+                } else {
+                    Logger::warning(std::format("Rate limit exceeded, skipping re-compression: {}", original_path));
                 }
             }
         } else if (mask & IN_MOVED_FROM) {

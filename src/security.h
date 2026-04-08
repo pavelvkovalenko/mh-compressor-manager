@@ -3,6 +3,9 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
+#include <chrono>
+#include <mutex>
 
 namespace security {
 
@@ -47,6 +50,61 @@ bool validate_file_for_compression(const std::string& path);
  * @return Дескриптор файла или -1 при ошибке
  */
 int safe_open_file(const std::string& path, int flags);
+
+/**
+ * Проверяет имя файла на наличие null-byte инъекций и других опасных символов.
+ * 
+ * @param filename Имя файла для проверки
+ * @return true если имя файла безопасно
+ */
+bool validate_filename(const std::string& filename);
+
+/**
+ * Класс для rate limiting операций сжатия.
+ * Защищает от DoS-атак путем ограничения количества операций в единицу времени.
+ */
+class RateLimiter {
+public:
+    /**
+     * Конструктор rate limiter.
+     * 
+     * @param max_operations Максимальное количество операций за окно времени
+     * @param window_seconds Размер окна времени в секундах
+     */
+    explicit RateLimiter(size_t max_operations = 100, size_t window_seconds = 60);
+    
+    /**
+     * Проверяет и регистрирует операцию.
+     * 
+     * @return true если операция разрешена, false если превышен лимит
+     */
+    bool try_acquire();
+    
+    /**
+     * Сбрасывает счетчики rate limiter.
+     */
+    void reset();
+    
+    /**
+     * Возвращает количество оставшихся операций в текущем окне.
+     * 
+     * @return Количество доступных операций
+     */
+    size_t available() const;
+
+private:
+    void cleanup_old_entries();
+    
+    const size_t m_max_operations;
+    const size_t m_window_seconds;
+    mutable std::mutex m_mutex;
+    std::vector<std::chrono::steady_clock::time_point> m_timestamps;
+};
+
+/**
+ * Глобальный rate limiter для всех операций сжатия.
+ */
+extern RateLimiter g_compression_rate_limiter;
 
 } // namespace security
 
