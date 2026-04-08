@@ -117,11 +117,13 @@ public:
     
     void stop() {
         stop_flag = true;
+        force_stop_flag = false;  // Сбрасываем флаг принудительной остановки
         condition.notify_all();
         io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
         
         // Ждем завершения всех задач с таймаутом
         constexpr auto THREAD_JOIN_TIMEOUT = std::chrono::seconds(30);
+        constexpr auto FORCE_JOIN_TIMEOUT = std::chrono::seconds(10);
         
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
@@ -143,13 +145,17 @@ public:
                         worker.join();
                     });
                     
-                    if (force_join_future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
-                        Logger::error("Forced thread join timeout, thread may be stuck");
-                        // Не используем detach() - оставляем поток в joinable состоянии
-                        // Это предотвращает утечку ресурсов и неопределенное поведение
+                    if (force_join_future.wait_for(FORCE_JOIN_TIMEOUT) == std::future_status::timeout) {
+                        Logger::error("Forced thread join timeout, thread may be stuck in uninterruptible wait");
+                        // НЕ используем detach() - это критически важно!
+                        // detach() приведет к утечке ресурсов и неопределенному поведению
+                        // Оставляем поток в joinable состоянии - он завершится когда разблокируется
+                        // Это безопаснее чем detach() который создает orphaned thread
                     } else {
                         Logger::info("Thread joined after forced stop request");
                     }
+                } else {
+                    Logger::debug("Thread joined successfully");
                 }
             }
         }
