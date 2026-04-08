@@ -59,6 +59,7 @@ void Monitor::scan_existing_files() {
     Logger::info("Starting initial scan of existing files...");
     int scanned = 0;
     int to_compress = 0;
+    int missing_compressed = 0;  // Счётчик файлов с отсутствующими сжатыми версиями
     
     for (const auto& path_str : m_cfg.target_paths) {
         fs::path base_path(path_str);
@@ -107,6 +108,8 @@ void Monitor::scan_existing_files() {
                             fs::path gz = entry.path().string() + ".gz";
                             fs::path br = entry.path().string() + ".br";
                             bool need_compress = false;
+                            bool missing_gz = false;
+                            bool missing_br = false;
                             
                             try {
                                 // Безопасное получение времени модификации через lstat (не следует за symlink)
@@ -121,6 +124,10 @@ void Monitor::scan_existing_files() {
                                 bool gz_exists = (lstat(gz.c_str(), &gz_st) == 0 && !S_ISLNK(gz_st.st_mode));
                                 bool br_exists = (lstat(br.c_str(), &br_st) == 0 && !S_ISLNK(br_st.st_mode));
                                 
+                                // Проверяем наличие сжатых версий
+                                missing_gz = !gz_exists;
+                                missing_br = !br_exists;
+                                
                                 auto gz_time = gz_exists ? std::chrono::system_clock::from_time_t(gz_st.st_mtime) : decltype(src_time)::min();
                                 auto br_time = br_exists ? std::chrono::system_clock::from_time_t(br_st.st_mtime) : decltype(src_time)::min();
                                 
@@ -129,6 +136,18 @@ void Monitor::scan_existing_files() {
                                 
                                 if (!gz_ok || !br_ok) {
                                     need_compress = true;
+                                }
+                                
+                                // Логирование отсутствующих сжатых файлов
+                                if (missing_gz || missing_br) {
+                                    missing_compressed++;
+                                    std::string missing_files;
+                                    if (missing_gz) missing_files += ".gz";
+                                    if (missing_br && !missing_gz) missing_files += ".br";
+                                    else if (missing_br) missing_files += " and .br";
+                                    
+                                    Logger::info(std::format("Missing compressed file(s) {}: queued for re-compression", 
+                                        entry.path().string(), missing_files));
                                 }
                             } catch (const fs::filesystem_error& e) {
                                 Logger::debug(std::format("Error checking times for {}: {}", 
@@ -149,8 +168,8 @@ void Monitor::scan_existing_files() {
         }
     }
     
-    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued for compression", 
-                             scanned, to_compress));
+    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued for compression ({} with missing compressed versions)", 
+                             scanned, to_compress, missing_compressed));
 }
 
 void Monitor::set_task_handler(std::function<void(const fs::path&)> handler) {
