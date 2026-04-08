@@ -53,7 +53,10 @@ constexpr size_t PROC_FD_PATH_SIZE = 64;
 constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 // Глобальный пул памяти для буферов сжатия (переиспользуется между задачами)
-static ByteBufferPool g_buffer_pool(32);
+// Ограничиваем максимальный размер пула для предотвращения чрезмерного потребления памяти:
+// - При обработке множества мелких файлов: не более 32 буферов (8MB)
+// - При обработке крупных файлов: адаптивное увеличение до 64 буферов (16MB)
+static ByteBufferPool g_buffer_pool(32, -1, ByteBufferPool::MAX_POOL_SIZE);
 
 // Выравнивание для O_DIRECT (должно быть кратно размеру сектора, обычно 512 байт)
 constexpr size_t DIRECT_IO_ALIGNMENT = 4096;
