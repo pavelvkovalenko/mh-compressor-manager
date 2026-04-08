@@ -100,6 +100,7 @@ set(SOURCES
     logger.cpp
     security.cpp
     async_io.cpp
+    performance_optimizer.cpp
 )
 
 set(HEADERS
@@ -111,6 +112,7 @@ set(HEADERS
     security.h
     memory_pool.h
     async_io.h
+    performance_optimizer.h
 )
 
 # ============================================================================
