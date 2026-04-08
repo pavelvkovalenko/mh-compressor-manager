@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <future>
 #include "logger.h"
+#include "performance_optimizer.h"
 
 // Приоритеты задач
 enum class TaskPriority : uint8_t {
@@ -44,9 +45,15 @@ public:
     ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0) 
         : stop_flag(false), max_queue_size(max_queue_size), active_tasks(0), 
           m_max_active_ios(max_ios), io_slots_available(max_ios > 0 ? max_ios : SIZE_MAX) {
+        // Резервируем память с учетом кэш-линий для предотвращения false sharing
         workers.reserve(threads);
         for (size_t i = 0; i < threads; ++i) {
-            workers.emplace_back([this] {
+            workers.emplace_back([this, i] {
+                // Устанавливаем CPU affinity для каждого потока если возможно
+                if (i < static_cast<size_t>(PerformanceOptimizer::get_cpu_count())) {
+                    PerformanceOptimizer::set_cpu_affinity(static_cast<int>(i));
+                }
+                
                 while (true) {
                     std::function<void()> task;
                     {

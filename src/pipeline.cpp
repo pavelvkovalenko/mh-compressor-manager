@@ -100,13 +100,13 @@ bool CompressionPipeline::compress(
              input_path.string(), gzip_output_path.string(), brotli_output_path.string());
     
     // Проверка безопасности входного файла
-    if (!SecurityUtils::validate_file_for_compression(input_path)) {
+    if (!security::validate_file_for_compression(input_path)) {
         LOG_ERROR("Проверка безопасности не пройдена для файла: {}", input_path.string());
         return false;
     }
     
     // Открытие входного файла с защитой от TOCTOU
-    input_fd_ = SecurityUtils::safe_open_file(input_path, O_RDONLY);
+    input_fd_ = security::safe_open_file(input_path, O_RDONLY);
     if (input_fd_ < 0) {
         LOG_ERROR("Не удалось открыть файл {}: {}", input_path.string(), strerror(errno));
         return false;
