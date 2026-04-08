@@ -8,38 +8,39 @@
 *.dll
 *.exe
 *.out
-
-# CMake build directory
 build/
+dist/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
 
 # Dependencies
 venv/
 .venv/
 __pycache__/
 *.egg-info/
-node_modules/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.swo
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
 
 # Environment
 .env
 .env.local
 *.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
 
 # OS
 .DS_Store

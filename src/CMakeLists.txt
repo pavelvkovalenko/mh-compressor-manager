@@ -79,6 +79,14 @@ pkg_check_modules(SELINUX libselinux)
 # Seccomp - песочница системных вызовов
 pkg_check_modules(SECCOMP libseccomp)
 
+# Libcap - управление capabilities (для сброса привилегий)
+pkg_check_modules(LIBCAP libcap)
+if(LIBCAP_FOUND)
+    message(STATUS \"Libcap support enabled\")
+else()
+    message(STATUS \"Libcap support disabled (libcap not found)\")
+endif()
+
 # io_uring - асинхронный I/O (опционально)
 pkg_check_modules(LIBURING liburing)
 if(LIBURING_FOUND)
@@ -198,6 +206,16 @@ if(SECCOMP_FOUND)
     message(STATUS "Seccomp support enabled")
 else()
     message(STATUS "Seccomp support disabled (libseccomp not found)")
+endif()
+
+# Добавляем Libcap если найден
+if(LIBCAP_FOUND)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${LIBCAP_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBCAP_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_LIBCAP)
+    message(STATUS "Libcap support enabled")
+else()
+    message(STATUS "Libcap support disabled (libcap not found)")
 endif()
 
 # ============================================================================
