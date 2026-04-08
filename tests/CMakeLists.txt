@@ -30,6 +30,13 @@ pkg_check_modules(ZLIB REQUIRED zlib)
 pkg_check_modules(BROTLI REQUIRED libbrotlienc libbrotlicommon)
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
+# Поиск fmt library (как в основном проекте)
+find_package(fmt QUIET)
+if(NOT fmt_FOUND)
+    # Если fmt не найден как package, используем pkg-config
+    pkg_check_modules(FMT QUIET fmt)
+endif()
+
 # ============================================================================
 # Исходные файлы тестов
 # ============================================================================
@@ -123,6 +130,12 @@ target_link_libraries(compressor_test PRIVATE
     ${BROTLI_LIBRARIES}
     ${SYSTEMD_LIBRARIES}
 )
+if(fmt_FOUND)
+    target_link_libraries(compressor_test PRIVATE fmt::fmt)
+elseif(FMT_FOUND)
+    target_include_directories(compressor_test PRIVATE ${FMT_INCLUDE_DIRS})
+    target_link_libraries(compressor_test PRIVATE ${FMT_LIBRARIES})
+endif()
 target_compile_options(compressor_test PRIVATE
     -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
 )

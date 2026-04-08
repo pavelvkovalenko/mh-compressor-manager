@@ -14,6 +14,14 @@ class Compressor {
 public:
     static bool compress_gzip(const fs::path& input, const fs::path& output, int level);
     static bool compress_brotli(const fs::path& input, const fs::path& output, int level);
+    
+    // Параллельное сжатие в оба формата за один проход чтения
+    static bool compress_dual(const fs::path& input, 
+                             const fs::path& gzip_output, 
+                             const fs::path& brotli_output,
+                             int gzip_level, 
+                             int brotli_level);
+    
     static bool copy_metadata(const fs::path& source, const fs::path& dest);
     
     // Безопасное удаление сжатых копий с проверками

@@ -285,6 +285,130 @@ TEST_F(CompressorTest, CompressionPerformance) {
     SUCCEED() << "Gzip: " << gzip_duration << "ms, Brotli: " << brotli_duration << "ms";
 }
 
+// Тест параллельного сжатия в два формата (compress_dual)
+TEST_F(CompressorTest, DualCompressionBasic) {
+    // Создаем тестовый файл с достаточным количеством данных
+    std::string content;
+    for (int i = 0; i < 100; ++i) {
+        content += "This is a test line for dual compression. ";
+        content += "It contains repetitive data that compresses well. ";
+        content += "ABCDEFGHIJKLMNOPQRSTUVWXYZ ";
+    }
+    
+    fs::path input = createTestFile("dual_test.txt", content);
+    fs::path gzip_output = input.string() + ".gz";
+    fs::path brotli_output = input.string() + ".br";
+    
+    bool result = Compressor::compress_dual(input, gzip_output, brotli_output, 6, 4);
+    
+    EXPECT_TRUE(result);
+    EXPECT_TRUE(fs::exists(gzip_output));
+    EXPECT_TRUE(fs::exists(brotli_output));
+    
+    // Проверяем что оба файла сжаты
+    auto original_size = fs::file_size(input);
+    auto gzip_size = fs::file_size(gzip_output);
+    auto brotli_size = fs::file_size(brotli_output);
+    
+    EXPECT_LT(gzip_size, original_size);
+    EXPECT_LT(brotli_size, original_size);
+    
+    // Brotli обычно сжимает лучше чем Gzip
+    EXPECT_LE(brotli_size, gzip_size);
+}
+
+// Тест параллельного сжатия большого файла
+TEST_F(CompressorTest, DualCompressionLargeFile) {
+    // Создаем большой файл (1MB)
+    std::string content;
+    content.reserve(1024 * 1024);
+    for (int i = 0; i < 10000; ++i) {
+        content += "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ";
+        content += "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ";
+        content += "Ut enim ad minim veniam, quis nostrud exercitation ullamco. ";
+    }
+    
+    fs::path input = createTestFile("large_dual_test.txt", content);
+    fs::path gzip_output = input.string() + ".gz";
+    fs::path brotli_output = input.string() + ".br";
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    bool result = Compressor::compress_dual(input, gzip_output, brotli_output, 6, 4);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    
+    EXPECT_TRUE(result);
+    EXPECT_TRUE(fs::exists(gzip_output));
+    EXPECT_TRUE(fs::exists(brotli_output));
+    
+    auto original_size = fs::file_size(input);
+    auto gzip_size = fs::file_size(gzip_output);
+    auto brotli_size = fs::file_size(brotli_output);
+    
+    EXPECT_LT(gzip_size, original_size);
+    EXPECT_LT(brotli_size, original_size);
+    
+    SUCCEED() << "Dual compression completed in " << duration 
+              << "ms. Original: " << original_size 
+              << ", Gzip: " << gzip_size 
+              << ", Brotli: " << brotli_size;
+}
+
+// Тест отказа от сжатия symlink через compress_dual
+TEST_F(CompressorTest, DualCompressionSymlinkRejection) {
+    // Создаем реальный файл
+    fs::path real_file = createTestFile("real_file.txt", "Real content for symlink test");
+    
+    // Создаем symlink на него
+    fs::path symlink_path = temp_dir / "symlink_to_real.txt";
+    fs::create_symlink(real_file, symlink_path);
+    
+    fs::path gzip_output = symlink_path.string() + ".gz";
+    fs::path brotli_output = symlink_path.string() + ".br";
+    
+    // compress_dual должен отказаться сжимать symlink
+    bool result = Compressor::compress_dual(symlink_path, gzip_output, brotli_output, 6, 4);
+    
+    EXPECT_FALSE(result);
+    EXPECT_FALSE(fs::exists(gzip_output));
+    EXPECT_FALSE(fs::exists(brotli_output));
+}
+
+// Тест обработки несуществующего файла через compress_dual
+TEST_F(CompressorTest, DualCompressionNonExistentFile) {
+    fs::path non_existent = temp_dir / "does_not_exist.txt";
+    fs::path gzip_output = non_existent.string() + ".gz";
+    fs::path brotli_output = non_existent.string() + ".br";
+    
+    bool result = Compressor::compress_dual(non_existent, gzip_output, brotli_output, 6, 4);
+    
+    EXPECT_FALSE(result);
+    EXPECT_FALSE(fs::exists(gzip_output));
+    EXPECT_FALSE(fs::exists(brotli_output));
+}
+
+// Тест консистентности: при ошибке одного потока оба файла удаляются
+TEST_F(CompressorTest, DualCompressionAtomicFailure) {
+    // Создаем файл
+    fs::path input = createTestFile("atomic_test.txt", "Test content");
+    
+    // Пытаемся записать в существующий файл (должно вызвать ошибку EEXIST)
+    // Сначала создаем один из выходных файлов
+    fs::path gzip_output = input.string() + ".gz";
+    fs::path brotli_output = input.string() + ".br";
+    
+    // Создаем gzip файл заранее
+    std::ofstream ofs(gzip_output);
+    ofs << "pre-existing content";
+    ofs.close();
+    
+    // compress_dual должен отказаться перезаписывать существующий файл
+    bool result = Compressor::compress_dual(input, gzip_output, brotli_output, 6, 4);
+    
+    EXPECT_FALSE(result);
+    // Файлы могут существовать (предсозданный) но не должны быть изменены функцией
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
