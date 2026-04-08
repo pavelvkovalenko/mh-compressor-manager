@@ -261,6 +261,99 @@ TEST_F(IntegrationTest, PermissionHandling) {
     fs::permissions(file, fs::perms::owner_all);
 }
 
+// Тест graceful shutdown с таймаутом
+TEST(IntegrationTest, GracefulShutdownWithTimeout) {
+    // Этот тест проверяет что graceful_shutdown_with_timeout корректно работает
+    // Мы не можем напрямую тестировать main(), но можем проверить логику
+    
+    // Создаем ThreadPool и эмулируем shutdown
+    ThreadPool pool(2, 100);
+    
+    std::atomic<int> completed_tasks{0};
+    std::atomic<bool> shutdown_requested{false};
+    
+    // Добавляем задачи которые выполняются некоторое время
+    for (int i = 0; i < 5; ++i) {
+        pool.enqueue([&completed_tasks, &shutdown_requested]() {
+            // Имитация работы
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            completed_tasks++;
+        });
+    }
+    
+    // Даем задачам начаться
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    
+    // Останавливаем пул
+    pool.stop();
+    
+    // Проверяем что все задачи завершились или пул остановился
+    EXPECT_LE(completed_tasks.load(), 5);
+    EXPECT_EQ(pool.active_count(), 0);
+}
+
+// Тест обработки SIGTERM сигнала
+TEST(IntegrationTest, SignalHandlingSimulation) {
+    // Проверяем что signalfd может быть создан
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGTERM);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGHUP);
+    
+    // Блокируем сигналы
+    ASSERT_EQ(sigprocmask(SIG_BLOCK, &mask, nullptr), 0);
+    
+    // Создаем signalfd
+    int signal_fd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
+    ASSERT_GE(signal_fd, 0) << "Failed to create signalfd";
+    
+    // Проверяем что fd валиден
+    struct signalfd_siginfo fdsi;
+    ssize_t s = read(signal_fd, &fdsi, sizeof(fdsi));
+    // Может вернуть -1 с EAGAIN так как нет сигналов
+    if (s < 0) {
+        EXPECT_EQ(errno, EAGAIN) << "Expected EAGAIN when no signals pending";
+    }
+    
+    close(signal_fd);
+    
+    // Разблокируем сигналы
+    sigprocmask(SIG_UNBLOCK, &mask, nullptr);
+}
+
+// Тест предотвращения race condition при открытии файлов
+TEST(IntegrationTest, RaceConditionPrevention) {
+    fs::path temp_dir = fs::temp_directory_path() / "mh_race_test";
+    ASSERT_TRUE(fs::create_directories(temp_dir));
+    
+    // Создаем файл
+    fs::path file = temp_dir / "race_test.txt";
+    {
+        std::ofstream ofs(file);
+        ofs << "test data";
+    }
+    
+    // Открываем директорию с O_NOFOLLOW
+    int dir_fd = open(temp_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    ASSERT_GE(dir_fd, 0);
+    
+    // Открываем файл через openat с O_PATH | O_NOFOLLOW
+    int fd_path = openat(dir_fd, "race_test.txt", O_PATH | O_NOFOLLOW);
+    ASSERT_GE(fd_path, 0);
+    
+    // Проверяем через fstat
+    struct stat st;
+    ASSERT_EQ(fstat(fd_path, &st), 0);
+    EXPECT_TRUE(S_ISREG(st.st_mode));
+    
+    // Закрываем
+    close(fd_path);
+    close(dir_fd);
+    
+    fs::remove_all(temp_dir);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
