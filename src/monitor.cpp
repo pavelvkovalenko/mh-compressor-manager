@@ -154,8 +154,8 @@ void Monitor::scan_existing_files() {
                 }
                 
                 if (S_ISREG(st.st_mode)) {
-                    std::string filename = entry.path().filename().string();
-                    if (is_target_extension(filename)) {
+                    std::string filepath = entry.path().string();
+                    if (is_target_extension(filepath)) {
                         scanned++;
                         if (m_on_compress) {
                             fs::path gz = entry.path().string() + ".gz";
@@ -445,19 +445,29 @@ void Monitor::run() {
     }
 }
 
-bool Monitor::is_target_extension(const std::string& filename) {
+bool Monitor::is_target_extension(const std::string& filepath) {
     // Проверка имени файла на null-byte инъекции и опасные символы
-    if (!security::validate_filename(filename)) {
-        Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filename));
+    if (!security::validate_filename(filepath)) {
+        Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filepath));
         return false;
     }
     
+    // Извлекаем имя файла из полного пути
+    fs::path file_path(filepath);
+    std::string filename = file_path.filename().string();
+    
     size_t dot = filename.find_last_of('.');
+    
+    // Получаем настройки для конкретного пути (с учетом переопределений)
+    const FolderOverride* override = get_folder_override(m_cfg, filepath);
+    bool process_without_ext = override 
+        ? override->process_files_without_extensions 
+        : m_cfg.process_files_without_extensions;
     
     // Поддержка файлов без расширений: если точки нет и включена опция process_files_without_extensions
     if (dot == std::string::npos) {
         // Файл без расширения
-        if (m_cfg.process_files_without_extensions) {
+        if (process_without_ext) {
             // Проверяем что это не сжатый файл (.gz, .br)
             if (filename == "gz" || filename == "br") {
                 return false;
@@ -483,10 +493,24 @@ bool Monitor::is_target_extension(const std::string& filename) {
     
     if (ext == "gz" || ext == "br") return false;
     
-    // Блокировка для потокобезопасного доступа к кэшу расширений (защита от race condition)
-    std::shared_lock<std::shared_mutex> lock(m_config_mutex);
-    // Используем кэш расширений для быстрого поиска O(1)
-    return m_extensions_cache.count(ext) > 0;
+    // Получаем список расширений для этой папки (с учетом переопределений)
+    const std::vector<std::string>* target_extensions = nullptr;
+    if (override && !override->extensions.empty()) {
+        target_extensions = &override->extensions;
+    } else {
+        // Блокировка для потокобезопасного доступа к кэшу расширений (защита от race condition)
+        std::shared_lock<std::shared_mutex> lock(m_config_mutex);
+        // Используем кэш расширений для быстрого поиска O(1)
+        return m_extensions_cache.count(ext) > 0;
+    }
+    
+    // Если есть переопределение расширений для этой папки, используем его
+    for (const auto& target_ext : *target_extensions) {
+        if (ext == target_ext) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool Monitor::is_compressed_extension(const std::string& filename) {
@@ -554,7 +578,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     }
     
     // Проверяем является ли файл целевым (исходным) или сжатым
-    bool is_target = is_target_extension(name);
+    bool is_target = is_target_extension(full_path.string());
     bool is_compressed = is_compressed_extension(name);
     
     if (!is_target && !is_compressed) {
