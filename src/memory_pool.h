@@ -7,10 +7,10 @@
 #include <cstddef>
 #include <atomic>
 #include <cstdint>
-#include <cstdio>
 #include <sys/mman.h>
 #include <immintrin.h>
 #include <unordered_set>
+#include "logger.h"
 #include "performance_optimizer.h"
 #include "numa_utils.h"
 
@@ -224,7 +224,7 @@ public:
         // O(1) защита от double-free с использованием unordered_set
         if (allocated_set_.find(buffer) == allocated_set_.end()) {
             // Буфер не был выделен из этого пула или уже был освобожден
-            fprintf(stderr, "WARNING: Double-free or invalid buffer detected in MemoryPool - ignoring\n");
+            Logger::error("Double-free or invalid buffer detected in MemoryPool - ignoring");
             return;
         }
         
