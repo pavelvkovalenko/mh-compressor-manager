@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "memory_pool.h"
 #include "async_io.h"
+#include "performance_optimizer.h"
 #include <fstream>
 #include <vector>
 #include <zlib.h>
@@ -175,8 +176,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     // Закрываем временный fd_path, он больше не нужен
     close(fd_path);
     
-    // Подсказка ОС о последовательном чтении и предзагрузке
-    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
+    // Подсказка ОС о последовательном чтении и предзагрузке (оптимизация для SSD/NVMe)
+    PerformanceOptimizer::advise_file_access(fd_in, true, true, false);
     
     // Шаг 5: Используем fdopen() для работы с FILE* из уже открытого fd
     // Это полностью устраняет TOCTOU - между проверкой и открытием нет race condition
@@ -199,6 +200,11 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         }
         return false;
     }
+
+    // Предварительное выделение места на диске для оптимизации записи (SSD/NVMe)
+    PerformanceOptimizer::preallocate_file(fd_out, st.st_size);
+    // Подсказка ядру о паттерне доступа: запись один раз
+    PerformanceOptimizer::advise_file_access(fd_out, false, false, true);
 
     z_stream strm = {};
     // Используем Z_HUFFMAN_ONLY для быстрых файлов или Z_DEFAULT_STRATEGY для лучшего сжатия
@@ -413,8 +419,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     
     close(fd_path);
     
-    // Подсказка ОС о последовательном чтении и предзагрузке
-    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
+    // Подсказка ОС о последовательном чтении и предзагрузке (оптимизация для SSD/NVMe)
+    PerformanceOptimizer::advise_file_access(fd_in, true, true, false);
     
     // Шаг 5: Используем fdopen() для работы с FILE* из уже открытого fd
     FILE* file_in = fdopen(fd_in, "rb");
@@ -448,6 +454,11 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         }
         return false;
     }
+
+    // Предварительное выделение места на диске для оптимизации записи (SSD/NVMe)
+    PerformanceOptimizer::preallocate_file(fd_out, input_st.st_size);
+    // Подсказка ядру о паттерне доступа: запись один раз
+    PerformanceOptimizer::advise_file_access(fd_out, false, false, true);
     
     FILE* file_out = fdopen(fd_out, "wb");
     if (!file_out) {
@@ -652,7 +663,8 @@ bool Compressor::compress_dual(const fs::path& input,
     }
     close(fd_path);
     
-    posix_fadvise(fd_in, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
+    // Подсказка ОС о последовательном чтении и предзагрузке (оптимизация для SSD/NVMe)
+    PerformanceOptimizer::advise_file_access(fd_in, true, true, false);
     
     // === Открываем выходные файлы ===
     int fd_gzip = open(gzip_output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
@@ -668,6 +680,10 @@ bool Compressor::compress_dual(const fs::path& input,
         }
         return false;
     }
+
+    // Предварительное выделение места для gzip файла
+    PerformanceOptimizer::preallocate_file(fd_gzip, st.st_size);
+    PerformanceOptimizer::advise_file_access(fd_gzip, false, false, true);
     
     int fd_brotli = open(brotli_output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
     if (fd_brotli < 0) {
@@ -684,6 +700,10 @@ bool Compressor::compress_dual(const fs::path& input,
         }
         return false;
     }
+
+    // Предварительное выделение места для brotli файла
+    PerformanceOptimizer::preallocate_file(fd_brotli, st.st_size);
+    PerformanceOptimizer::advise_file_access(fd_brotli, false, false, true);
     
     // === Инициализация потоков сжатия ===
     z_stream gzip_strm = {};
