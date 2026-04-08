@@ -23,6 +23,9 @@ struct Config {
     bool enable_seccomp = true;       // Включить песочницу seccomp (по умолчанию true)
     std::string run_as_user = "";     // Явный пользователь для сброса прав (пусто = авто)
     
+    // Поддержка файлов без расширений
+    bool process_files_without_extensions = false;  // Обрабатывать файлы без расширений
+    
     // CLI overrides
     std::vector<std::string> cli_dirs;
     std::vector<std::string> cli_exts;

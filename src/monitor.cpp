@@ -453,7 +453,24 @@ bool Monitor::is_target_extension(const std::string& filename) {
     }
     
     size_t dot = filename.find_last_of('.');
-    if (dot == std::string::npos || dot >= filename.size() - 1) return false;
+    
+    // Поддержка файлов без расширений: если точки нет и включена опция process_files_without_extensions
+    if (dot == std::string::npos) {
+        // Файл без расширения
+        if (m_cfg.process_files_without_extensions) {
+            // Проверяем что это не сжатый файл (.gz, .br)
+            if (filename == "gz" || filename == "br") {
+                return false;
+            }
+            // Блокировка для потокобезопасного доступа к кэшу расширений
+            std::shared_lock<std::shared_mutex> lock(m_config_mutex);
+            // Для файлов без расширений всегда возвращаем true (будут обработаны)
+            return true;
+        }
+        return false;  // Файлы без расширений не обрабатываются по умолчанию
+    }
+    
+    if (dot >= filename.size() - 1) return false;  // Точка в конце имени
     
     std::string ext = filename.substr(dot + 1);
     
