@@ -181,6 +181,77 @@ target_link_options(threadpool_test PRIVATE
     --coverage
 )
 
+# Unit тесты для async_io
+add_executable(async_io_test
+    unit/async_io_test.cpp
+    ../src/async_io.cpp
+    ../src/logger.cpp
+)
+target_include_directories(async_io_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/../src
+    ${ZLIB_INCLUDE_DIRS}
+    ${BROTLI_INCLUDE_DIRS}
+    ${SYSTEMD_INCLUDE_DIRS}
+)
+target_link_libraries(async_io_test PRIVATE
+    GTest::gtest_main
+    pthread
+    ${SYSTEMD_LIBRARIES}
+)
+if(fmt_FOUND)
+    target_link_libraries(async_io_test PRIVATE fmt::fmt)
+elseif(FMT_FOUND)
+    target_include_directories(async_io_test PRIVATE ${FMT_INCLUDE_DIRS})
+    target_link_libraries(async_io_test PRIVATE ${FMT_LIBRARIES})
+endif()
+target_compile_options(async_io_test PRIVATE
+    -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
+)
+target_link_options(async_io_test PRIVATE
+    --coverage
+)
+
+# Unit тесты для numa_utils
+add_executable(numa_utils_test
+    unit/numa_utils_test.cpp
+    ../src/numa_utils.cpp
+    ../src/logger.cpp
+)
+target_include_directories(numa_utils_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/../src
+    ${SYSTEMD_INCLUDE_DIRS}
+)
+target_link_libraries(numa_utils_test PRIVATE
+    GTest::gtest_main
+    pthread
+    ${SYSTEMD_LIBRARIES}
+    numa
+)
+target_compile_options(numa_utils_test PRIVATE
+    -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
+)
+target_link_options(numa_utils_test PRIVATE
+    --coverage
+)
+
+# Unit тесты для simd_utils
+add_executable(simd_utils_test
+    unit/simd_utils_test.cpp
+)
+target_include_directories(simd_utils_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/../src
+)
+target_link_libraries(simd_utils_test PRIVATE
+    GTest::gtest_main
+    pthread
+)
+target_compile_options(simd_utils_test PRIVATE
+    -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage -mavx2
+)
+target_link_options(simd_utils_test PRIVATE
+    --coverage
+)
+
 # ============================================================================
 # Интеграционные тесты
 # ============================================================================
@@ -226,6 +297,9 @@ gtest_discover_tests(config_test)
 gtest_discover_tests(compressor_test)
 gtest_discover_tests(logger_test)
 gtest_discover_tests(threadpool_test)
+gtest_discover_tests(async_io_test)
+gtest_discover_tests(numa_utils_test)
+gtest_discover_tests(simd_utils_test)
 gtest_discover_tests(integration_test)
 
 # ============================================================================
@@ -233,7 +307,7 @@ gtest_discover_tests(integration_test)
 # ============================================================================
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS memory_pool_test security_test config_test compressor_test logger_test threadpool_test integration_test
+    DEPENDS memory_pool_test security_test config_test compressor_test logger_test threadpool_test async_io_test numa_utils_test simd_utils_test integration_test
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     COMMENT "Running all tests"
 )
