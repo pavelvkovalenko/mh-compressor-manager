@@ -89,6 +89,16 @@ else()
     set(HAS_IO_URING 0)
 endif()
 
+# NUMA - оптимизация для многопроцессорных систем (опционально)
+pkg_check_modules(NUMA libnuma)
+if(NUMA_FOUND)
+    message(STATUS "NUMA support enabled")
+    set(HAS_NUMA 1)
+else()
+    message(STATUS "NUMA support disabled (libnuma not found)")
+    set(HAS_NUMA 0)
+endif()
+
 # ============================================================================
 # Исходные файлы
 # ============================================================================
@@ -101,6 +111,8 @@ set(SOURCES
     security.cpp
     async_io.cpp
     performance_optimizer.cpp
+    pipeline.cpp
+    numa_utils.cpp
 )
 
 set(HEADERS
@@ -113,6 +125,8 @@ set(HEADERS
     memory_pool.h
     async_io.h
     performance_optimizer.h
+    pipeline.h
+    numa_utils.h
 )
 
 # ============================================================================
@@ -145,6 +159,15 @@ if(LIBURING_FOUND)
     target_compile_definitions(${PROJECT_NAME} PRIVATE HAS_IO_URING=1)
 else()
     target_compile_definitions(${PROJECT_NAME} PRIVATE HAS_IO_URING=0)
+endif()
+
+# Добавляем NUMA если найден
+if(NUMA_FOUND)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${NUMA_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${NUMA_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_NUMA=1)
+else()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_NUMA=0)
 endif()
 
 # ============================================================================
@@ -241,5 +264,7 @@ message(STATUS "ZLIB:                 ${ZLIB_VERSION} (${ZLIB_INCLUDE_DIRS})")
 message(STATUS "Brotli:               ${BROTLI_VERSION} (${BROTLI_INCLUDE_DIRS})")
 message(STATUS "Systemd:              ${SYSTEMD_VERSION} (${SYSTEMD_INCLUDE_DIRS})")
 message(STATUS "SELinux:              ${SELINUX_FOUND}")
+message(STATUS "io_uring:             ${HAS_IO_URING}")
+message(STATUS "NUMA:                 ${HAS_NUMA}")
 message(STATUS "============================================")
 message(STATUS "")

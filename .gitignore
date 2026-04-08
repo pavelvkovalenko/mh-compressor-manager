@@ -2,15 +2,16 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.exe
-*.dll
-*.so
 *.a
+*.so
+*.dll
+*.exe
 *.out
 
 # Build directories
 build/
 dist/
+target/
 
 # Dependencies
 node_modules/
@@ -19,7 +20,6 @@ venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
-target/
 .gradle/
 
 # Editors
