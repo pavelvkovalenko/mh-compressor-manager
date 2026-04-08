@@ -27,15 +27,32 @@ struct MoveEvent {
 };
 
 Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
-    // Кэшируем расширения в unordered_set для быстрого поиска O(1)
+    // Кэшируем расширения исходных файлов для быстрого поиска O(1)
     for (const auto& ext : m_cfg.extensions) {
         std::string lower_ext = ext;
         std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
         m_extensions_cache.insert(lower_ext);
     }
-    // Добавляем расширения сжатых файлов
-    m_compressed_extensions.insert("gz");
-    m_compressed_extensions.insert("br");
+    
+    // Динамически определяем расширения сжатых файлов на основе включенных алгоритмов
+    // Это позволяет использовать пользовательские расширения если они изменены в настройках
+    std::string algorithms = m_cfg.algorithms;
+    std::transform(algorithms.begin(), algorithms.end(), algorithms.begin(), ::tolower);
+    
+    bool use_gzip = (algorithms == "all" || algorithms.find("gzip") != std::string::npos);
+    bool use_brotli = (algorithms == "all" || algorithms.find("brotli") != std::string::npos);
+    
+    if (use_gzip) {
+        m_compressed_extensions.insert("gz");
+        Logger::info("Monitoring for .gz files (gzip algorithm enabled)");
+    }
+    if (use_brotli) {
+        m_compressed_extensions.insert("br");
+        Logger::info("Monitoring for .br files (brotli algorithm enabled)");
+    }
+    
+    Logger::info(std::format("Initialized monitor with {} compressed extensions based on algorithms: {}", 
+                             m_compressed_extensions.size(), m_cfg.algorithms));
 }
 
 Monitor::~Monitor() {
