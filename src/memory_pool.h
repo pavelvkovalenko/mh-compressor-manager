@@ -6,6 +6,8 @@
 #include <optional>
 #include <cstddef>
 #include <atomic>
+#include <cstdint>
+#include <cstdio>
 
 /**
  * MemoryPool - выделенный пул памяти для буферов сжатия
@@ -85,6 +87,12 @@ public:
         // Получаем указатель на данные vector
         T* raw_buf = buffer.data();
         
+        // Проверяем что буфер был выделен из этого пула (базовая проверка)
+        // В production коде можно добавить более строгую валидацию
+        if (raw_buf == nullptr) {
+            return;
+        }
+        
         // Возвращаем буфер в пул для переиспользования
         std::unique_lock<std::mutex> lock(mutex_);
         free_buffers_.push(raw_buf);
@@ -95,13 +103,45 @@ public:
     }
     
     // Возврат сырого буфера в пул (без копирования -真正的 переиспользование)
+    // ВАЖНО: Вызывающая сторона должна гарантировать что буфер был выделен из этого пула
+    // и не был уже возвращен (защита от double-free)
     void release_raw(T* buffer) {
         if (!buffer) {
             return;
         }
         
+        // Базовая проверка выравнивания для отлова очевидных ошибок
+        if (reinterpret_cast<uintptr_t>(buffer) % alignment != 0) {
+            // Это может быть буфер не из нашего пула - игнорируем для безопасности
+            return;
+        }
+        
         std::unique_lock<std::mutex> lock(mutex_);
-        free_buffers_.push(buffer);
+        
+        // Простая защита от double-free: проверяем не находится ли уже буфер в очереди
+        // Note: Это O(n) операция, но для защиты от corruption это приемлемо
+        // Для production можно использовать unordered_set для O(1) проверки
+        std::queue<T*> temp_queue;
+        bool already_free = false;
+        while (!free_buffers_.empty()) {
+            T* front = free_buffers_.front();
+            free_buffers_.pop();
+            if (front == buffer) {
+                already_free = true;
+                // Используем fprintf вместо Logger чтобы избежать зависимости
+                fprintf(stderr, "WARNING: Double-free attempt detected in MemoryPool - ignoring\n");
+            }
+            temp_queue.push(front);
+        }
+        // Восстанавливаем очередь
+        while (!temp_queue.empty()) {
+            free_buffers_.push(temp_queue.front());
+            temp_queue.pop();
+        }
+        
+        if (!already_free) {
+            free_buffers_.push(buffer);
+        }
         // total_allocated_ не меняется - буфер просто возвращается в пул
     }
     
