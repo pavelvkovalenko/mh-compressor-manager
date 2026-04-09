@@ -38,17 +38,20 @@ OPT_DEPS_TO_INSTALL=()
 
 echo -e "${BLUE}Проверка обязательных зависимостей...${NC}"
 
-# ZLIB
+if ! command -v cmake &> /dev/null; then
+    DEPS_TO_INSTALL+=("cmake")
+fi
+
+# ZLIB (dnf и zypper: zlib-devel)
 if ! pkg-config --exists zlib 2>/dev/null && [ ! -f "/usr/include/z.h" ] && [ ! -f "/usr/local/include/z.h" ]; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("zlib-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("zlib-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("zlib1g-dev");
-    elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("zlib-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("zlib"); fi
 fi
 
-# Brotli
+# Brotli (имена в dnf и zypper различаются)
 if ! pkg-config --exists libbrotlicommon 2>/dev/null && [ ! -f "/usr/include/brotli/decode.h" ] && [ ! -f "/usr/local/include/brotli/decode.h" ]; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("brotli-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("brotli-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("libbrotli-dev");
     elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("libbrotli-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("brotli"); fi
@@ -56,51 +59,46 @@ fi
 
 # Systemd
 if ! pkg-config --exists libsystemd 2>/dev/null; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("systemd-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("systemd-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("libsystemd-dev");
     elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("libsystemd-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("systemd-libs"); fi
 fi
 
-# Fmt
+# Fmt (dnf и zypper: fmt-devel)
 if ! pkg-config --exists fmt 2>/dev/null && [ ! -f "/usr/include/fmt/core.h" ] && [ ! -f "/usr/local/include/fmt/core.h" ]; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("fmt-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("fmt-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("libfmt-dev");
-    elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("fmt-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("fmt"); fi
 fi
 
 echo -e "${BLUE}Проверка опциональных зависимостей (для производительности)...${NC}"
 
-# Liburing (io_uring)
+# Liburing (dnf и zypper: liburing-devel)
 if ! pkg-config --exists liburing 2>/dev/null; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then OPT_DEPS_TO_INSTALL+=("liburing-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("liburing-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then OPT_DEPS_TO_INSTALL+=("liburing-dev");
-    elif [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("liburing-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("liburing"); fi
 fi
 
-# Numa (NUMA support)
+# Numa (dnf и zypper: numactl-devel)
 if ! pkg-config --exists numa 2>/dev/null; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then OPT_DEPS_TO_INSTALL+=("numactl-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("numactl-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then OPT_DEPS_TO_INSTALL+=("libnuma-dev");
-    elif [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("numactl-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("numactl"); fi
 fi
 
-# Seccomp
+# Seccomp (dnf и zypper: libseccomp-devel)
 if ! pkg-config --exists libseccomp 2>/dev/null; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then OPT_DEPS_TO_INSTALL+=("libseccomp-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("libseccomp-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then OPT_DEPS_TO_INSTALL+=("libseccomp-dev");
-    elif [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("libseccomp-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("libseccomp"); fi
 fi
 
-# Libcap
+# Libcap (dnf и zypper: libcap-devel)
 if ! pkg-config --exists libcap 2>/dev/null; then
-    if [ "$PKG_MANAGER" == "dnf" ]; then OPT_DEPS_TO_INSTALL+=("libcap-devel"); 
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("libcap-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then OPT_DEPS_TO_INSTALL+=("libcap-dev");
-    elif [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("libcap-devel");
     elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("libcap"); fi
 fi
 
@@ -134,7 +132,7 @@ fi
 NEED_INSTALL=false
 INSTALL_OPT=false
 
-# Отчет о_missing зависимостях
+# Отчёт о недостающих зависимостях
 if [ ${#DEPS_TO_INSTALL[@]} -ne 0 ]; then
     echo -e "${RED}Отсутствуют обязательные зависимости:${NC}"
     printf '  %s\n' "${DEPS_TO_INSTALL[@]}"
@@ -176,7 +174,12 @@ if [ "$NEED_INSTALL" = true ]; then
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}Установка зависимостей...${NC}"
-        eval "$INSTALL_CMD ${ALL_DEPS[*]}"
+        case "$PKG_MANAGER" in
+            dnf)    sudo dnf install -y "${ALL_DEPS[@]}" ;;
+            apt)    sudo apt-get install -y "${ALL_DEPS[@]}" ;;
+            zypper) sudo zypper install -y "${ALL_DEPS[@]}" ;;
+            pacman) sudo pacman -S --noconfirm "${ALL_DEPS[@]}" ;;
+        esac
         echo -e "${GREEN}Зависимости установлены успешно!${NC}"
     else
         echo -e "${YELLOW}Установка отменена пользователем.${NC}"
