@@ -6,6 +6,8 @@ CMakeFiles/
 Makefile
 cmake_install.cmake
 compile_commands.json
+build/
+dist/
 
 # Compiled objects and binaries
 *.o
@@ -16,6 +18,14 @@ compile_commands.json
 *.dll
 *.exe
 *.out
+
+# Dependencies
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Logs
 CMakeError.log
