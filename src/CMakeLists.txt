@@ -18,11 +18,25 @@ check_cxx_source_compiles("
 if(NOT HAS_STD_FORMAT)
     message(STATUS "std::format not available, falling back to fmt library")
     set(CMAKE_CXX_STANDARD 20)
-    find_package(fmt QUIET)
+    find_package(fmt QUIET CONFIG)
+    if(NOT fmt_FOUND)
+        # Пробуем найти через pkg-config
+        pkg_check_modules(FMT QUIET fmt)
+        if(FMT_FOUND)
+            set(fmt_FOUND TRUE)
+        endif()
+    endif()
     if(fmt_FOUND)
         message(STATUS "Using fmt library for formatting")
     else()
-        message(FATAL_ERROR "fmt library not found and std::format not available")
+        message(FATAL_ERROR 
+            "fmt library not found and std::format not available!\n"
+            "Please install fmt development package:\n"
+            "  - Fedora/RHEL: sudo dnf install fmt-devel\n"
+            "  - Debian/Ubuntu: sudo apt-get install libfmt-dev\n"
+            "  - openSUSE: sudo zypper install fmt-devel\n"
+            "Or use GCC 13+ / Clang 16+ with C++23 support for std::format"
+        )
     endif()
 else()
     set(CMAKE_CXX_STANDARD 23)
@@ -82,9 +96,9 @@ pkg_check_modules(SECCOMP libseccomp)
 # Libcap - управление capabilities (для сброса привилегий)
 pkg_check_modules(LIBCAP libcap)
 if(LIBCAP_FOUND)
-    message(STATUS \"Libcap support enabled\")
+    message(STATUS "Libcap support enabled")
 else()
-    message(STATUS \"Libcap support disabled (libcap not found)\")
+    message(STATUS "Libcap support disabled (libcap not found)")
 endif()
 
 # io_uring - асинхронный I/O (опционально)
@@ -189,8 +203,15 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # Добавляем fmt если используется вместо std::format
-if(NOT HAS_STD_FORMAT AND fmt_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
+if(NOT HAS_STD_FORMAT)
+    if(fmt_FOUND)
+        # Попытка использовать fmt::fmt (из find_package CONFIG)
+        target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
+    elseif(FMT_FOUND)
+        # Используем pkg-config переменные
+        target_include_directories(${PROJECT_NAME} PRIVATE ${FMT_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${FMT_LIBRARIES})
+    endif()
 endif()
 
 # Добавляем SELinux если найден
