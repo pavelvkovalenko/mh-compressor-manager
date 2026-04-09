@@ -44,6 +44,9 @@ endif()
 # Unit тесты для memory_pool
 add_executable(memory_pool_test
     unit/memory_pool_test.cpp
+    ../src/numa_utils.cpp
+    ../src/performance_optimizer.cpp
+    ../src/logger.cpp
 )
 target_include_directories(memory_pool_test PRIVATE
     ${CMAKE_SOURCE_DIR}/../src
@@ -54,7 +57,10 @@ target_include_directories(memory_pool_test PRIVATE
 target_link_libraries(memory_pool_test PRIVATE
     GTest::gtest_main
     pthread
+    numa
+    fmt
 )
+target_compile_definitions(memory_pool_test PRIVATE HAVE_NUMA=1)
 target_compile_options(memory_pool_test PRIVATE
     -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
 )
@@ -78,6 +84,8 @@ target_link_libraries(security_test PRIVATE
     GTest::gtest_main
     pthread
     ${SYSTEMD_LIBRARIES}
+    seccomp
+    cap
 )
 target_compile_options(security_test PRIVATE
     -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
@@ -102,6 +110,7 @@ target_link_libraries(config_test PRIVATE
     GTest::gtest_main
     pthread
     ${SYSTEMD_LIBRARIES}
+    fmt
 )
 target_compile_options(config_test PRIVATE
     -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
@@ -116,6 +125,8 @@ add_executable(compressor_test
     ../src/compressor.cpp
     ../src/logger.cpp
     ../src/async_io.cpp
+    ../src/numa_utils.cpp
+    ../src/performance_optimizer.cpp
 )
 target_include_directories(compressor_test PRIVATE
     ${CMAKE_SOURCE_DIR}/../src
@@ -129,13 +140,11 @@ target_link_libraries(compressor_test PRIVATE
     ${ZLIB_LIBRARIES}
     ${BROTLI_LIBRARIES}
     ${SYSTEMD_LIBRARIES}
+    numa
+    uring
+    fmt
 )
-if(fmt_FOUND)
-    target_link_libraries(compressor_test PRIVATE fmt::fmt)
-elseif(FMT_FOUND)
-    target_include_directories(compressor_test PRIVATE ${FMT_INCLUDE_DIRS})
-    target_link_libraries(compressor_test PRIVATE ${FMT_LIBRARIES})
-endif()
+target_compile_definitions(compressor_test PRIVATE HAVE_NUMA=1)
 target_compile_options(compressor_test PRIVATE
     -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
 )
@@ -186,6 +195,8 @@ add_executable(async_io_test
     unit/async_io_test.cpp
     ../src/async_io.cpp
     ../src/logger.cpp
+    ../src/numa_utils.cpp
+    ../src/performance_optimizer.cpp
 )
 target_include_directories(async_io_test PRIVATE
     ${CMAKE_SOURCE_DIR}/../src
@@ -197,13 +208,11 @@ target_link_libraries(async_io_test PRIVATE
     GTest::gtest_main
     pthread
     ${SYSTEMD_LIBRARIES}
+    numa
+    uring
+    fmt
 )
-if(fmt_FOUND)
-    target_link_libraries(async_io_test PRIVATE fmt::fmt)
-elseif(FMT_FOUND)
-    target_include_directories(async_io_test PRIVATE ${FMT_INCLUDE_DIRS})
-    target_link_libraries(async_io_test PRIVATE ${FMT_LIBRARIES})
-endif()
+target_compile_definitions(async_io_test PRIVATE HAVE_NUMA=1)
 target_compile_options(async_io_test PRIVATE
     -Wall -Wextra -Wpedantic -g -fprofile-arcs -ftest-coverage
 )
