@@ -341,7 +341,15 @@ bool init_seccomp() {
     
     // Вызовы для работы с временными метками
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(utimensat))) return false;
-    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(futimens))) return false;
+#ifdef __NR_futimens
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, __NR_futimens)) return false;
+#else
+    // Fallback для систем, где __NR_futimens не определен в заголовках
+    // Номер системного вызова futimens для x86_64 равен 291
+    #if defined(__x86_64__)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, 291)) return false;
+    #endif
+#endif
     
     // Вызовы для удаления файлов
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(unlink))) return false;

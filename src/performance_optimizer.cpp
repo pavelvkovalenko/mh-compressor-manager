@@ -142,7 +142,7 @@ void* PerformanceOptimizer::allocate_aligned_memory(size_t size, bool use_huge_p
     return ptr;
 }
 
-void PerformanceOptimizer::free_aligned_memory(void* ptr, size_t size) {
+void PerformanceOptimizer::free_aligned_memory(void* ptr, [[maybe_unused]] size_t size) {
     if (!ptr) return;
     
     // Память выделена через posix_memalign, освобождаем через free
