@@ -59,11 +59,15 @@ constexpr size_t PROC_FD_PATH_SIZE = 128;
 // Максимальный размер файла для сжатия (100MB) - защита от DoS атак
 constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
 
-// Глобальный пул памяти для буферов сжатия (переиспользуется между задачами)
-// Ограничиваем максимальный размер пула для предотвращения чрезмерного потребления памяти:
-// - При обработке множества мелких файлов: не более 32 буферов (8MB)
-// - При обработке крупных файлов: адаптивное увеличение до 64 буферов (16MB)
-static ByteBufferPool g_buffer_pool(32, -1, ByteBufferPool::MAX_POOL_SIZE);
+// Пул буферов создаётся при первом сжатии (lazy), а не при старте процесса.
+// Иначе до main() выполнялась тяжёлая инициализация (mmap / NUMA), и даже
+// «mh-compressor-manager --help» зависал на заметное время.
+namespace {
+ByteBufferPool& buffer_pool() {
+    static ByteBufferPool pool(32, -1, ByteBufferPool::MAX_POOL_SIZE);
+    return pool;
+}
+}  // namespace
 
 // Выравнивание для O_DIRECT (должно быть кратно размеру сектора, обычно 512 байт)
 constexpr size_t DIRECT_IO_ALIGNMENT = 4096;
@@ -233,8 +237,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     buffer_size = AsyncIO::align_for_direct_io(buffer_size);
     
     // Выделяем буферы из пула один раз вне цикла с оптимальным размером
-    uint8_t* in_buffer = g_buffer_pool.allocate_raw();
-    uint8_t* out_buffer = g_buffer_pool.allocate_raw();
+    uint8_t* in_buffer = buffer_pool().allocate_raw();
+    uint8_t* out_buffer = buffer_pool().allocate_raw();
     
     if (!in_buffer || !out_buffer) {
         Logger::error("Failed to allocate buffers from pool");
@@ -320,8 +324,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     deflateEnd(&strm);
     
     // Возвращаем буферы в пул для переиспользования
-    g_buffer_pool.release_raw(in_buffer);
-    g_buffer_pool.release_raw(out_buffer);
+    buffer_pool().release_raw(in_buffer);
+    buffer_pool().release_raw(out_buffer);
     
     // Закрываем файлы с синхронизацией
     close(fd_in);
@@ -747,9 +751,9 @@ bool Compressor::compress_dual(const fs::path& input,
     buffer_size = AsyncIO::align_for_direct_io(buffer_size);
     
     // Выделяем буферы
-    uint8_t* in_buffer = g_buffer_pool.allocate_raw();
-    uint8_t* gzip_out_buffer = g_buffer_pool.allocate_raw();
-    uint8_t* brotli_out_buffer = g_buffer_pool.allocate_raw();
+    uint8_t* in_buffer = buffer_pool().allocate_raw();
+    uint8_t* gzip_out_buffer = buffer_pool().allocate_raw();
+    uint8_t* brotli_out_buffer = buffer_pool().allocate_raw();
     
     if (!in_buffer || !gzip_out_buffer || !brotli_out_buffer) {
         Logger::error("Failed to allocate buffers from pool");
@@ -922,9 +926,9 @@ bool Compressor::compress_dual(const fs::path& input,
     // Освобождаем ресурсы
     deflateEnd(&gzip_strm);
     BrotliEncoderDestroyInstance(brotli_state);
-    g_buffer_pool.release_raw(in_buffer);
-    g_buffer_pool.release_raw(gzip_out_buffer);
-    g_buffer_pool.release_raw(brotli_out_buffer);
+    buffer_pool().release_raw(in_buffer);
+    buffer_pool().release_raw(gzip_out_buffer);
+    buffer_pool().release_raw(brotli_out_buffer);
     
     close(fd_in);
     
