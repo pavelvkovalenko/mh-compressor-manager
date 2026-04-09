@@ -463,7 +463,7 @@ void compress_task(const fs::path& path) {
         uint64_t estimated_gzip_size = original_size * 35 / 100;  // ~65% экономия
         uint64_t estimated_brotli_size = original_size * 25 / 100; // ~75% экономия
         
-        bool prefer_brotli = (g_cfg->algorithms == "all" || g_cfg->algorithms == "brotli");
+        // prefer_brotli определяется логикой ниже в зависимости от алгоритма
         
         if (g_cfg->algorithms == "all") {
             Logger::info(std::format("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)", 

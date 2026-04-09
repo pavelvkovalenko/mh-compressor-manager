@@ -27,10 +27,11 @@ namespace std {
 #include <zlib.h>
 #endif
 
-#define LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
-#define LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
-#define LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
-#define LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
+// Переименованы макросы для избежания конфликта с <syslog.h>
+#define PIPE_PIPE_LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
+#define PIPE_PIPE_LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
+#define PIPE_PIPE_LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
+#define PIPE_PIPE_LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
 
 /**
  * @brief Конструктор конвейера
@@ -44,7 +45,7 @@ CompressionPipeline::CompressionPipeline(
     , compress_to_write_(compress_buffer_size)
     , block_size_(block_size)
 {
-    LOG_INFO("Конвейер сжатия инициализирован: буфер чтения={}, буфер сжатия={}, размер блока={}",
+    PIPE_LOG_INFO("Конвейер сжатия инициализирован: буфер чтения={}, буфер сжатия={}, размер блока={}",
              read_buffer_size, compress_buffer_size, block_size);
 }
 
@@ -96,31 +97,31 @@ bool CompressionPipeline::compress(
     const fs::path& brotli_output_path,
     int compression_level
 ) {
-    LOG_INFO("Запуск конвейера сжатия: {} -> {}, {}", 
+    PIPE_LOG_INFO("Запуск конвейера сжатия: {} -> {}, {}", 
              input_path.string(), gzip_output_path.string(), brotli_output_path.string());
     
     // Проверка безопасности входного файла
     if (!security::validate_file_for_compression(input_path)) {
-        LOG_ERROR("Проверка безопасности не пройдена для файла: {}", input_path.string());
+        PIPE_LOG_ERROR("Проверка безопасности не пройдена для файла: {}", input_path.string());
         return false;
     }
     
     // Открытие входного файла с защитой от TOCTOU
     input_fd_ = security::safe_open_file(input_path, O_RDONLY);
     if (input_fd_ < 0) {
-        LOG_ERROR("Не удалось открыть файл {}: {}", input_path.string(), strerror(errno));
+        PIPE_LOG_ERROR("Не удалось открыть файл {}: {}", input_path.string(), strerror(errno));
         return false;
     }
     
     // Получение размера файла
     struct stat st;
     if (fstat(input_fd_, &st) < 0) {
-        LOG_ERROR("Не удалось получить размер файла: {}", strerror(errno));
+        PIPE_LOG_ERROR("Не удалось получить размер файла: {}", strerror(errno));
         close(input_fd_);
         input_fd_ = -1;
         return false;
     }
-    size_t file_size = st.st_size;
+    (void)st;  // st используется для проверки доступа и размера, file_size вычисляется при необходимости
     
     // Подсказки ядру для последовательного чтения
     posix_fadvise(input_fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
@@ -134,7 +135,7 @@ bool CompressionPipeline::compress(
                            O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
                            0644);
     if (gzip_output_fd_ < 0) {
-        LOG_ERROR("Не удалось создать файл {}: {}", gzip_temp_path.string(), strerror(errno));
+        PIPE_LOG_ERROR("Не удалось создать файл {}: {}", gzip_temp_path.string(), strerror(errno));
         close(input_fd_);
         input_fd_ = -1;
         return false;
@@ -144,7 +145,7 @@ bool CompressionPipeline::compress(
                              O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
                              0644);
     if (brotli_output_fd_ < 0) {
-        LOG_ERROR("Не удалось создать файл {}: {}", brotli_temp_path.string(), strerror(errno));
+        PIPE_LOG_ERROR("Не удалось создать файл {}: {}", brotli_temp_path.string(), strerror(errno));
         close(gzip_output_fd_);
         close(input_fd_);
         gzip_output_fd_ = -1;
@@ -185,7 +186,7 @@ bool CompressionPipeline::compress(
     brotli_output_fd_ = -1;
     
     if (error_occurred_) {
-        LOG_ERROR("Конвейер сжатия завершен с ошибкой. Время работы: {} мс", total_time);
+        PIPE_LOG_ERROR("Конвейер сжатия завершен с ошибкой. Время работы: {} мс", total_time);
         // Удаление временных файлов при ошибке
         fs::remove(gzip_temp_path);
         fs::remove(brotli_temp_path);
@@ -197,7 +198,7 @@ bool CompressionPipeline::compress(
         fs::rename(gzip_temp_path, gzip_output_path);
         fs::rename(brotli_temp_path, brotli_output_path);
     } catch (const fs::filesystem_error& e) {
-        LOG_ERROR("Ошибка переименования файлов: {}", e.what());
+        PIPE_LOG_ERROR("Ошибка переименования файлов: {}", e.what());
         fs::remove(gzip_temp_path);
         fs::remove(brotli_temp_path);
         return false;
@@ -207,7 +208,7 @@ bool CompressionPipeline::compress(
     utimensat(AT_FDCWD, gzip_output_path.c_str(), nullptr, 0);
     utimensat(AT_FDCWD, brotli_output_path.c_str(), nullptr, 0);
     
-    LOG_INFO("Конвейер сжатия успешно завершен. Время: {} мс, прочитано: {} байт, "
+    PIPE_LOG_INFO("Конвейер сжатия успешно завершен. Время: {} мс, прочитано: {} байт, "
              "GZIP: {} байт, Brotli: {} байт",
              total_time,
              stats_.total_bytes_read,
@@ -248,14 +249,14 @@ void CompressionPipeline::reader_stage(const fs::path& input_path) {
                 if (errno == EINTR) continue;
                 // Обработка удаления файла пользователем во время чтения
                 if (errno == ENOENT || errno == EBADF) {
-                    LOG_WARN("Файл {} был удален или стал недоступен во время чтения", input_path.string());
+                    PIPE_LOG_WARN("Файл {} был удален или стал недоступен во время чтения", input_path.string());
                     error_occurred_ = true;
                     block.has_error = true;
                     block.error_message = "Файл удален пользователем";
                     read_to_compress_.push(std::move(block));
                     break;
                 }
-                LOG_ERROR("Ошибка чтения файла {}: {}", input_path.string(), strerror(errno));
+                PIPE_LOG_ERROR("Ошибка чтения файла {}: {}", input_path.string(), strerror(errno));
                 error_occurred_ = true;
                 block.has_error = true;
                 block.error_message = strerror(errno);
@@ -296,7 +297,7 @@ void CompressionPipeline::reader_stage(const fs::path& input_path) {
             read_to_compress_.push(std::move(block));
         }
     } catch (const std::exception& e) {
-        LOG_ERROR("Исключение в потоке чтения: {}", e.what());
+        PIPE_LOG_ERROR("Исключение в потоке чтения: {}", e.what());
         error_occurred_ = true;
     }
     
@@ -314,7 +315,7 @@ void CompressionPipeline::reader_stage(const fs::path& input_path) {
  * Получает блоки из буфера чтения, сжимает их в GZIP и Brotli,
  * затем передает в буфер записи.
  */
-void CompressionPipeline::compressor_stage(int compression_level) {
+void CompressionPipeline::compressor_stage([[maybe_unused]] int compression_level) {
     auto start_time = std::chrono::high_resolution_clock::now();
     size_t blocks_processed = 0;
     
@@ -382,12 +383,12 @@ void CompressionPipeline::compressor_stage(int compression_level) {
                         compressed.gzip_data.resize(strm.total_out);
                         compressed.gzip_size = strm.total_out;
                     } else {
-                        LOG_ERROR("Ошибка сжатия GZIP");
+                        PIPE_LOG_ERROR("Ошибка сжатия GZIP");
                         compressed.has_error = true;
                     }
                     deflateEnd(&strm);
                 } else {
-                    LOG_ERROR("Не удалось инициализировать GZIP");
+                    PIPE_LOG_ERROR("Не удалось инициализировать GZIP");
                     compressed.has_error = true;
                 }
             }
@@ -428,7 +429,7 @@ void CompressionPipeline::compressor_stage(int compression_level) {
                     compressed.brotli_data.resize(encoded_size);
                     compressed.brotli_size = encoded_size;
                 } else {
-                    LOG_ERROR("Ошибка сжатия Brotli");
+                    PIPE_LOG_ERROR("Ошибка сжатия Brotli");
                     compressed.has_error = true;
                 }
             }
@@ -445,7 +446,7 @@ void CompressionPipeline::compressor_stage(int compression_level) {
             compress_to_write_.push(std::move(compressed));
         }
     } catch (const std::exception& e) {
-        LOG_ERROR("Исключение в потоке сжатия: {}", e.what());
+        PIPE_LOG_ERROR("Исключение в потоке сжатия: {}", e.what());
         error_occurred_ = true;
     }
     
@@ -463,8 +464,8 @@ void CompressionPipeline::compressor_stage(int compression_level) {
  * Получает сжатые блоки из буфера и записывает их в выходные файлы.
  */
 void CompressionPipeline::writer_stage(
-    const fs::path& gzip_output_path,
-    const fs::path& brotli_output_path
+    [[maybe_unused]] const fs::path& gzip_output_path,
+    [[maybe_unused]] const fs::path& brotli_output_path
 ) {
     auto start_time = std::chrono::high_resolution_clock::now();
     size_t total_gzip = 0;
@@ -483,7 +484,7 @@ void CompressionPipeline::writer_stage(
             }
             
             if (block.has_error) {
-                LOG_ERROR("Блок с ошибкой, пропуск записи");
+                PIPE_LOG_ERROR("Блок с ошибкой, пропуск записи");
                 error_occurred_ = true;
                 continue;
             }
@@ -494,11 +495,11 @@ void CompressionPipeline::writer_stage(
                 if (written < 0) {
                     // Обработка удаления выходного файла пользователем
                     if (errno == EBADF || errno == EIO) {
-                        LOG_WARN("Выходной файл GZIP был удален или стал недоступен во время записи");
+                        PIPE_LOG_WARN("Выходной файл GZIP был удален или стал недоступен во время записи");
                         error_occurred_ = true;
                         break;
                     }
-                    LOG_ERROR("Ошибка записи GZIP: {}", strerror(errno));
+                    PIPE_LOG_ERROR("Ошибка записи GZIP: {}", strerror(errno));
                     error_occurred_ = true;
                     break;
                 }
@@ -511,11 +512,11 @@ void CompressionPipeline::writer_stage(
                 if (written < 0) {
                     // Обработка удаления выходного файла пользователем
                     if (errno == EBADF || errno == EIO) {
-                        LOG_WARN("Выходной файл Brotli был удален или стал недоступен во время записи");
+                        PIPE_LOG_WARN("Выходной файл Brotli был удален или стал недоступен во время записи");
                         error_occurred_ = true;
                         break;
                     }
-                    LOG_ERROR("Ошибка записи Brotli: {}", strerror(errno));
+                    PIPE_LOG_ERROR("Ошибка записи Brotli: {}", strerror(errno));
                     error_occurred_ = true;
                     break;
                 }
@@ -528,7 +529,7 @@ void CompressionPipeline::writer_stage(
         fsync(brotli_output_fd_);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("Исключение в потоке записи: {}", e.what());
+        PIPE_LOG_ERROR("Исключение в потоке записи: {}", e.what());
         error_occurred_ = true;
     }
     
