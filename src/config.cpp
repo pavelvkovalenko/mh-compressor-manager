@@ -116,10 +116,10 @@ Config load_config(int argc, char* argv[]) {
             auto exts = split(argv[++i], ' ');
             cfg.cli_exts.insert(cfg.cli_exts.end(), exts.begin(), exts.end());
         }
-        else if (arg == "--gzip-level" && i + 1 < argc) {
+        else if (arg == "--gzip-level" && i + 1 < argc) { ++i;
             int level = 0;
-            auto result = std::from_chars(argv[++i], argv[i] + std::strlen(argv[i]), level);
-            if (result.ec != std::errc() || result.ptr != argv[i] + std::strlen(argv[i])) {
+            auto result = std::from_chars(argv[i + 1], argv[i + 1] + std::strlen(argv[i]), level);
+            if (result.ec != std::errc() || result.ptr != argv[i + 1] + std::strlen(argv[i + 1])) {
                 std::cerr << "Warning: invalid gzip level format, using default 6\n";
                 level = 6;
             }
@@ -132,8 +132,8 @@ Config load_config(int argc, char* argv[]) {
         }
         else if (arg == "--brotli-level" && i + 1 < argc) {
             int level = 0;
-            auto result = std::from_chars(argv[++i], argv[i] + std::strlen(argv[i]), level);
-            if (result.ec != std::errc() || result.ptr != argv[i] + std::strlen(argv[i])) {
+            auto result = std::from_chars(argv[i + 1], argv[i + 1] + std::strlen(argv[i]), level);
+            if (result.ec != std::errc() || result.ptr != argv[i + 1] + std::strlen(argv[i + 1])) {
                 std::cerr << "Warning: invalid brotli level format, using default 4\n";
                 level = 4;
             }

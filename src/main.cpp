@@ -10,6 +10,8 @@
 #include <atomic>
 #include <sys/signalfd.h>
 #include <unistd.h>
+#include <cstring>
+#include <sys/signalfd.h>
 #include <sys/stat.h>
 #if __has_include(<format>)
 #include <format>
