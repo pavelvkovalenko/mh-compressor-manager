@@ -1,10 +1,19 @@
+# CMake build artifacts
+src/build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+compile_commands.json
+build/
+dist/
+
 ```
 # Compiled and build artifacts
 *.o
 *.obj
 *.out
-build/
-dist/
+
 
 # Dependencies
 node_modules/
