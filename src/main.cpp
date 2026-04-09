@@ -50,6 +50,8 @@ std::unique_ptr<ThreadPool> g_pool;
 std::unique_ptr<Monitor> g_monitor;
 std::unique_ptr<Config> g_cfg;
 int g_signal_fd = -1;
+// Начальное сканирование деревьев вынесено из критического пути systemd READY=1
+std::thread g_initial_scan_thread;
 
 // Метрики производительности
 struct PerformanceMetrics {
@@ -155,6 +157,12 @@ void graceful_shutdown_with_timeout() {
     Logger::info("Starting graceful shutdown sequence...");
     
     auto shutdown_start = std::chrono::steady_clock::now();
+    
+    // Шаг 0: дождаться окончания фонового начального сканирования (если ещё идёт)
+    if (g_initial_scan_thread.joinable()) {
+        Logger::info("Waiting for initial directory scan to finish...");
+        g_initial_scan_thread.join();
+    }
     
     // Шаг 1: Останавливаем монитор (если еще не остановлен)
     if (g_monitor) {
@@ -600,13 +608,17 @@ int main(int argc, char* argv[]) {
 
     // Запуск мониторинга
     g_monitor->start();
-    
-    // Начальное сканирование существующих файлов
-    g_monitor->scan_existing_files();
 
-    // Уведомление systemd о готовности
+    // Сообщаем systemd о готовности до тяжёлого обхода каталогов: scan_existing_files()
+    // на больших деревьях может занимать минуты и раньше блокировал READY=1.
     sd_notify(0, "READY=1");
-    Logger::info("Service ready (sd_notify sent)");
+    Logger::info("Service ready (sd_notify sent); initial filesystem scan runs in background");
+
+    g_initial_scan_thread = std::thread([]() {
+        if (g_monitor) {
+            g_monitor->scan_existing_files();
+        }
+    });
 
     // Главный цикл с использованием epoll для обработки сигналов через signalfd
     try {
