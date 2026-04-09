@@ -306,6 +306,30 @@ algorithms = "invalid_algorithm"
     }
 }
 
+// Парсинг --gzip-level / --brotli-level из CLI (регрессия: индекс argv и пропуск значения)
+TEST_F(ConfigTest, CliGzipBrotliLevels) {
+    writeConfig(R"(
+target_paths = ["/tmp"]
+extensions = ["txt"]
+gzip_level = 9
+brotli_level = 11
+)");
+    std::string cfg_path = temp_config_path.string();
+    char* test_arg = const_cast<char*>("config_test");
+    char* a1 = const_cast<char*>("--config");
+    char* a2 = const_cast<char*>(cfg_path.c_str());
+    char* a3 = const_cast<char*>("--gzip-level");
+    char* a4 = const_cast<char*>("3");
+    char* a5 = const_cast<char*>("--brotli-level");
+    char* a6 = const_cast<char*>("5");
+    char* argv[] = {test_arg, a1, a2, a3, a4, a5, a6};
+    int argc = 7;
+
+    Config cfg = load_config(argc, argv);
+    EXPECT_EQ(cfg.gzip_level, 3);
+    EXPECT_EQ(cfg.brotli_level, 5);
+}
+
 // Тест на безопасность: проверка dry_run режима
 TEST_F(ConfigTest, DryRunMode) {
     writeConfig(R"(

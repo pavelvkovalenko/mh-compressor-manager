@@ -116,14 +116,15 @@ Config load_config(int argc, char* argv[]) {
             auto exts = split(argv[++i], ' ');
             cfg.cli_exts.insert(cfg.cli_exts.end(), exts.begin(), exts.end());
         }
-        else if (arg == "--gzip-level" && i + 1 < argc) { ++i;
+        else if (arg == "--gzip-level" && i + 1 < argc) {
+            const char* val = argv[++i];
             int level = 0;
-            auto result = std::from_chars(argv[i + 1], argv[i + 1] + std::strlen(argv[i]), level);
-            if (result.ec != std::errc() || result.ptr != argv[i + 1] + std::strlen(argv[i + 1])) {
+            const std::size_t len = std::strlen(val);
+            auto result = std::from_chars(val, val + len, level);
+            if (result.ec != std::errc() || result.ptr != val + len) {
                 std::cerr << "Warning: invalid gzip level format, using default 6\n";
                 level = 6;
             }
-            // Валидация диапазона уровня gzip
             if (level < 1 || level > 9) {
                 std::cerr << "Warning: gzip level must be 1-9, using default 6\n";
                 level = 6;
@@ -131,13 +132,14 @@ Config load_config(int argc, char* argv[]) {
             cfg.cli_gzip_level = level;
         }
         else if (arg == "--brotli-level" && i + 1 < argc) {
+            const char* val = argv[++i];
             int level = 0;
-            auto result = std::from_chars(argv[i + 1], argv[i + 1] + std::strlen(argv[i]), level);
-            if (result.ec != std::errc() || result.ptr != argv[i + 1] + std::strlen(argv[i + 1])) {
+            const std::size_t len = std::strlen(val);
+            auto result = std::from_chars(val, val + len, level);
+            if (result.ec != std::errc() || result.ptr != val + len) {
                 std::cerr << "Warning: invalid brotli level format, using default 4\n";
                 level = 4;
             }
-            // Валидация диапазона уровня brotli
             if (level < 1 || level > 11) {
                 std::cerr << "Warning: brotli level must be 1-11, using default 4\n";
                 level = 4;

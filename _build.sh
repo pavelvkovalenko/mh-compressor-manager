@@ -147,7 +147,12 @@ if [ "$NEED_INSTALL" = true ]; then
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}Установка зависимостей...${NC}"
-        eval "$INSTALL_CMD ${ALL_DEPS[*]}"
+        case "$PKG_MANAGER" in
+            dnf)    sudo dnf install -y "${ALL_DEPS[@]}" ;;
+            apt)    sudo apt-get install -y "${ALL_DEPS[@]}" ;;
+            zypper) sudo zypper install -y "${ALL_DEPS[@]}" ;;
+            pacman) sudo pacman -S --noconfirm "${ALL_DEPS[@]}" ;;
+        esac
         echo -e "${GREEN}Зависимости установлены успешно!${NC}"
     else
         echo -e "${YELLOW}Установка отменена пользователем.${NC}"
