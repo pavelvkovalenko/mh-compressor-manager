@@ -28,7 +28,38 @@ struct MoveEvent {
     std::chrono::steady_clock::time_point timestamp;
 };
 
-Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_inotify_fd(-1), m_running(false) {
+// Реализация методов класса InotifyFd
+InotifyFd::InotifyFd() : fd_(-1) {}
+
+InotifyFd::~InotifyFd() {
+    if (fd_ >= 0) {
+        close(fd_);
+    }
+}
+
+InotifyFd::InotifyFd(InotifyFd&& other) noexcept : fd_(other.fd_) {
+    other.fd_ = -1;
+}
+
+InotifyFd& InotifyFd::operator=(InotifyFd&& other) noexcept {
+    if (this != &other) {
+        if (fd_ >= 0) {
+            close(fd_);
+        }
+        fd_ = other.fd_;
+        other.fd_ = -1;
+    }
+    return *this;
+}
+
+void InotifyFd::reset(int new_fd) {
+    if (fd_ >= 0) {
+        close(fd_);
+    }
+    fd_ = new_fd;
+}
+
+Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_inotify_fd(), m_running(false) {
     update_compressed_extensions();
     Logger::info(std::format("Initialized monitor with {} compressed extensions based on algorithms: {}", 
                              m_compressed_extensions.size(), m_cfg.algorithms));
@@ -86,12 +117,13 @@ Monitor::~Monitor() {
 }
 
 void Monitor::start() {
-    m_inotify_fd = inotify_init();
-    if (m_inotify_fd < 0) {
+    int fd = inotify_init();
+    if (fd < 0) {
         Logger::error("Failed to init inotify");
         return;
     }
-
+    m_inotify_fd.reset(fd);
+    
     for (const auto& path_str : m_cfg.target_paths) {
         add_watch_recursive(fs::path(path_str));
     }
@@ -104,7 +136,7 @@ void Monitor::start() {
 void Monitor::stop() {
     m_running = false;
     if (m_thread.joinable()) m_thread.join();
-    if (m_inotify_fd >= 0) close(m_inotify_fd);
+    // m_inotify_fd закроется автоматически в деструкторе RAII
     Logger::info("Monitor stopped");
 }
 
@@ -270,7 +302,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
         return;
     }
     
-    int wd = inotify_add_watch(m_inotify_fd, base_path.c_str(), 
+    int wd = inotify_add_watch(m_inotify_fd.get(), base_path.c_str(), 
         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
     if (wd >= 0) {
         m_wd_path_map[wd] = base_path.string();
@@ -286,7 +318,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
             if (entry.is_directory()) {
                 // Дополнительная проверка через lstat для каждой директории
                 if (lstat(entry.path().c_str(), &st) == 0 && !S_ISLNK(st.st_mode) && S_ISDIR(st.st_mode)) {
-                    int wd_sub = inotify_add_watch(m_inotify_fd, entry.path().c_str(), 
+                    int wd_sub = inotify_add_watch(m_inotify_fd.get(), entry.path().c_str(), 
                         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
                     if (wd_sub >= 0) {
                         m_wd_path_map[wd_sub] = entry.path().string();
@@ -328,18 +360,19 @@ void Monitor::run() {
     while (m_running) {
         fd_set readfds;
         FD_ZERO(&readfds);
-        FD_SET(m_inotify_fd, &readfds);
+        int fd_val = m_inotify_fd.get();
+        FD_SET(fd_val, &readfds);
         
         struct timeval tv;
         tv.tv_sec = 1;
         tv.tv_usec = 0;
         
-        int ret = select(m_inotify_fd + 1, &readfds, NULL, NULL, &tv);
-        if (ret > 0 && FD_ISSET(m_inotify_fd, &readfds)) {
+        int ret = select(fd_val + 1, &readfds, NULL, NULL, &tv);
+        if (ret > 0 && FD_ISSET(fd_val, &readfds)) {
             // Читаем события в цикле пока есть данные
             bool has_more_data = true;
             while (has_more_data && m_running) {
-                int len = read(m_inotify_fd, buffer.data(), buffer.size());
+                int len = read(fd_val, buffer.data(), buffer.size());
                 if (len > 0) {
                     // ОБРАБОТКА ПАКЕТАМИ: Обрабатываем все события из одного read()
                     // Это улучшает производительность при массовых событиях
@@ -396,9 +429,9 @@ void Monitor::run() {
                     // Проверяем есть ли ещё данные (неблокирующий read)
                     fd_set check_fds;
                     FD_ZERO(&check_fds);
-                    FD_SET(m_inotify_fd, &check_fds);
+                    FD_SET(fd_val, &check_fds);
                     struct timeval zero_tv{0, 0};
-                    if (select(m_inotify_fd + 1, &check_fds, NULL, NULL, &zero_tv) <= 0) {
+                    if (select(fd_val + 1, &check_fds, NULL, NULL, &zero_tv) <= 0) {
                         has_more_data = false;
                     }
                 } else if (len < 0 && errno == EINVAL) {

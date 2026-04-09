@@ -74,7 +74,7 @@ size_t RateLimiter::available() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     
     // Создаем не-const копию для cleanup
-    auto& mutable_this = const_cast<RateLimiter*>(this);
+    auto* mutable_this = const_cast<RateLimiter*>(this);
     mutable_this->cleanup_old_entries();
     
     if (m_timestamps.size() >= m_max_operations) {
