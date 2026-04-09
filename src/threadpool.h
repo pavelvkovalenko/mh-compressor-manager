@@ -43,8 +43,8 @@ struct PrioritizedTask {
 
 class ThreadPool {
 public:
-    ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0) 
-        : stop_flag(false), force_stop_flag(false), max_queue_size(max_queue_size), active_tasks(0), 
+    ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0)
+        : stop_flag(false), force_stop_flag(false), stopped(false), max_queue_size(max_queue_size), active_tasks(0),
           m_max_active_ios(max_ios), io_slots_available(max_ios > 0 ? max_ios : SIZE_MAX) {
         // Резервируем память с учетом кэш-линий для предотвращения false sharing
         workers.reserve(threads);
@@ -100,11 +100,21 @@ public:
             });
         }
     }
-    ~ThreadPool() { stop(); }
-    
+    ~ThreadPool() {
+        // Безопасно останавливаем только если еще не остановлен
+        bool expected = false;
+        if (stopped.compare_exchange_strong(expected, true)) {
+            stop_internal();
+        }
+    }
+
     bool enqueue(std::function<void()> task, TaskPriority priority = TaskPriority::NORMAL) {
         {
             std::unique_lock<std::mutex> lock(queue_mutex);
+            // Не принимаем задачи если пул останавливается
+            if (stop_flag) {
+                return false;
+            }
             if (tasks.size() >= max_queue_size) {
                 return false;
             }
@@ -116,44 +126,53 @@ public:
     }
     
     void stop() {
+        // Безопасно останавливаем только один раз
+        bool expected = false;
+        if (stopped.compare_exchange_strong(expected, true)) {
+            stop_internal();
+        }
+    }
+
+    size_t queue_size() const {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        return tasks.size();
+    }
+
+    size_t active_count() const {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        return active_tasks;
+    }
+
+    // Ожидание завершения всех задач
+    void wait_all() {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        task_done.wait(lock, [this] {
+            return tasks.empty() && active_tasks == 0 || stop_flag;
+        });
+    }
+
+private:
+    void stop_internal() {
         stop_flag = true;
         force_stop_flag = false;  // Сбрасываем флаг принудительной остановки
         condition.notify_all();
         io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
-        
+
         // Ждем завершения всех задач с таймаутом
         constexpr auto THREAD_JOIN_TIMEOUT = std::chrono::seconds(30);
-        constexpr auto FORCE_JOIN_TIMEOUT = std::chrono::seconds(10);
-        
+
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                // Создаем future для join операции
+                // Создаем future для join операции чтобы избежать блокировки если join зависнет
                 auto join_future = std::async(std::launch::async, [&worker]() {
                     worker.join();
                 });
-                
+
                 // Ждем завершения с таймаутом
                 if (join_future.wait_for(THREAD_JOIN_TIMEOUT) == std::future_status::timeout) {
-                    Logger::warning("Thread join timeout, requesting forced stop");
-                    // Устанавливаем флаг принудительной остановки для потоков
-                    force_stop_flag = true;
-                    condition.notify_all();
-                    io_slot_available.notify_all();
-                    
-                    // Повторно ждем с меньшим таймаутом
-                    auto force_join_future = std::async(std::launch::async, [&worker]() {
-                        worker.join();
-                    });
-                    
-                    if (force_join_future.wait_for(FORCE_JOIN_TIMEOUT) == std::future_status::timeout) {
-                        Logger::error("Forced thread join timeout, thread may be stuck in uninterruptible wait");
-                        // НЕ используем detach() - это критически важно!
-                        // detach() приведет к утечке ресурсов и неопределенному поведению
-                        // Оставляем поток в joinable состоянии - он завершится когда разблокируется
-                        // Это безопаснее чем detach() который создает orphaned thread
-                    } else {
-                        Logger::info("Thread joined after forced stop request");
-                    }
+                    Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
+                    // НЕ вызываем detach() — это может привести к утечке ресурсов
+                    // Поток завершится когда разблокируется
                 } else {
                     Logger::debug("Thread joined successfully");
                 }
@@ -161,25 +180,7 @@ public:
         }
         workers.clear();  // Очищаем вектор потоков после завершения
     }
-    
-    size_t queue_size() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(queue_mutex));
-        return tasks.size();
-    }
-    
-    size_t active_count() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(queue_mutex));
-        return active_tasks;
-    }
-    
-    // Ожидание завершения всех задач
-    void wait_all() {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        task_done.wait(lock, [this] { 
-            return tasks.empty() && active_tasks == 0; 
-        });
-    }
-    
+
 private:
     std::vector<std::thread> workers;
     std::priority_queue<PrioritizedTask> tasks;
@@ -189,6 +190,7 @@ private:
     std::condition_variable io_slot_available;
     std::atomic<bool> stop_flag;
     std::atomic<bool> force_stop_flag;  // Флаг принудительной остановки потоков
+    std::atomic<bool> stopped;  // Флаг для предотвращения повторного вызова stop
     size_t max_queue_size;
     size_t active_tasks;
     size_t m_max_active_ios;

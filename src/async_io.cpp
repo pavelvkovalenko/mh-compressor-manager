@@ -6,6 +6,8 @@
 #include <cstring>
 #include <atomic>
 #include <array>
+#include <mutex>
+#include <chrono>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -30,8 +32,9 @@ namespace {
 #if HAS_IO_URING
 namespace {
     io_uring g_ring = {};
+    std::mutex g_ring_mutex;  // Мьютекс для защиты доступа к g_ring
     std::atomic<size_t> g_pending_submissions{0};
-    
+
     // Структура для хранения контекста асинхронной операции
     struct AsyncIOContext {
         int fd = -1;
@@ -63,33 +66,44 @@ bool AsyncIO::is_uring_available() {
 
 bool AsyncIO::init_uring(size_t ring_size) {
 #if HAS_IO_URING
-    if (uring_state_.initialized) {
-        return true;
-    }
-    
-    // Инициализируем io_uring с флагом IORING_SETUP_SINGLE_ISSUER для лучшей производительности
-    io_uring_params params = {};
-    params.flags = IORING_SETUP_SINGLE_ISSUER;
-    
-    int ret = io_uring_queue_init_params(ring_size, &g_ring, &params);
-    if (ret != 0) {
-        // Пробуем без флагов для обратной совместимости
-        ret = io_uring_queue_init(ring_size, &g_ring, 0);
-        if (ret != 0) {
-            Logger::warning(std::format("io_uring initialization failed: {}, falling back to sync I/O", 
-                                       strerror(-ret)));
-            return false;
+    // Используем call_once для потокобезопасной инициализации
+    static std::once_flag init_flag;
+    static bool init_result = false;
+
+    std::call_once(init_flag, [ring_size]() {
+        std::lock_guard<std::mutex> lock(g_ring_mutex);
+        if (uring_state_.initialized) {
+            init_result = true;
+            return;
         }
-    }
-    
-    uring_state_.ring = &g_ring;
-    uring_state_.initialized = true;
-    uring_state_.ring_size = ring_size;
-    g_uring_available.store(true);
-    
-    Logger::debug(std::format("io_uring initialized with ring size {} (single issuer: {})", 
-                             ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? "yes" : "no"));
-    return true;
+
+        // Инициализируем io_uring с флагом IORING_SETUP_SINGLE_ISSUER для лучшей производительности
+        io_uring_params params = {};
+        params.flags = IORING_SETUP_SINGLE_ISSUER;
+
+        int ret = io_uring_queue_init_params(ring_size, &g_ring, &params);
+        if (ret != 0) {
+            // Пробуем без флагов для обратной совместимости
+            ret = io_uring_queue_init(ring_size, &g_ring, 0);
+            if (ret != 0) {
+                Logger::warning(std::format("io_uring initialization failed: {}, falling back to sync I/O",
+                                           strerror(-ret)));
+                init_result = false;
+                return;
+            }
+        }
+
+        uring_state_.ring = &g_ring;
+        uring_state_.initialized = true;
+        uring_state_.ring_size = ring_size;
+        g_uring_available.store(true);
+
+        Logger::debug(std::format("io_uring initialized with ring size {} (single issuer: {})",
+                                 ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? "yes" : "no"));
+        init_result = true;
+    });
+
+    return init_result;
 #else
     Logger::debug("io_uring not available (liburing not installed), using sync I/O");
     return false;
@@ -98,6 +112,7 @@ bool AsyncIO::init_uring(size_t ring_size) {
 
 void AsyncIO::cleanup_uring() {
 #if HAS_IO_URING
+    std::lock_guard<std::mutex> lock(g_ring_mutex);
     if (uring_state_.initialized) {
         io_uring_queue_exit(&g_ring);
         uring_state_.initialized = false;
@@ -240,49 +255,71 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
     }
     
     // Получаем SQE для операции чтения
-    io_uring_sqe* sqe = io_uring_get_sqe(&g_ring);
-    if (!sqe) {
-        // Кольцо заполнено, выполняем submit и ждем
-        io_uring_submit_and_wait(&g_ring, 1);
+    io_uring_sqe* sqe = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_ring_mutex);
         sqe = io_uring_get_sqe(&g_ring);
         if (!sqe) {
+            // Кольцо заполнено, выполняем submit и ждем
+            io_uring_submit_and_wait(&g_ring, 1);
+            sqe = io_uring_get_sqe(&g_ring);
+            if (!sqe) {
+                close(fd);
+                Logger::error("io_uring SQE queue full");
+                return false;
+            }
+        }
+
+        // Подготовка операции чтения с поддержкой IOSQE_ASYNC
+        io_uring_prep_read(sqe, fd, buffer, buffer_size, offset);
+        io_uring_sqe_set_data(sqe, reinterpret_cast<void*>(static_cast<intptr_t>(fd)));
+
+        // Отправляем операцию
+        int ret = io_uring_submit(&g_ring);
+        if (ret < 0) {
             close(fd);
-            Logger::error("io_uring SQE queue full");
+            Logger::error(std::format("io_uring submit failed: {}", strerror(-ret)));
             return false;
         }
     }
     
-    // Подготовка операции чтения с поддержкой IOSQE_ASYNC
-    io_uring_prep_read(sqe, fd, buffer, buffer_size, offset);
-    io_uring_sqe_set_data(sqe, reinterpret_cast<void*>(static_cast<intptr_t>(fd)));
-    
-    // Отправляем операцию
-    int ret = io_uring_submit(&g_ring);
-    if (ret < 0) {
-        close(fd);
-        Logger::error(std::format("io_uring submit failed: {}", strerror(-ret)));
-        return false;
-    }
-    
-    // Ждем завершения операции с таймаутом
+    // Ждем завершения операции с таймаутом 30 секунд
     io_uring_cqe* cqe = nullptr;
-    ret = io_uring_wait_cqe_timeout(&g_ring, &cqe, nullptr);
-    if (ret != 0 && ret != -ETIME) {
+    struct timespec timeout;
+    timeout.tv_sec = 30;
+    timeout.tv_nsec = 0;
+
+    int ret;
+    {
+        std::lock_guard<std::mutex> lock(g_ring_mutex);
+        ret = io_uring_wait_cqe_timeout(&g_ring, &cqe, &timeout);
+    }
+    if (ret != 0) {
+        if (ret == -ETIME) {
+            Logger::error("io_uring operation timed out after 30 seconds");
+        } else {
+            Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
+        }
         close(fd);
-        Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
         return false;
     }
-    
+
     if (cqe && cqe->res < 0) {
         Logger::error(std::format("async read failed: {}", strerror(-cqe->res)));
-        io_uring_cqe_seen(&g_ring, cqe);
+        {
+            std::lock_guard<std::mutex> lock(g_ring_mutex);
+            io_uring_cqe_seen(&g_ring, cqe);
+        }
         close(fd);
         return false;
     }
-    
+
     if (cqe) {
         bytes_read = static_cast<size_t>(cqe->res);
-        io_uring_cqe_seen(&g_ring, cqe);
+        {
+            std::lock_guard<std::mutex> lock(g_ring_mutex);
+            io_uring_cqe_seen(&g_ring, cqe);
+        }
     } else {
         // Fallback на синхронное чтение если CQE не получен
         ssize_t result = sync_read(fd, buffer, buffer_size);
@@ -292,7 +329,8 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
         }
         bytes_read = static_cast<size_t>(result);
     }
-    
+
+    // Закрываем fd только после завершения всех операций с ним
     close(fd);
     return true;
 #else
@@ -370,45 +408,71 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
         return false;
     }
     
-    io_uring_sqe* sqe = io_uring_get_sqe(&g_ring);
-    if (!sqe) {
-        io_uring_submit(&g_ring);
+    io_uring_sqe* sqe = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_ring_mutex);
         sqe = io_uring_get_sqe(&g_ring);
         if (!sqe) {
+            io_uring_submit(&g_ring);
+            sqe = io_uring_get_sqe(&g_ring);
+            if (!sqe) {
+                close(fd);
+                Logger::error("io_uring SQE queue full");
+                return false;
+            }
+        }
+
+        io_uring_prep_write(sqe, fd, buffer, size, offset);
+        io_uring_sqe_set_data(sqe, reinterpret_cast<void*>(static_cast<intptr_t>(fd)));
+
+        int ret = io_uring_submit(&g_ring);
+        if (ret < 0) {
             close(fd);
-            Logger::error("io_uring SQE queue full");
+            Logger::error(std::format("io_uring submit failed: {}", strerror(-ret)));
             return false;
         }
     }
     
-    io_uring_prep_write(sqe, fd, buffer, size, offset);
-    io_uring_sqe_set_data(sqe, reinterpret_cast<void*>(static_cast<intptr_t>(fd)));
-    
-    int ret = io_uring_submit(&g_ring);
-    if (ret < 0) {
-        close(fd);
-        Logger::error(std::format("io_uring submit failed: {}", strerror(-ret)));
-        return false;
-    }
-    
-    // Ждем завершения операции
+    // Ждем завершения операции с таймаутом 30 секунд
     io_uring_cqe* cqe = nullptr;
-    ret = io_uring_wait_cqe(&g_ring, &cqe);
+    struct timespec timeout;
+    timeout.tv_sec = 30;
+    timeout.tv_nsec = 0;
+
+    int ret;
+    {
+        std::lock_guard<std::mutex> lock(g_ring_mutex);
+        ret = io_uring_wait_cqe_timeout(&g_ring, &cqe, &timeout);
+    }
     if (ret != 0) {
+        if (ret == -ETIME) {
+            Logger::error("io_uring write operation timed out after 30 seconds");
+        } else {
+            Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
+        }
         close(fd);
-        Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
         return false;
     }
-    
+
     if (cqe->res < 0) {
         Logger::error(std::format("async write failed: {}", strerror(-cqe->res)));
-        io_uring_cqe_seen(&g_ring, cqe);
+        {
+            std::lock_guard<std::mutex> lock(g_ring_mutex);
+            io_uring_cqe_seen(&g_ring, cqe);
+        }
         close_file_sync(fd, false);
         return false;
     }
-    
+
+    // Проверяем что все данные были записаны
     bytes_written = static_cast<size_t>(cqe->res);
-    io_uring_cqe_seen(&g_ring, cqe);
+    if (bytes_written != size) {
+        Logger::warning(std::format("Partial write: {} of {} bytes written", bytes_written, size));
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_ring_mutex);
+        io_uring_cqe_seen(&g_ring, cqe);
+    }
     return close_file_sync(fd, !use_direct_io);
 #else
     // Fallback без io_uring

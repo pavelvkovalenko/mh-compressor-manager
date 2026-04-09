@@ -66,19 +66,19 @@ Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_inotify_fd(), m_running(fals
 }
 
 void Monitor::update_compressed_extensions() {
-    std::unique_lock<std::shared_mutex> lock(m_config_mutex);
-    
+    // ВНИМАНИЕ: Эта функция должна вызываться ТОЛЬКО когда m_config_mutex уже захвачен
+    // ИЛИ из конструктора когда никаких блокировок нет
+
     // Очищаем текущий кэш расширений
     m_compressed_extensions.clear();
-    
+
     // Динамически определяем расширения сжатых файлов на основе включенных алгоритмов
-    // Это позволяет использовать пользовательские расширения если они изменены в настройках
     std::string algorithms = m_cfg.algorithms;
     std::transform(algorithms.begin(), algorithms.end(), algorithms.begin(), ::tolower);
-    
+
     bool use_gzip = (algorithms == "all" || algorithms.find("gzip") != std::string::npos);
     bool use_brotli = (algorithms == "all" || algorithms.find("brotli") != std::string::npos);
-    
+
     if (use_gzip) {
         m_compressed_extensions.insert("gz");
         Logger::debug("Monitoring for .gz files (gzip algorithm enabled)");
@@ -89,14 +89,33 @@ void Monitor::update_compressed_extensions() {
     }
 }
 
+// Внутренняя версия для вызова когда mutex уже захвачен
+void Monitor::update_compressed_extensions_unlocked() {
+    // Не захватывает mutex - вызывается из reload_config
+    m_compressed_extensions.clear();
+
+    std::string algorithms = m_cfg.algorithms;
+    std::transform(algorithms.begin(), algorithms.end(), algorithms.begin(), ::tolower);
+
+    bool use_gzip = (algorithms == "all" || algorithms.find("gzip") != std::string::npos);
+    bool use_brotli = (algorithms == "all" || algorithms.find("brotli") != std::string::npos);
+
+    if (use_gzip) {
+        m_compressed_extensions.insert("gz");
+    }
+    if (use_brotli) {
+        m_compressed_extensions.insert("br");
+    }
+}
+
 void Monitor::reload_config(const Config& new_cfg) {
     std::unique_lock<std::shared_mutex> lock(m_config_mutex);
-    
+
     Logger::info("Reloading monitor configuration...");
-    
+
     // Обновляем конфигурацию
     m_cfg = new_cfg;
-    
+
     // Обновляем кэш расширений исходных файлов
     m_extensions_cache.clear();
     for (const auto& ext : m_cfg.extensions) {
@@ -104,11 +123,11 @@ void Monitor::reload_config(const Config& new_cfg) {
         std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
         m_extensions_cache.insert(lower_ext);
     }
-    
-    // Обновляем кэш расширений сжатых файлов
-    update_compressed_extensions();
-    
-    Logger::info(std::format("Monitor configuration reloaded: {} source extensions, {} compressed extensions", 
+
+    // Обновляем кэш расширений сжатых файлов (unlocked версия чтобы избежать deadlock)
+    update_compressed_extensions_unlocked();
+
+    Logger::info(std::format("Monitor configuration reloaded: {} source extensions, {} compressed extensions",
                              m_extensions_cache.size(), m_compressed_extensions.size()));
 }
 
@@ -231,7 +250,7 @@ void Monitor::scan_existing_files() {
                                     if (missing_br && !missing_gz) missing_files += ".br";
                                     else if (missing_br) missing_files += " and .br";
                                     
-                                    Logger::info(std::format("Missing compressed file(s) {}: queued for re-compression", 
+                                    Logger::info(std::format("Missing compressed file(s) for {}: queued for re-compression ({})",
                                         entry.path().string(), missing_files));
                                 }
                             } catch (const fs::filesystem_error& e) {
@@ -343,6 +362,7 @@ void Monitor::run() {
     // ОПТИМИЗАЦИЯ: Выносим вектор событий наружу для переиспользования памяти
     struct BatchEvent {
         int wd;
+        uint32_t mask;  // Добавляем маску события
         std::string name;
         uint32_t cookie;
     };
@@ -384,14 +404,14 @@ void Monitor::run() {
                     while (i < len) {
                         struct inotify_event* event = (struct inotify_event*)&buffer[i];
                         if (event->len > 0) {
-                            batch_events.emplace_back(event->wd, std::string(event->name), event->cookie);
+                            batch_events.emplace_back(event->wd, event->mask, std::string(event->name), event->cookie);
                         }
                         i += sizeof(struct inotify_event) + event->len;
                     }
-                    
-                    // Пакетная обработка событий с передачей cookie
-                    for (const auto& [wd, name, cookie] : batch_events) {
-                        process_event(wd, 0, name, cookie);
+
+                    // Пакетная обработка событий с передачей маски
+                    for (const auto& [wd, mask, name, cookie] : batch_events) {
+                        process_event(wd, mask, name, cookie);
                     }
                     
                     // Очищаем старые cookie перемещения (таймаут)
@@ -491,10 +511,10 @@ bool Monitor::is_target_extension(const std::string& filepath) {
     
     size_t dot = filename.find_last_of('.');
     
-    // Получаем настройки для конкретного пути (с учетом переопределений)
-    const FolderOverride* override = get_folder_override(m_cfg, filepath);
-    bool process_without_ext = override 
-        ? override->process_files_without_extensions 
+    // Получаем индекс переопределения для конкретного пути
+    auto override_idx = get_folder_override_index(m_cfg, filepath);
+    bool process_without_ext = override_idx.has_value()
+        ? m_cfg.folder_overrides[*override_idx].process_files_without_extensions
         : m_cfg.process_files_without_extensions;
     
     // Поддержка файлов без расширений: если точки нет и включена опция process_files_without_extensions
@@ -527,23 +547,19 @@ bool Monitor::is_target_extension(const std::string& filepath) {
     if (ext == "gz" || ext == "br") return false;
     
     // Получаем список расширений для этой папки (с учетом переопределений)
-    const std::vector<std::string>* target_extensions = nullptr;
-    if (override && !override->extensions.empty()) {
-        target_extensions = &override->extensions;
+    if (override_idx.has_value() && !m_cfg.folder_overrides[*override_idx].extensions.empty()) {
+        // Используем переопределение расширений для этой папки
+        for (const auto& target_ext : m_cfg.folder_overrides[*override_idx].extensions) {
+            if (ext == target_ext) {
+                return true;
+            }
+        }
+        return false;
     } else {
-        // Блокировка для потокобезопасного доступа к кэшу расширений (защита от race condition)
+        // Блокировка для потокобезопасного доступа к кэшу расширений
         std::shared_lock<std::shared_mutex> lock(m_config_mutex);
-        // Используем кэш расширений для быстрого поиска O(1)
         return m_extensions_cache.count(ext) > 0;
     }
-    
-    // Если есть переопределение расширений для этой папки, используем его
-    for (const auto& target_ext : *target_extensions) {
-        if (ext == target_ext) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool Monitor::is_compressed_extension(const std::string& filename) {

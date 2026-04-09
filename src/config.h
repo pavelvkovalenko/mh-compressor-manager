@@ -53,5 +53,6 @@ struct Config {
 
 Config load_config(int argc, char* argv[]);
 
-// Получить настройки для конкретного пути (с учетом переопределений)
-const FolderOverride* get_folder_override(const Config& cfg, const std::string& path);
+// Получить индекс настройки для конкретного пути (с учетом переопределений)
+// Возвращает std::nullopt если нет переопределений
+std::optional<size_t> get_folder_override_index(const Config& cfg, const std::string& path);

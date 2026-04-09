@@ -60,11 +60,11 @@ private:
     void add_watch_recursive(const fs::path& path);
     void add_watch_recursive_impl(const fs::path& path, size_t depth);  // Внутренняя реализация с ограничением глубины
     void process_event(int wd, uint32_t mask, const std::string& name, uint32_t cookie = 0);
-    void cleanup_expired_cookies();  // Очистка устаревших cookie
     bool is_target_extension(const std::string& filename);
     bool is_compressed_extension(const std::string& filename);
     std::string get_original_path_from_compressed(const fs::path& compressed_path);
     void update_compressed_extensions();  // Обновление кэша расширений сжатых файлов
+    void update_compressed_extensions_unlocked();  // Внутренняя версия без блокировки (для reload_config)
     
     Config m_cfg;
     InotifyFd m_inotify_fd;  // RAII-обертка вместо сырого int
