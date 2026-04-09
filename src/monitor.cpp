@@ -28,14 +28,14 @@ struct MoveEvent {
     std::chrono::steady_clock::time_point timestamp;
 };
 
-Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_fd(-1), m_running(false) {
+Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_inotify_fd(-1), m_running(false) {
     update_compressed_extensions();
     Logger::info(std::format("Initialized monitor with {} compressed extensions based on algorithms: {}", 
                              m_compressed_extensions.size(), m_cfg.algorithms));
 }
 
 void Monitor::update_compressed_extensions() {
-    std::lock_guard<std::mutex> lock(m_config_mutex);
+    std::unique_lock<std::shared_mutex> lock(m_config_mutex);
     
     // Очищаем текущий кэш расширений
     m_compressed_extensions.clear();
@@ -59,7 +59,7 @@ void Monitor::update_compressed_extensions() {
 }
 
 void Monitor::reload_config(const Config& new_cfg) {
-    std::lock_guard<std::mutex> lock(m_config_mutex);
+    std::unique_lock<std::shared_mutex> lock(m_config_mutex);
     
     Logger::info("Reloading monitor configuration...");
     
@@ -86,8 +86,8 @@ Monitor::~Monitor() {
 }
 
 void Monitor::start() {
-    m_fd = inotify_init();
-    if (m_fd < 0) {
+    m_inotify_fd = inotify_init();
+    if (m_inotify_fd < 0) {
         Logger::error("Failed to init inotify");
         return;
     }
@@ -104,7 +104,7 @@ void Monitor::start() {
 void Monitor::stop() {
     m_running = false;
     if (m_thread.joinable()) m_thread.join();
-    if (m_fd >= 0) close(m_fd);
+    if (m_inotify_fd >= 0) close(m_inotify_fd);
     Logger::info("Monitor stopped");
 }
 
@@ -247,7 +247,7 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
 void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) {
     // Ограничение глубины рекурсии для защиты от DoS-атаки через глубокие директории
     if (depth > MAX_RECURSION_DEPTH) {
-        Logger::warning(std::format(\"Maximum recursion depth ({}) exceeded at: {} - skipping subdirectories\", 
+        Logger::warning(std::format("Maximum recursion depth ({}) exceeded at: {} - skipping subdirectories", 
                                      MAX_RECURSION_DEPTH, base_path.string()));
         return;
     }
@@ -255,28 +255,28 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
     // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Используем lstat вместо fs.exists для предотвращения symlink атак ===
     struct stat st;
     if (lstat(base_path.c_str(), &st) != 0) {
-        Logger::warning(std::format(\"Path does not exist or inaccessible: {}\", base_path.string()));
+        Logger::warning(std::format("Path does not exist or inaccessible: {}", base_path.string()));
         return;
     }
     
     // Проверка: базовый путь не должен быть symlink
     if (S_ISLNK(st.st_mode)) {
-        Logger::error(std::format(\"SECURITY: Base path is a symlink (potential attack): {}\", base_path.string()));
+        Logger::error(std::format("SECURITY: Base path is a symlink (potential attack): {}", base_path.string()));
         return;
     }
     
     if (!S_ISDIR(st.st_mode)) {
-        Logger::warning(std::format(\"Path is not a directory: {}\", base_path.string()));
+        Logger::warning(std::format("Path is not a directory: {}", base_path.string()));
         return;
     }
     
-    int wd = inotify_add_watch(m_fd, base_path.c_str(), 
+    int wd = inotify_add_watch(m_inotify_fd, base_path.c_str(), 
         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
     if (wd >= 0) {
         m_wd_path_map[wd] = base_path.string();
-        Logger::info(std::format(\"Watching directory: {} (depth: {})\", base_path.string(), depth));
+        Logger::info(std::format("Watching directory: {} (depth: {})", base_path.string(), depth));
     } else {
-        Logger::error(std::format(\"Failed to add watch for: {}\", base_path.string()));
+        Logger::error(std::format("Failed to add watch for: {}", base_path.string()));
     }
 
     try {
@@ -286,7 +286,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
             if (entry.is_directory()) {
                 // Дополнительная проверка через lstat для каждой директории
                 if (lstat(entry.path().c_str(), &st) == 0 && !S_ISLNK(st.st_mode) && S_ISDIR(st.st_mode)) {
-                    int wd_sub = inotify_add_watch(m_fd, entry.path().c_str(), 
+                    int wd_sub = inotify_add_watch(m_inotify_fd, entry.path().c_str(), 
                         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
                     if (wd_sub >= 0) {
                         m_wd_path_map[wd_sub] = entry.path().string();
@@ -297,7 +297,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
             }
         }
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format(\"Directory access error: {}\", e.what()));
+        Logger::warning(std::format("Directory access error: {}", e.what()));
     }
 }
 
@@ -328,18 +328,18 @@ void Monitor::run() {
     while (m_running) {
         fd_set readfds;
         FD_ZERO(&readfds);
-        FD_SET(m_fd, &readfds);
+        FD_SET(m_inotify_fd, &readfds);
         
         struct timeval tv;
         tv.tv_sec = 1;
         tv.tv_usec = 0;
         
-        int ret = select(m_fd + 1, &readfds, NULL, NULL, &tv);
-        if (ret > 0 && FD_ISSET(m_fd, &readfds)) {
+        int ret = select(m_inotify_fd + 1, &readfds, NULL, NULL, &tv);
+        if (ret > 0 && FD_ISSET(m_inotify_fd, &readfds)) {
             // Читаем события в цикле пока есть данные
             bool has_more_data = true;
             while (has_more_data && m_running) {
-                int len = read(m_fd, buffer.data(), buffer.size());
+                int len = read(m_inotify_fd, buffer.data(), buffer.size());
                 if (len > 0) {
                     // ОБРАБОТКА ПАКЕТАМИ: Обрабатываем все события из одного read()
                     // Это улучшает производительность при массовых событиях
@@ -363,7 +363,7 @@ void Monitor::run() {
                     
                     // Очищаем старые cookie перемещения (таймаут)
                     {
-                        std::lock_guard<std::mutex> lock(m_move_mutex);
+                        std::unique_lock<std::shared_mutex> lock(m_move_mutex);
                         auto now = std::chrono::steady_clock::now();
                         for (auto it = m_move_cookies.begin(); it != m_move_cookies.end(); ) {
                             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -396,9 +396,9 @@ void Monitor::run() {
                     // Проверяем есть ли ещё данные (неблокирующий read)
                     fd_set check_fds;
                     FD_ZERO(&check_fds);
-                    FD_SET(m_fd, &check_fds);
+                    FD_SET(m_inotify_fd, &check_fds);
                     struct timeval zero_tv{0, 0};
-                    if (select(m_fd + 1, &check_fds, NULL, NULL, &zero_tv) <= 0) {
+                    if (select(m_inotify_fd + 1, &check_fds, NULL, NULL, &zero_tv) <= 0) {
                         has_more_data = false;
                     }
                 } else if (len < 0 && errno == EINVAL) {
@@ -609,7 +609,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
             }
         } else if (mask & IN_MOVED_FROM) {
             // Сохраняем cookie и путь для последующей связки с IN_MOVED_TO
-            std::lock_guard<std::mutex> lock(m_move_mutex);
+            std::unique_lock<std::shared_mutex> lock(m_move_mutex);
             m_move_cookies[cookie] = {
                 full_path.string(),
                 std::chrono::steady_clock::now()
@@ -619,7 +619,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
                                       full_path.string(), cookie));
         } else if (mask & IN_MOVED_TO) {
             // Проверяем есть ли соответствующее событие IN_MOVED_FROM с тем же cookie
-            std::lock_guard<std::mutex> lock(m_move_mutex);
+            std::unique_lock<std::shared_mutex> lock(m_move_mutex);
             auto it_cookie = m_move_cookies.find(cookie);
             if (it_cookie != m_move_cookies.end()) {
                 // Это перемещение внутри monitored зоны - удаляем из списка ожидающих

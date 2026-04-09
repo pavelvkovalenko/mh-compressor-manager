@@ -1,1 +1,28 @@
-Nothing should be ignored based on the provided file changes, as they only include source code files (.cpp files) without any build artifacts, dependencies, or temporary files.
+```
+# CMake build artifacts
+src/build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+compile_commands.json
+
+# Compiled objects and binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.out
+
+# Logs
+CMakeError.log
+CMakeOutput.log
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+```

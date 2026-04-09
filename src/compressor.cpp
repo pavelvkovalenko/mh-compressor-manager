@@ -26,6 +26,9 @@ namespace std {
 #include <climits>      // Для PATH_MAX
 #include <set>          // Для кэша валидации путей
 #include <atomic>       // Для потокобезопасности
+#ifdef HAVE_SELINUX
+#include <selinux/selinux.h>
+#endif
 #include <thread>       // Для std::thread в compress_dual
 #include <future>       // Для std::async в compress_dual
 #include <system_error> // Для std::error_code
@@ -1077,7 +1080,7 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     int fd = open(target, O_PATH|O_NOFOLLOW);
     if (fd < 0) {
         // Файл может не существовать - это нормально для некоторых случаев
-        Logger::warning(std::format(\"Cannot open target {} for verification: {}\", target, strerror(errno)));
+        Logger::warning(std::format("Cannot open target {} for verification: {}", target, strerror(errno)));
         return false;  // Не можем проверить - считаем безопасным
     }
     
