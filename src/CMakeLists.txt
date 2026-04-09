@@ -18,14 +18,20 @@ check_cxx_source_compiles("
 if(NOT HAS_STD_FORMAT)
     message(STATUS "std::format not available, falling back to fmt library")
     set(CMAKE_CXX_STANDARD 20)
+    
+    # Сначала пробуем найти через find_package (CONFIG mode)
     find_package(fmt QUIET CONFIG)
+    
+    # Если не найдено, потребуется PkgConfig
     if(NOT fmt_FOUND)
-        # Пробуем найти через pkg-config
+        # Убеждаемся, что PkgConfig доступен
+        find_package(PkgConfig REQUIRED)
         pkg_check_modules(FMT QUIET fmt)
         if(FMT_FOUND)
             set(fmt_FOUND TRUE)
         endif()
     endif()
+    
     if(fmt_FOUND)
         message(STATUS "Using fmt library for formatting")
     else()
