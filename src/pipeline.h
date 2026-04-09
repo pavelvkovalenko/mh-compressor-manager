@@ -38,12 +38,17 @@ public:
      */
     void push(T item) {
         std::unique_lock<std::mutex> lock(mutex_);
-        not_full_.wait(lock, [this] { return count_ < capacity_; });
-        
+        not_full_.wait(lock, [this] { return count_ < capacity_ || stopped_; });
+
+        // Если буфер остановлен, не добавляем элемент
+        if (stopped_) {
+            return;
+        }
+
         buffer_[tail_] = std::move(item);
         tail_ = (tail_ + 1) % capacity_;
         ++count_;
-        
+
         lock.unlock();
         not_empty_.notify_one();
     }
@@ -58,18 +63,21 @@ public:
     T pop() {
         std::unique_lock<std::mutex> lock(mutex_);
         not_empty_.wait(lock, [this] { return count_ > 0 || stopped_; });
-        
+
         if (stopped_ && count_ == 0) {
-            return T(); // Возвращаем пустой элемент при остановке
+            // При остановке и пустом буфере уведомляем ожидающих push
+            lock.unlock();
+            not_full_.notify_one();
+            return T();
         }
-        
+
         T item = std::move(buffer_[head_]);
         head_ = (head_ + 1) % capacity_;
         --count_;
-        
+
         lock.unlock();
         not_full_.notify_one();
-        
+
         return item;
     }
     

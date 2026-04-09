@@ -64,28 +64,29 @@ static bool is_path_safe(const std::string& path) {
 }
 
 // Получить настройки для конкретного пути (с учетом переопределений)
-const FolderOverride* get_folder_override(const Config& cfg, const std::string& path) {
+std::optional<size_t> get_folder_override_index(const Config& cfg, const std::string& path) {
     // Ищем наиболее подходящее переопределение (наиболее длинный совпадающий префикс)
-    const FolderOverride* best_match = nullptr;
+    std::optional<size_t> best_index;
     size_t best_match_len = 0;
-    
-    for (const auto& override : cfg.folder_overrides) {
+
+    for (size_t i = 0; i < cfg.folder_overrides.size(); ++i) {
+        const auto& override = cfg.folder_overrides[i];
         // Проверяем, начинается ли путь с пути переопределения
         if (path.size() >= override.path.size()) {
             if (path.substr(0, override.path.size()) == override.path) {
                 // Дополнительная проверка: либо точное совпадение, либо следующий символ - разделитель пути
-                if (path.size() == override.path.size() || 
+                if (path.size() == override.path.size() ||
                     path[override.path.size()] == '/') {
                     if (override.path.size() > best_match_len) {
-                        best_match = &override;
+                        best_index = i;
                         best_match_len = override.path.size();
                     }
                 }
             }
         }
     }
-    
-    return best_match;
+
+    return best_index;
 }
 
 Config load_config(int argc, char* argv[]) {
@@ -339,7 +340,8 @@ Config load_config(int argc, char* argv[]) {
                     override.extensions.insert(override.extensions.end(), exts.begin(), exts.end());
                     // Нормализация расширений (lowercase)
                     for (auto& ext : override.extensions) {
-                        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                        std::transform(ext.begin(), ext.end(), ext.begin(),
+                                       [](unsigned char c){ return ::tolower(c); });
                     }
                 }
                 else if (key == "process_files_without_extensions") {
@@ -406,7 +408,8 @@ Config load_config(int argc, char* argv[]) {
 
     // Normalize extensions (lowercase)
     for (auto& ext : cfg.extensions) {
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c){ return ::tolower(c); });
     }
 
     return cfg;
