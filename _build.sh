@@ -104,6 +104,33 @@ if ! pkg-config --exists libcap 2>/dev/null; then
     elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("libcap"); fi
 fi
 
+# CMake
+if ! command -v cmake &> /dev/null; then
+    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("cmake"); 
+    elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("cmake");
+    elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("cmake");
+    elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("cmake"); fi
+fi
+
+# Make
+if ! command -v make &> /dev/null; then
+    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("make"); 
+    elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("make");
+    elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("make");
+    elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("make"); fi
+fi
+
+# Build-essential / Development tools
+if [ "$PKG_MANAGER" == "dnf" ] && ! command -v g++ &> /dev/null; then
+    DEPS_TO_INSTALL+=("gcc-c++" "binutils")
+elif [ "$PKG_MANAGER" == "apt" ] && ! command -v g++ &> /dev/null; then
+    DEPS_TO_INSTALL+=("build-essential")
+elif [ "$PKG_MANAGER" == "zypper" ] && ! command -v g++ &> /dev/null; then
+    DEPS_TO_INSTALL+=("gcc-c++" "binutils")
+elif [ "$PKG_MANAGER" == "pacman" ] && ! command -v g++ &> /dev/null; then
+    DEPS_TO_INSTALL+=("base-devel")
+fi
+
 NEED_INSTALL=false
 INSTALL_OPT=false
 
