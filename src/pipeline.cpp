@@ -28,10 +28,10 @@ namespace std {
 #endif
 
 // Переименованы макросы для избежания конфликта с <syslog.h>
-#define PIPE_PIPE_LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
-#define PIPE_PIPE_LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
-#define PIPE_PIPE_LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
-#define PIPE_PIPE_LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
+#define PIPE_LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
+#define PIPE_LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
+#define PIPE_LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
+#define PIPE_LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
 
 /**
  * @brief Конструктор конвейера

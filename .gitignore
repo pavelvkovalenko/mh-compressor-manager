@@ -1,38 +1,36 @@
 ```
-# CMake build artifacts
-src/build/
-CMakeCache.txt
-CMakeFiles/
-Makefile
-cmake_install.cmake
-compile_commands.json
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
 build/
 dist/
 
-# Compiled objects and binaries
-*.o
-*.obj
-*.a
-*.lib
-*.so
-*.dll
-*.exe
-*.out
-
 # Dependencies
+node_modules/
 venv/
 .venv/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
 
-# Logs
-CMakeError.log
-CMakeOutput.log
+# Logs and temp files
 *.log
-
-# Temporary files
 *.tmp
 *.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
 ```
