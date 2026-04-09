@@ -1,5 +1,4 @@
 #include "numa_utils.h"
-#include "logger.h"
 
 #if HAVE_NUMA
 #include <numa.h>
@@ -21,10 +20,13 @@ namespace std {
 }
 #endif
 
-#define LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
-#define LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
-#define LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
-#define LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
+// Используем префикс NUMA_ чтобы избежать конфликта с syslog.h
+#define NUMA_LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
+#define NUMA_LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
+#define NUMA_LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
+#define NUMA_LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
+
+#include "logger.h"
 
 // Статические члены
 bool NumaUtils::numa_available_ = false;
@@ -39,7 +41,7 @@ bool NumaUtils::initialize() {
     if (numa_available()) {
         numa_available_ = true;
         numa_node_count_ = numa_num_configured_nodes();
-        LOG_INFO("NUMA доступен: {} узлов", numa_node_count_);
+        NUMA_LOG_INFO("NUMA доступен: {} узлов", numa_node_count_);
         
         // Инициализация политик NUMA
         numa_set_interleave_mask(numa_all_nodes_ptr);
@@ -47,7 +49,7 @@ bool NumaUtils::initialize() {
     } else {
         numa_available_ = false;
         numa_node_count_ = 1;
-        LOG_INFO("NUMA не доступен в этой системе");
+        NUMA_LOG_INFO("NUMA не доступен в этой системе");
         return false;
     }
 }
@@ -65,7 +67,7 @@ int NumaUtils::get_file_numa_node(const fs::path& path) {
         // Получаем информацию о файле
         struct stat st;
         if (stat(path.c_str(), &st) < 0) {
-            LOG_WARN("Не удалось получить stat для {}: {}", path.string(), strerror(errno));
+            NUMA_LOG_WARN("Не удалось получить stat для {}: {}", path.string(), strerror(errno));
             return 0;
         }
         
@@ -85,7 +87,7 @@ int NumaUtils::get_file_numa_node(const fs::path& path) {
         
         return node;
     } catch (const std::exception& e) {
-        LOG_WARN("Ошибка определения NUMA узла для {}: {}", path.string(), e.what());
+        NUMA_LOG_WARN("Ошибка определения NUMA узла для {}: {}", path.string(), e.what());
         return 0;
     }
 }
@@ -103,15 +105,14 @@ bool NumaUtils::bind_current_thread_to_node(int node_id) {
     numa_bitmask_setbit(nodemask, node_id);
     
     // Привязка потока к узлу
-    pthread_t thread = pthread_self();
     if (numa_run_on_node(node_id) == 0) {
         numa_bitmask_free(nodemask);
-        LOG_DEBUG("Поток привязан к NUMA узлу {}", node_id);
+        NUMA_LOG_DEBUG("Поток привязан к NUMA узлу {}", node_id);
         return true;
     }
     
     numa_bitmask_free(nodemask);
-    LOG_WARN("Не удалось привязать поток к NUMA узлу {}", node_id);
+    NUMA_LOG_WARN("Не удалось привязать поток к NUMA узлу {}", node_id);
     return false;
 }
 
@@ -126,11 +127,11 @@ void* NumaUtils::allocate_on_node(size_t size, int node_id) {
     
     void* ptr = numa_alloc_onnode(size, node_id);
     if (!ptr) {
-        LOG_ERROR("Не удалось выделить память на NUMA узле {}: {}", node_id, strerror(errno));
+        NUMA_LOG_ERROR("Не удалось выделить память на NUMA узле {}: {}", node_id, strerror(errno));
         return nullptr;
     }
     
-    LOG_DEBUG("Выделено {} байт на NUMA узле {}", size, node_id);
+    NUMA_LOG_DEBUG("Выделено {} байт на NUMA узле {}", size, node_id);
     return ptr;
 }
 
@@ -163,12 +164,12 @@ bool NumaUtils::bind_memory_to_node(void* ptr, size_t size, int node_id) {
     unsigned long flags = MPOL_MF_MOVE | MPOL_MF_STRICT;
     if (mbind(ptr, size, MPOL_BIND, nodemask->maskp, nodemask->size, flags) == 0) {
         numa_bitmask_free(nodemask);
-        LOG_DEBUG("Память привязана к NUMA узлу {}", node_id);
+        NUMA_LOG_DEBUG("Память привязана к NUMA узлу {}", node_id);
         return true;
     }
     
     numa_bitmask_free(nodemask);
-    LOG_WARN("Не удалось привязать память к NUMA узлу {}: {}", node_id, strerror(errno));
+    NUMA_LOG_WARN("Не удалось привязать память к NUMA узлу {}: {}", node_id, strerror(errno));
     return false;
 }
 
@@ -189,11 +190,11 @@ int NumaUtils::get_optimal_node_for_device(const fs::path& device_path) {
         
         // Для простоты возвращаем узел 0
         // В реальной реализации можно парсить /sys/block/*/device/numa_node
-        LOG_DEBUG("Оптимальный NUMA узел для {}: 0 (по умолчанию)", device_path.string());
+        NUMA_LOG_DEBUG("Оптимальный NUMA узел для {}: 0 (по умолчанию)", device_path.string());
         return 0;
         
     } catch (const std::exception& e) {
-        LOG_WARN("Ошибка определения устройства для {}: {}", device_path.string(), e.what());
+        NUMA_LOG_WARN("Ошибка определения устройства для {}: {}", device_path.string(), e.what());
         return 0;
     }
 }
