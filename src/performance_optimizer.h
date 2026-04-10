@@ -56,20 +56,13 @@ public:
     struct AllocatedMemory { void* ptr; int method; size_t size; };
     static AllocatedMemory allocate_aligned_memory(size_t size, bool use_huge_page = false);
     static void free_aligned_memory(const AllocatedMemory& mem);
-    
+
     /**
-     * Освобождение выровненной памяти
+     * Освобождение выровненной памяти (устаревший API)
      * @param ptr Указатель на память
      * @param size Размер выделенной памяти
      */
     static void free_aligned_memory_old(void* ptr, size_t size);
-    
-    /**
-     * Освобождение выровненной памяти
-     * @param ptr Указатель на память
-     * @param size Размер выделенной памяти
-     */
-    static void free_aligned_memory(const AllocatedMemory& mem);
     
     /**
      * Предварительное выделение места на диске
