@@ -425,9 +425,12 @@ bool init_seccomp() {
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getegid))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getpid))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(gettid))) return false;
-    
-    // Вызовы для syslog (только sendto для локального syslog, без socket/connect)
+
+    // Вызовы для syslog и sd_notify (systemd watchdog)
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sendto))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(socket))) return false;     // sd_notify: Unix domain socket
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(connect))) return false;    // sd_notify: подключение к systemd socket
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sendmsg))) return false;    // sd_notify: отправка уведомления
     
     // Вызовы для prctl (NO_NEW_PRIVS)
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(prctl))) return false;

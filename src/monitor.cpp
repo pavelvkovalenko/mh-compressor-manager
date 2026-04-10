@@ -60,9 +60,16 @@ void InotifyFd::reset(int new_fd) {
 }
 
 Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_inotify_fd(), m_running(false) {
+    // Заполняем кэш расширений исходных файлов
+    for (const auto& ext : m_cfg.extensions) {
+        std::string lower_ext = ext;
+        std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
+        m_extensions_cache.insert(lower_ext);
+    }
+
     update_compressed_extensions();
-    Logger::info(std::format("Initialized monitor with {} compressed extensions based on algorithms: {}", 
-                             m_compressed_extensions.size(), m_cfg.algorithms));
+    Logger::info(std::format("Initialized monitor with {} source extensions, {} compressed extensions based on algorithms: {}",
+                             m_extensions_cache.size(), m_compressed_extensions.size(), m_cfg.algorithms));
 }
 
 void Monitor::update_compressed_extensions() {

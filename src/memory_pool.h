@@ -129,10 +129,9 @@ public:
             return buf;
         }
         
-        // Если нет свободных буферов, выделяем новый с использованием Huge Pages если доступны
+        // Если нет свободных буферов, выделяем новый
         void* ptr = nullptr;
-        size_t alloc_size = buffer_size;
-        
+
         // NUMA-aware выделение памяти
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
             // ВАЖНО: mutex уже захвачен (unique_lock выше), НЕ создаём вложенный lock

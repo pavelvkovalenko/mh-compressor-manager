@@ -651,6 +651,10 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Счётчик для периодического watchdog уведомления
+        int watchdog_counter = 0;
+        constexpr int WATCHDOG_INTERVAL = 30;  // Отправлять WATCHDOG каждые 30 секунд
+
         while (g_running) {
             // Проверяем необходимость перезагрузки конфигурации (атомарная операция)
             if (g_reload_config.load()) {
@@ -669,6 +673,12 @@ int main(int argc, char* argv[]) {
             } else {
                 // Fallback если epoll не работает
                 std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+
+            // Периодическое уведомление systemd watchdog (каждые WATCHDOG_INTERVAL секунд)
+            if (++watchdog_counter >= WATCHDOG_INTERVAL) {
+                sd_notify(0, "WATCHDOG=1");
+                watchdog_counter = 0;
             }
         }
 

@@ -96,7 +96,7 @@ public:
     size_t available() const;
 
 private:
-    void cleanup_old_entries();
+    void cleanup_old_entries() const;
     
     const size_t m_max_operations;
     const size_t m_window_seconds;
