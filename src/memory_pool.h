@@ -70,14 +70,16 @@ public:
         while (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
-            allocated_set_.erase(buf);  // Удаляем из множества отслеживания
+            allocated_set_.erase(buf);
             aligned_free(buf);
         }
-        
-        // Освобождаем буферы из per-thread кэшей
-        // Примечание: thread_local кэши очищаются автоматически при уничтожении потоков,
-        // но мы можем принудительно освободить их через итерацию по известным потокам
-        // В данной реализации thread_caches_ был удален в пользу thread_local переменной
+
+        // Освобождаем ВСЕ оставшиеся буферы из allocated_set_
+        // (те которые не были возвращены через release_raw — утечка при завершении)
+        for (auto* buf : allocated_set_) {
+            aligned_free(buf);
+        }
+        allocated_set_.clear();
         total_allocated_ = 0;
     }
     
