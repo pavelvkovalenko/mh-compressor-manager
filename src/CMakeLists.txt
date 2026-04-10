@@ -1,5 +1,26 @@
 cmake_minimum_required(VERSION 3.20)
-project(mh-compressor-manager LANGUAGES CXX)
+
+# ============================================================================
+# Управление версиями: MAJOR.MINOR.PR_COUNT
+# MINOR (после точки) = количество закрытых PR
+# Текущее значение обновляется вручную или через CI/CD
+# ============================================================================
+set(PROJECT_VERSION_MAJOR 1)
+set(PROJECT_VERSION_MINOR 0)
+set(PROJECT_VERSION_PATCH 30)  # Количество закрытых PR (обновлять при мерже)
+set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
+
+project(mh-compressor-manager
+    VERSION ${PROJECT_VERSION}
+    LANGUAGES CXX
+)
+
+# Генерируем version.h из шаблона
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/version.h"
+    @ONLY
+)
 
 # ============================================================================
 # Стандарт C++23 (ТЗ п. 1.2)
@@ -166,6 +187,7 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 # Подключение заголовочных файлов зависимостей
 # ============================================================================
 target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}  # Для сгенерированного version.h
     ${ZLIB_INCLUDE_DIRS}
     ${BROTLI_INCLUDE_DIRS}
     ${SYSTEMD_INCLUDE_DIRS}
@@ -291,7 +313,14 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/compressor-manager.conf
     PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
 )
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/mh-compressor-manager.service
+# Генерируем service file с версией
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/mh-compressor-manager.service"
+    "${CMAKE_CURRENT_BINARY_DIR}/mh-compressor-manager.service"
+    @ONLY
+)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mh-compressor-manager.service
     DESTINATION /usr/lib/systemd/system
     PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
 )

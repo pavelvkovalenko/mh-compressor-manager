@@ -1,4 +1,5 @@
 #include "config.h"
+#include "version.h"
 #include "logger.h"
 #include <fstream>
 #include <sstream>
@@ -108,7 +109,7 @@ Config load_config(int argc, char* argv[]) {
             exit(0);
         }
         if (arg == "--version" || arg == "-v") {
-            std::cout << "mh-compressor-manager v1.0.1\n";
+            std::cout << "mh-compressor-manager v" << MH_COMPRESSOR_MANAGER_VERSION << "\n";
             exit(0);
         }
         if (arg == "--config" && i + 1 < argc) cfg.config_path = argv[++i];
