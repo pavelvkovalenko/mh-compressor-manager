@@ -232,13 +232,25 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
     // capabilities остались после drop_privileges
 #if HAVE_LIBCAP
     #include <sys/capability.h>
+    // Вместо полного сброса всех capabilities (что ломает чтение чужих файлов root'ом),
+    // устанавливаем минимальный набор, необходимый для работы монитора файлов:
+    //   CAP_DAC_OVERRIDE  — чтение файлов независимо от Unix-прав (target_path может принадлежать nginx)
+    //   CAP_DAC_READ_SEARCH — чтение и поиск в директориях независимо от прав
+    // Без этих capabilities root не может делать inotify_add_watch на директориях drwx------ nginx:nginx
     cap_t caps = cap_init();  // Создаем пустую структуру capabilities
     if (caps == NULL) {
         Logger::warning(std::string("Failed to initialize capabilities structure: ") + strerror(errno));
     } else {
-        // Устанавливаем пустые capabilities (полный сброс)
-        if (cap_set_proc(caps) != 0) {
-            Logger::warning(std::string("Failed to clear capabilities: ") + strerror(errno));
+        // Добавляем необходимые capabilities
+        cap_value_t cap_list[] = {CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH};
+        if (cap_set_flag(caps, CAP_EFFECTIVE, 2, cap_list, CAP_SET) != 0) {
+            Logger::warning(std::string("Failed to set effective capabilities: ") + strerror(errno));
+        } else if (cap_set_flag(caps, CAP_PERMITTED, 2, cap_list, CAP_SET) != 0) {
+            Logger::warning(std::string("Failed to set permitted capabilities: ") + strerror(errno));
+        } else if (cap_set_proc(caps) != 0) {
+            Logger::warning(std::string("Failed to set process capabilities: ") + strerror(errno));
+        } else {
+            Logger::info("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH");
         }
         cap_free(caps);  // Освобождаем память
     }
