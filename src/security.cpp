@@ -40,7 +40,7 @@ RateLimiter::RateLimiter(size_t max_operations, size_t window_seconds)
     , m_window_seconds(window_seconds) {
 }
 
-void RateLimiter::cleanup_old_entries() {
+void RateLimiter::cleanup_old_entries() const {
     auto now = std::chrono::steady_clock::now();
     auto window_start = now - std::chrono::seconds(m_window_seconds);
     
