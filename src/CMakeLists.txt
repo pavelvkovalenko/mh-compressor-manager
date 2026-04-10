@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================================
 set(PROJECT_VERSION_MAJOR 1)
 set(PROJECT_VERSION_MINOR 0)
-set(PROJECT_VERSION_PATCH 82)  # Количество закрытых PR (обновлять при мерже)
+set(PROJECT_VERSION_PATCH 87)  # Количество закрытых PR (обновлять при мерже)
 set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
 
 project(mh-compressor-manager
