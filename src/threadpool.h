@@ -44,7 +44,7 @@ struct PrioritizedTask {
 class ThreadPool {
 public:
     ThreadPool(size_t threads, size_t max_queue_size = 1000, size_t max_ios = 0)
-        : stop_flag(false), force_stop_flag(false), stopped(false), max_queue_size(max_queue_size), active_tasks(0),
+        : stop_flag(false), stopped(false), max_queue_size(max_queue_size), active_tasks(0),
           m_max_active_ios(max_ios), io_slots_available(max_ios > 0 ? max_ios : SIZE_MAX) {
         // Резервируем память с учетом кэш-линий для предотвращения false sharing
         workers.reserve(threads);
@@ -64,15 +64,15 @@ public:
                         
                         // Ждем доступного I/O слота если установлен лимит (с таймаутом для предотвращения блокировок)
                         if (m_max_active_ios > 0) {
-                            auto wait_result = io_slot_available.wait_for(lock, 
+                            auto wait_result = io_slot_available.wait_for(lock,
                                 std::chrono::seconds(5),  // Таймаут 5 секунд для предотвращения deadlock
-                                [this] { return io_slots_available > 0 || stop_flag || force_stop_flag; });
-                            
+                                [this] { return io_slots_available > 0 || stop_flag; });
+
                             // Если таймаут истек, проверяем не нужно ли завершаться
-                            if (!wait_result && !stop_flag && !force_stop_flag) {
+                            if (!wait_result && !stop_flag) {
                                 Logger::warning("I/O slot wait timeout, possible deadlock detected");
                             }
-                            if ((stop_flag || force_stop_flag) && tasks.empty()) return;
+                            if (stop_flag && tasks.empty()) return;
                         }
                         
                         auto& top = tasks.top();
@@ -154,7 +154,6 @@ public:
 private:
     void stop_internal() {
         stop_flag = true;
-        force_stop_flag = false;  // Сбрасываем флаг принудительной остановки
         condition.notify_all();
         io_slot_available.notify_all();  // Пробуждаем потоки ожидающие I/O слотов
 
@@ -198,7 +197,6 @@ private:
     std::condition_variable task_done;
     std::condition_variable io_slot_available;
     std::atomic<bool> stop_flag;
-    std::atomic<bool> force_stop_flag;  // Флаг принудительной остановки потоков
     std::atomic<bool> stopped;  // Флаг для предотвращения повторного вызова stop
     size_t max_queue_size;
     size_t active_tasks;

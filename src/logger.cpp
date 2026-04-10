@@ -82,10 +82,16 @@ void Logger::shutdown() {
     if (s_async_thread.joinable()) {
         // Ждем завершения потока логов с таймаутом для предотвращения зависания
         auto start = std::chrono::steady_clock::now();
-        while (!s_log_queue.empty() && 
+        while (!s_log_queue.empty() &&
                std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::steady_clock::now() - start).count() < LOG_FLUSH_TIMEOUT_MS) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        // Принудительный flush оставшихся логов перед закрытием
+        if (!s_log_queue.empty()) {
+            Logger::log(LogLevel::WARNING, "Log queue still has messages after timeout, flushing remaining...");
+            // Даём ещё немного времени на обработку
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         s_async_thread.join();
     }

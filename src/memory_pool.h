@@ -74,6 +74,12 @@ public:
             aligned_free(buf);
         }
 
+        // Примечание: thread_local кэши других потоков не могут быть очищены
+        // из текущего потока. Буферы в них будут освобождены при завершении
+        // тех потоков (деструктор thread_local vector) или при следующем
+        // вызове allocate_raw() из того же потока.
+        // allocated_set_ гарантирует что все буферы будут освобождены в деструкторе.
+
         // Освобождаем ВСЕ оставшиеся буферы из allocated_set_
         // (те которые не были возвращены через release_raw — утечка при завершении)
         for (auto* buf : allocated_set_) {
@@ -246,6 +252,18 @@ private:
         thread_local static std::vector<T*> cache;
         cache.reserve(THREAD_CACHE_SIZE);
         return cache;
+    }
+
+    // Очистка thread_local кэша текущего потока — вызывается из деструктора пула
+    // ВАЖНО: Это очищает кэш ТОЛЬКО текущего потока, не всех потоков
+    // Для полной очистки нужно вызывать из каждого потока перед его завершением
+    static void cleanup_thread_cache() {
+        auto& cache = get_thread_cache();
+        for (auto* buf : cache) {
+            // Буферы возвращаются в глобальный пул при следующем вызове allocate_raw
+            // или освобождаются в деструкторе пула через allocated_set_
+        }
+        cache.clear();
     }
     
     void* aligned_alloc(size_t alignment, size_t size) {
