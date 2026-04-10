@@ -95,6 +95,13 @@ if ! pkg-config --exists libseccomp 2>/dev/null; then
     elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("libseccomp"); fi
 fi
 
+# Libselinux (dnf и zypper: libselinux-devel)
+if ! pkg-config --exists libselinux 2>/dev/null; then
+    if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("libselinux-devel");
+    elif [ "$PKG_MANAGER" == "apt" ]; then OPT_DEPS_TO_INSTALL+=("libselinux1-dev");
+    elif [ "$PKG_MANAGER" == "pacman" ]; then OPT_DEPS_TO_INSTALL+=("libselinux"); fi
+fi
+
 # Libcap (dnf и zypper: libcap-devel)
 if ! pkg-config --exists libcap 2>/dev/null; then
     if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then OPT_DEPS_TO_INSTALL+=("libcap-devel");
@@ -147,6 +154,7 @@ if [ ${#OPT_DEPS_TO_INSTALL[@]} -ne 0 ]; then
     echo -e "${YELLOW}  - numactl: NUMA-aware распределение памяти${NC}"
     echo -e "${YELLOW}  - libseccomp: sandboxing системных вызовов${NC}"
     echo -e "${YELLOW}  - libcap: управление capabilities${NC}"
+    echo -e "${YELLOW}  - libselinux: поддержка SELinux контекстов${NC}"
     echo ""
     read -p "Хотите установить опциональные зависимости? (y/n): " -n 1 -r
     echo ""
