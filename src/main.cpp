@@ -556,6 +556,15 @@ int main(int argc, char* argv[]) {
         Logger::info(std::format("  - {}", p));
     }
 
+    // Инициализация безопасной обработки сигналов через signalfd
+    // ВАЖНО: Должно быть ДО seccomp, т.к. seccomp блокирует signalfd4 syscall
+    if (!init_signal_fd()) {
+        Logger::error("Failed to initialize signal handling, falling back to basic signals");
+        signal(SIGTERM, signal_handler);
+        signal(SIGINT, signal_handler);
+        signal(SIGHUP, signal_handler);
+    }
+
     // Сброс привилегий и инициализация песочницы (только если запущены от root)
     if (security::is_running_as_root()) {
         if (g_cfg->drop_privileges) {
@@ -568,7 +577,7 @@ int main(int argc, char* argv[]) {
         } else {
             Logger::warning("Running as root with drop_privileges=false (not recommended)");
         }
-        
+
         // Инициализация seccomp после сброса прав и всех инициализирующих вызовов
         if (g_cfg->enable_seccomp) {
             Logger::info("Initializing seccomp sandbox...");
@@ -580,14 +589,6 @@ int main(int argc, char* argv[]) {
         }
     } else {
         Logger::debug("Not running as root, skipping privilege drop and seccomp");
-    }
-
-    // Инициализация безопасной обработки сигналов через signalfd
-    if (!init_signal_fd()) {
-        Logger::error("Failed to initialize signal handling, falling back to basic signals");
-        signal(SIGTERM, signal_handler);
-        signal(SIGINT, signal_handler);
-        signal(SIGHUP, signal_handler);
     }
 
     // Настройка пула потоков с ограничением размера очереди и I/O
