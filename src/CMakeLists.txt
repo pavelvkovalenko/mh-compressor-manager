@@ -313,14 +313,8 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/compressor-manager.conf
     PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
 )
 
-# Генерируем service file с версией
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/mh-compressor-manager.service"
-    "${CMAKE_CURRENT_BINARY_DIR}/mh-compressor-manager.service"
-    @ONLY
-)
-
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mh-compressor-manager.service
+# Service file
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/mh-compressor-manager.service
     DESTINATION /usr/lib/systemd/system
     PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
 )
