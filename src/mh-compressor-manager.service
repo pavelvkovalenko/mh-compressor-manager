@@ -1,5 +1,5 @@
 [Unit]
-Description=MediaHive Compressor Manager v@PROJECT_VERSION@
+Description=MediaHive Compressor Manager
 After=network.target
 
 [Service]
