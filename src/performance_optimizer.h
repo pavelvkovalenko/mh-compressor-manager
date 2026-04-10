@@ -58,6 +58,14 @@ public:
     static void free_aligned_memory(const AllocatedMemory& mem);
 
     /**
+     * Выделение выровненной памяти (устаревший API)
+     * @param size Размер в байтах
+     * @param use_huge_page Использовать Huge Pages
+     * @return Указатель на выделенную память или nullptr
+     */
+    static void* allocate_aligned_memory_old(size_t size, bool use_huge_page);
+
+    /**
      * Освобождение выровненной памяти (устаревший API)
      * @param ptr Указатель на память
      * @param size Размер выделенной памяти
