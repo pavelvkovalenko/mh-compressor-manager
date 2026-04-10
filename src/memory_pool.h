@@ -164,7 +164,14 @@ public:
         
         // Проверяем что размер соответствует ожидаемому
         if (buffer.size() != buffer_size / sizeof(T)) {
-            // Несоответствующий размер - не принимаем
+            // Несоответствующий размер — освобождаем память
+            T* raw_buf = buffer.data();
+            if (raw_buf) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                allocated_set_.erase(raw_buf);
+                std::free(raw_buf);
+            }
+            buffer.clear();
             return;
         }
         
