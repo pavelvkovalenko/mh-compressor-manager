@@ -24,9 +24,14 @@ configure_file(
 
 # ============================================================================
 # Стандарт C++23 (ТЗ п. 1.2)
-# Используем C++20 для совместимости с GCC 12, если <format> недоступен
+# Пробуем C++23 со std::format, откатываемся на C++20 + fmt если недоступен
 # ============================================================================
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_FLAGS "-std=c++23")
 check_cxx_source_compiles("
     #include <format>
     #include <string>
@@ -35,6 +40,7 @@ check_cxx_source_compiles("
         return 0;
     }
 " HAS_STD_FORMAT)
+unset(CMAKE_REQUIRED_FLAGS)
 
 if(NOT HAS_STD_FORMAT)
     message(STATUS "std::format not available, falling back to fmt library")
@@ -66,11 +72,10 @@ if(NOT HAS_STD_FORMAT)
         )
     endif()
 else()
-    set(CMAKE_CXX_STANDARD 23)
+    message(STATUS "std::format available, using C++23")
 endif()
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
