@@ -332,7 +332,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
         m_wd_path_map[wd] = base_path.string();
         Logger::info(std::format("Watching directory: {} (depth: {})", base_path.string(), depth));
     } else {
-        Logger::error(std::format("Failed to add watch for: {}", base_path.string()));
+        Logger::error(std::format("Failed to add watch for: {}: {}", base_path.string(), strerror(errno)));
     }
 
     try {
