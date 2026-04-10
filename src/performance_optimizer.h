@@ -56,10 +56,13 @@ public:
     struct AllocatedMemory { void* ptr; int method; size_t size; };
     static AllocatedMemory allocate_aligned_memory(size_t size, bool use_huge_page = false);
     static void free_aligned_memory(const AllocatedMemory& mem);
-
-    // Устаревший API — помечен deprecated
-    [[deprecated("Use AllocatedMemory API instead")]]
-    static void* allocate_aligned_memory_old(size_t size, bool use_huge_page = false);
+    
+    /**
+     * Освобождение выровненной памяти
+     * @param ptr Указатель на память
+     * @param size Размер выделенной памяти
+     */
+    static void free_aligned_memory_old(void* ptr, size_t size);
     
     /**
      * Освобождение выровненной памяти

@@ -206,10 +206,18 @@ bool CompressionPipeline::compress(
         fs::remove(brotli_temp_path);
         return false;
     }
-    
-    // Копирование временных меток оригинала в сжатые файлы
-    utimensat(AT_FDCWD, gzip_output_path.c_str(), orig_times, 0);
-    utimensat(AT_FDCWD, brotli_output_path.c_str(), orig_times, 0);
+
+    // Копирование временных меток оригинала в сжатые файлы.
+    // Используем fs::last_write_time вместо utimensat(AT_FDCWD, ...) —
+    // это исключает TOCTOU-окно между rename и установкой timestamps,
+    // когда файл мог быть заменён symlink'ом.
+    try {
+        auto mtime = std::chrono::system_clock::from_time_t(orig_times[1].tv_sec);
+        fs::last_write_time(gzip_output_path, mtime);
+        fs::last_write_time(brotli_output_path, mtime);
+    } catch (const std::exception& e) {
+        PIPE_LOG_ERROR("Не удалось установить время модификации: {}", e.what());
+    }
     
     PIPE_LOG_INFO("Конвейер сжатия успешно завершен. Время: {} мс, прочитано: {} байт, "
              "GZIP: {} байт, Brotli: {} байт",

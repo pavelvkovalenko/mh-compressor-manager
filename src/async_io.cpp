@@ -176,11 +176,11 @@ ssize_t AsyncIO::sync_write(int fd, const void* buffer, size_t size) {
 int AsyncIO::open_file_optimized(const fs::path& path, int flags, mode_t mode) {
     // Добавляем оптимизационные флаги по умолчанию
     int optimized_flags = flags;
-    
-    // Для чтения добавляем O_NOATIME чтобы не обновлять время доступа
-    if ((flags & O_ACCMODE) == O_RDONLY) {
-        optimized_flags |= O_NOATIME;
-    }
+
+    // O_NOATIME требует CAP_FOWNER или совпадающего UID с владельцем файла.
+    // После drop_privileges процесс может работать от другого пользователя,
+    // поэтому O_NOATIME не добавляем — ядро может игнорировать его с EPERM.
+    // Время доступа обновляется нечасто и не критично для работы сервиса.
     
     // Для записи добавляем O_SYNC для гарантированной записи на диск
     if ((flags & O_ACCMODE) == O_WRONLY || (flags & O_CREAT)) {
