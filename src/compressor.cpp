@@ -123,7 +123,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     
     // Шаг 1: Открываем файл с O_PATH через openat() для получения fd без чтения данных
     // Это полностью устраняет TOCTOU - атаки между проверкой пути и открытием
-    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW);
     if (fd_path < 0) {
         int saved_errno = errno;
         close(dir_fd);
@@ -179,7 +179,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
         return false;
     }
     
-    int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
+    int fd_in = open(proc_path, O_RDONLY);
     if (fd_in < 0) {
         int saved_errno = errno;
         close(fd_path);
@@ -268,7 +268,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             do {
                 strm.avail_out = buffer_size;
                 strm.next_out = out_buffer;
-                int ret = deflate(&strm, (bytes_read <= 0 && feof(stdin)) ? Z_FINISH : Z_NO_FLUSH);
+                int ret = deflate(&strm, Z_NO_FLUSH);
                 if (ret == Z_STREAM_ERROR) {
                     Logger::error("Gzip stream error");
                     has_error = true;
@@ -336,6 +336,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     
     if (has_error) {
         Logger::error("Failed to write gzip output");
+        // Удаляем частичный выходной файл
+        unlink(output.c_str());
         return false;
     }
 
@@ -369,7 +371,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     
     // Шаг 1: Открываем файл с O_PATH через openat() для получения fd без чтения данных
     // Это полностью устраняет TOCTOU - атаки между проверкой пути и открытием
-    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW);
     if (fd_path < 0) {
         int saved_errno = errno;
         close(dir_fd);
@@ -423,7 +425,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         return false;
     }
     
-    int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
+    int fd_in = open(proc_path, O_RDONLY);
     if (fd_in < 0) {
         int saved_errno = errno;
         close(fd_path);
@@ -578,6 +580,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     fclose(file_out); // Закрываем выходной файл
 
     if (!success) {
+        // Удаляем частичный выходной файл
+        unlink(output.c_str());
         return false;
     }
 
@@ -626,7 +630,7 @@ bool Compressor::compress_dual(const fs::path& input,
         return false;
     }
     
-    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW | O_NOATIME);
+    int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW);
     if (fd_path < 0) {
         int saved_errno = errno;
         close(dir_fd);
@@ -668,7 +672,7 @@ bool Compressor::compress_dual(const fs::path& input,
         return false;
     }
     
-    int fd_in = open(proc_path, O_RDONLY | O_NOATIME);
+    int fd_in = open(proc_path, O_RDONLY);
     if (fd_in < 0) {
         int saved_errno = errno;
         close(fd_path);

@@ -51,9 +51,6 @@ public:
     
     // Динамическое обновление конфигурации (hot reload)
     void reload_config(const Config& new_cfg);
-    
-    // Проверка пути на безопасность (защита от Path Traversal)
-    static bool sanitize_path(const std::string& path, const std::string& base_dir);
 
 private:
     void run();
