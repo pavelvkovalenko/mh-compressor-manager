@@ -164,12 +164,13 @@ public:
         
         // Проверяем что размер соответствует ожидаемому
         if (buffer.size() != buffer_size / sizeof(T)) {
-            // Несоответствующий размер — освобождаем память
+            // Несоответствующий размер — вектор владеет памятью через std::allocator,
+            // поэтому НЕ вызываем std::free() — пусть деструктор vector освободит сам.
+            // Просто убираем из tracking set и игнорируем буфер.
             T* raw_buf = buffer.data();
             if (raw_buf) {
                 std::lock_guard<std::mutex> lock(mutex_);
                 allocated_set_.erase(raw_buf);
-                std::free(raw_buf);
             }
             buffer.clear();
             return;
