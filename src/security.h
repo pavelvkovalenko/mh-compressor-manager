@@ -52,10 +52,13 @@ bool validate_file_for_compression(const std::string& path);
 int safe_open_file(const std::string& path, int flags);
 
 /**
- * Проверяет имя файла на наличие null-byte инъекций и других опасных символов.
- * 
+ * Проверяет имя файла на соответствие правилам ОС для имён файлов.
+ *
+ * В Linux разрешены любые байты кроме \0 (null byte) и / (разделитель путей).
+ * Также проверяется максимальная длина (NAME_MAX = 255 байт).
+ *
  * @param filename Имя файла для проверки
- * @return true если имя файла безопасно
+ * @return true если имя файла допустимо по правилам ОС
  */
 bool validate_filename(const std::string& filename);
 
