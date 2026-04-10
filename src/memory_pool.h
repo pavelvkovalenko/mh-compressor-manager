@@ -139,13 +139,11 @@ public:
             }
             // Fallback на стандартное выделение если NUMA аллокация не удалась
         }
-        
-        // Пытаемся использовать Huge Pages для больших буферов
-        if (buffer_size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
-            PerformanceOptimizer::is_huge_pages_available()) {
-            ptr = PerformanceOptimizer::allocate_aligned_memory(alloc_size, true);
-        }
-        
+
+        // ВАЖНО: Huge Pages (mmap) НЕ используются — метод выделения теряется
+        // и aligned_free() вызовет free() на mmap-памяти (UB/crash).
+        // Вместо Huge Pages используем posix_memalign с выравниванием по странице.
+
         // Fallback на стандартное выделение
         if (!ptr) {
             ptr = aligned_alloc(alignment, buffer_size);
