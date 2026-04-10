@@ -283,6 +283,8 @@ void Monitor::scan_existing_files() {
             }
         } catch (const fs::filesystem_error& e) {
             Logger::warning(std::format("Directory access error: {}", e.what()));
+        } catch (const std::exception& e) {
+            Logger::warning(std::format("Unexpected error during directory scan: {}", e.what()));
         }
     }
     

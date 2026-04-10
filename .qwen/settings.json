@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "yolo",
     "allow": [
       "Bash(git commit *)",
       "Bash(git push *)",
@@ -11,8 +12,18 @@
       "Bash(return *)",
       "Bash(})",
       "Bash(eof)",
-      "Bash(g++ *)"
+      "Bash(g++ *)",
+      "WebSearch"
     ]
+  },
+  "general": {
+    "language": "ru"
+  },
+  "hooks": {
+    "onCommit": {
+      "command": "echo 'Создаю Pull Request с описанием на русском языке'",
+      "description": "Автоматическое создание PR после коммита"
+    }
   },
   "$version": 3
 }

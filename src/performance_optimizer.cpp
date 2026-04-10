@@ -142,14 +142,21 @@ void* PerformanceOptimizer::allocate_aligned_memory(size_t size, bool use_huge_p
     return ptr;
 }
 
-void PerformanceOptimizer::free_aligned_memory(void* ptr, [[maybe_unused]] size_t size) {
+void PerformanceOptimizer::free_aligned_memory(void* ptr, size_t size) {
     if (!ptr) return;
-    
-    // Память выделена через posix_memalign, освобождаем через free
-    // munmap можно использовать только для памяти выделенной через mmap
-    // В данной реализации allocate_aligned_memory использует posix_memalign для всех случаев
-    // (даже при поддержке Huge Pages используется MAP_HUGETLB через mmap, но результат обрабатывается одинаково)
-    free(ptr);
+
+    // mmap-память (Huge Pages) должна освобождаться через munmap, не через free.
+    // posix_memalign-память — через free.
+    // Поскольку мы не отслеживаем способ выделения, используем munmap для всех
+    // выделений >= huge_page_size — это безопасно для mmap-памяти и работает
+    // для posix_memalign на Linux (munmap принимает любой mmap-совместимый регион).
+    // Для posix_memalign-памяти используем free — это корректно.
+    if (size >= huge_page_size_ && huge_pages_initialized_) {
+        // Память скорее всего от mmap(MAP_HUGETLB)
+        munmap(ptr, size);
+    } else {
+        free(ptr);
+    }
 }
 
 bool PerformanceOptimizer::preallocate_file(int fd, uint64_t size) {

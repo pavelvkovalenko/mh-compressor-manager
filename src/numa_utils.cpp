@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <sys/mman.h>  // Для mbind
 #if __has_include(<format>)
 #include <format>
@@ -36,6 +37,7 @@ int NumaUtils::numa_node_count_ = 1;
  * @brief Кэш соответствия устройств и NUMA узлов
  */
 static std::map<std::string, int> device_numa_cache;
+static std::mutex device_numa_cache_mutex;
 
 bool NumaUtils::initialize() {
     if (numa_available()) {
@@ -76,14 +78,20 @@ int NumaUtils::get_file_numa_node(const fs::path& path) {
         
         // Проверяем кэш
         std::string dev_key = std::to_string(major(dev)) + ":" + std::to_string(minor(dev));
-        auto it = device_numa_cache.find(dev_key);
-        if (it != device_numa_cache.end()) {
-            return it->second;
+        {
+            std::lock_guard<std::mutex> lock(device_numa_cache_mutex);
+            auto it = device_numa_cache.find(dev_key);
+            if (it != device_numa_cache.end()) {
+                return it->second;
+            }
         }
-        
+
         // Попытка определить NUMA узел через sysfs
         int node = get_optimal_node_for_device(path);
-        device_numa_cache[dev_key] = node;
+        {
+            std::lock_guard<std::mutex> lock(device_numa_cache_mutex);
+            device_numa_cache[dev_key] = node;
+        }
         
         return node;
     } catch (const std::exception& e) {
