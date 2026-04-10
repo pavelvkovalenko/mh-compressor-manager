@@ -326,13 +326,24 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
         return;
     }
     
-    int wd = inotify_add_watch(m_inotify_fd.get(), base_path.c_str(), 
-        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
+    int wd = inotify_add_watch(m_inotify_fd.get(), base_path.c_str(),
+        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
     if (wd >= 0) {
         m_wd_path_map[wd] = base_path.string();
         Logger::info(std::format("Watching directory: {} (depth: {})", base_path.string(), depth));
     } else {
-        Logger::error(std::format("Failed to add watch for: {}: {}", base_path.string(), strerror(errno)));
+        int err = errno;
+        if (err == EACCES) {
+            Logger::warning(std::format("Permission denied, cannot watch: {} (check file permissions, SELinux, or container mounts)", base_path.string()));
+        } else if (err == EPERM) {
+            Logger::warning(std::format("Operation not permitted for: {} (check SELinux context, seccomp, or container security)", base_path.string()));
+        } else if (err == ENOENT) {
+            Logger::warning(std::format("Directory removed before watch could be added: {}", base_path.string()));
+        } else if (err == ENOSPC) {
+            Logger::error(std::format("Inotify watch limit exceeded for: {} (increase fs.inotify.max_user_watches)", base_path.string()));
+        } else {
+            Logger::error(std::format("Failed to add watch for: {}: {}", base_path.string(), strerror(err)));
+        }
     }
 
     try {
@@ -342,10 +353,17 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
             if (entry.is_directory()) {
                 // Дополнительная проверка через lstat для каждой директории
                 if (lstat(entry.path().c_str(), &st) == 0 && !S_ISLNK(st.st_mode) && S_ISDIR(st.st_mode)) {
-                    int wd_sub = inotify_add_watch(m_inotify_fd.get(), entry.path().c_str(), 
-                        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ISDIR);
+                    int wd_sub = inotify_add_watch(m_inotify_fd.get(), entry.path().c_str(),
+                        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
                     if (wd_sub >= 0) {
                         m_wd_path_map[wd_sub] = entry.path().string();
+                    } else {
+                        int err = errno;
+                        if (err == EACCES || err == EPERM) {
+                            Logger::debug(std::format("Access denied (EACCES/EPERM), skipping: {}", entry.path().string()));
+                        }
+                        // Пропускаем рекурсию — если нет прав на watch, не будет и на дочерние
+                        continue;
                     }
                     // Рекурсивный вызов с увеличением глубины
                     add_watch_recursive_impl(entry.path(), depth + 1);
