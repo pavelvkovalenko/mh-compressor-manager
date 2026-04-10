@@ -565,7 +565,7 @@ int main(int argc, char* argv[]) {
         signal(SIGHUP, signal_handler);
     }
 
-    // Сброс привилегий и инициализация песочницы (только если запущены от root)
+    // Сброс привилегий (только если запущены от root)
     if (security::is_running_as_root()) {
         if (g_cfg->drop_privileges) {
             Logger::info("Running as root, attempting to drop privileges...");
@@ -577,16 +577,6 @@ int main(int argc, char* argv[]) {
         } else {
             Logger::warning("Running as root with drop_privileges=false (not recommended)");
         }
-
-        // Инициализация seccomp после сброса прав и всех инициализирующих вызовов
-        if (g_cfg->enable_seccomp) {
-            Logger::info("Initializing seccomp sandbox...");
-            if (!security::init_seccomp()) {
-                Logger::warning("Failed to initialize seccomp, continuing without sandbox");
-            } else {
-                Logger::info("Seccomp sandbox active");
-            }
-        }
     } else {
         Logger::debug("Not running as root, skipping privilege drop and seccomp");
     }
@@ -597,7 +587,7 @@ int main(int argc, char* argv[]) {
     if (threads == 0) threads = 2;
     constexpr size_t MAX_QUEUE_SIZE = 1000;  // Максимум задач в очереди
     size_t max_ios = g_cfg->max_active_ios > 0 ? g_cfg->max_active_ios : 0;
-    Logger::info(std::format("Thread pool size: {}, max queue size: {}, max active I/O: {}", 
+    Logger::info(std::format("Thread pool size: {}, max queue size: {}, max active I/O: {}",
                              threads, MAX_QUEUE_SIZE, max_ios > 0 ? max_ios : SIZE_MAX));
 
     g_pool = std::make_unique<ThreadPool>(threads, MAX_QUEUE_SIZE, max_ios);
@@ -622,8 +612,9 @@ int main(int argc, char* argv[]) {
     // Запуск мониторинга
     g_monitor->start();
 
-    // Сообщаем systemd о готовности до тяжёлого обхода каталогов: scan_existing_files()
-    // на больших деревьях может занимать минуты и раньше блокировал READY=1.
+    // Сообщаем systemd о готовности СРАЗУ после запуска монитора, ДО seccomp.
+    // sd_notify использует Unix-сокет (socket/connect/sendmsg), которые seccomp блокирует.
+    // Монитор уже запущен и готов обрабатывать события — сервис действительно готов.
     sd_notify(0, "READY=1");
     Logger::info("Service ready (sd_notify sent); initial filesystem scan runs in background");
 
@@ -632,6 +623,16 @@ int main(int argc, char* argv[]) {
             g_monitor->scan_existing_files();
         }
     });
+
+    // Инициализация seccomp ПОСЛЕ sd_notify (seccomp блокирует socket/connect/sendmsg)
+    if (security::is_running_as_root() && g_cfg->enable_seccomp) {
+        Logger::info("Initializing seccomp sandbox...");
+        if (!security::init_seccomp()) {
+            Logger::warning("Failed to initialize seccomp, continuing without sandbox");
+        } else {
+            Logger::info("Seccomp sandbox active");
+        }
+    }
 
     // Главный цикл с использованием epoll для обработки сигналов через signalfd
     try {
