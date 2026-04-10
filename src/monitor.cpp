@@ -359,8 +359,12 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
                         m_wd_path_map[wd_sub] = entry.path().string();
                     } else {
                         int err = errno;
-                        if (err == EACCES || err == EPERM) {
-                            Logger::debug(std::format("Access denied (EACCES/EPERM), skipping: {}", entry.path().string()));
+                        if (err == EACCES) {
+                            Logger::warning(std::format("Permission denied, cannot watch: {} (owner={}:{}, mode={:o})",
+                                entry.path().string(),
+                                st.st_uid, st.st_gid, st.st_mode & 07777));
+                        } else if (err == EPERM) {
+                            Logger::warning(std::format("Operation not permitted for: {} (check seccomp or container security)", entry.path().string()));
                         }
                         // Пропускаем рекурсию — если нет прав на watch, не будет и на дочерние
                         continue;
