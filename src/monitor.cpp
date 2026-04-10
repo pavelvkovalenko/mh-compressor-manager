@@ -143,23 +143,25 @@ void Monitor::start() {
     }
     m_inotify_fd.reset(fd);
 
-    // Запускаем поток мониторинга СРАЗУ, без ожидания обхода директорий
+    // Запускаем основной поток мониторинга
     m_running = true;
     m_thread = std::thread(&Monitor::run, this);
     Logger::info("Monitor started (inotify ready, watches will be added asynchronously)");
 
-    // Обход директорий и добавление watch — в фоновом потоке
-    std::thread([this]() {
+    // Обход директорий и добавление watch — в отдельном потоке (joinable, не detached)
+    m_watch_thread = std::thread([this]() {
         for (const auto& path_str : m_cfg.target_paths) {
             add_watch_recursive(fs::path(path_str));
         }
         Logger::info("All directory watches added");
-    }).detach();
+    });
 }
 
 void Monitor::stop() {
     m_running = false;
     if (m_thread.joinable()) m_thread.join();
+    // Ждём завершения обхода директорий — предотвращаем use-after-free
+    if (m_watch_thread.joinable()) m_watch_thread.join();
     // m_inotify_fd закроется автоматически в деструкторе RAII
     Logger::info("Monitor stopped");
 }
@@ -329,6 +331,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
     int wd = inotify_add_watch(m_inotify_fd.get(), base_path.c_str(),
         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
     if (wd >= 0) {
+        std::unique_lock<std::shared_mutex> lock(m_wd_path_map_mutex);
         m_wd_path_map[wd] = base_path.string();
         Logger::info(std::format("Watching directory: {} (depth: {})", base_path.string(), depth));
     } else {
@@ -356,6 +359,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
                     int wd_sub = inotify_add_watch(m_inotify_fd.get(), entry.path().c_str(),
                         IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
                     if (wd_sub >= 0) {
+                        std::unique_lock<std::shared_mutex> lock(m_wd_path_map_mutex);
                         m_wd_path_map[wd_sub] = entry.path().string();
                     } else {
                         int err = errno;
@@ -631,10 +635,14 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     if (name.empty()) return;
 
     std::string base_path = "";
-    auto it = m_wd_path_map.find(wd);
-    if (it != m_wd_path_map.end()) {
-        base_path = it->second;
-    } else {
+    {
+        std::shared_lock<std::shared_mutex> lock(m_wd_path_map_mutex);
+        auto it = m_wd_path_map.find(wd);
+        if (it != m_wd_path_map.end()) {
+            base_path = it->second;
+        }
+    }
+    if (base_path.empty()) {
         Logger::debug(std::format("Unknown wd: {}, name: {}", wd, name));
         return;
     }

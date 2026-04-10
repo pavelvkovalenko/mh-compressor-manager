@@ -466,6 +466,20 @@ bool init_seccomp() {
 #ifdef __NR_io_uring_enter
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(io_uring_enter))) return false;
 #endif
+#ifdef __NR_io_uring_register
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(io_uring_register))) return false;
+#endif
+
+    // NUMA — mbind для привязки памяти к узлам
+#ifdef __NR_mbind
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(mbind))) return false;
+#endif
+
+    // sched_getaffinity — используется pthread_setaffinity_np для чтения текущей маски CPU
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sched_getaffinity))) return false;
+
+    // exit — завершение отдельных потоков (glibc может использовать exit вместо exit_group)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(exit))) return false;
     
     // Вызовы для getrandom
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getrandom))) return false;
