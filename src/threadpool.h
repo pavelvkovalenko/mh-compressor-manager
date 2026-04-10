@@ -147,7 +147,7 @@ public:
     void wait_all() {
         std::unique_lock<std::mutex> lock(queue_mutex);
         task_done.wait(lock, [this] {
-            return tasks.empty() && active_tasks == 0 || stop_flag;
+            return (tasks.empty() && active_tasks == 0) || stop_flag;
         });
     }
 

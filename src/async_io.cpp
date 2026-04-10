@@ -285,7 +285,7 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
     
     // Ждем завершения операции с таймаутом 30 секунд
     io_uring_cqe* cqe = nullptr;
-    struct timespec timeout;
+    struct __kernel_timespec timeout;
     timeout.tv_sec = 30;
     timeout.tv_nsec = 0;
 
@@ -435,7 +435,7 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
     
     // Ждем завершения операции с таймаутом 30 секунд
     io_uring_cqe* cqe = nullptr;
-    struct timespec timeout;
+    struct __kernel_timespec timeout;
     timeout.tv_sec = 30;
     timeout.tv_nsec = 0;
 
