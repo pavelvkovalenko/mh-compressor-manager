@@ -142,14 +142,19 @@ void Monitor::start() {
         return;
     }
     m_inotify_fd.reset(fd);
-    
-    for (const auto& path_str : m_cfg.target_paths) {
-        add_watch_recursive(fs::path(path_str));
-    }
 
+    // Запускаем поток мониторинга СРАЗУ, без ожидания обхода директорий
     m_running = true;
     m_thread = std::thread(&Monitor::run, this);
-    Logger::info("Monitor started");
+    Logger::info("Monitor started (inotify ready, watches will be added asynchronously)");
+
+    // Обход директорий и добавление watch — в фоновом потоке
+    std::thread([this]() {
+        for (const auto& path_str : m_cfg.target_paths) {
+            add_watch_recursive(fs::path(path_str));
+        }
+        Logger::info("All directory watches added");
+    }).detach();
 }
 
 void Monitor::stop() {
