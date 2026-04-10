@@ -107,56 +107,63 @@ bool PerformanceOptimizer::set_thread_cpu_affinity(std::thread& thread, int core
     return true;
 }
 
-void* PerformanceOptimizer::allocate_aligned_memory(size_t size, bool use_huge_page) {
+PerformanceOptimizer::AllocatedMemory PerformanceOptimizer::allocate_aligned_memory(size_t size, bool use_huge_page) {
     void* ptr = nullptr;
-    
+    int method = 0;  // 0 = posix_memalign, 1 = mmap(Huge Pages), 2 = mmap(regular)
+
     // Выравниваем размер по границе страницы
     size_t aligned_size = (size + page_size_ - 1) & ~(page_size_ - 1);
-    
+
     if (use_huge_page && huge_pages_initialized_) {
         // Попытка выделить память с Huge Pages через MAP_HUGETLB
         #ifdef MAP_HUGETLB
         ptr = mmap(nullptr, aligned_size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
-        
+
         if (ptr == MAP_FAILED) {
-            Logger::warning(std::format("Huge Pages allocation failed: {}, falling back to regular pages", 
+            Logger::warning(std::format("Huge Pages allocation failed: {}, falling back to regular pages",
                                         strerror(errno)));
             ptr = nullptr;
         } else {
             Logger::debug(std::format("Allocated {} bytes with Huge Pages", aligned_size));
-            return ptr;
+            method = 1;
+            return {ptr, method, aligned_size};
         }
         #endif
     }
-    
+
     // Fallback: выделение обычной памяти с выравниванием
     if (ptr == nullptr) {
         if (posix_memalign(&ptr, page_size_, aligned_size) != 0) {
             Logger::error(std::format("Failed to allocate aligned memory: {}", strerror(errno)));
-            return nullptr;
+            return {nullptr, 0, 0};
         }
         Logger::debug(std::format("Allocated {} bytes with regular pages", aligned_size));
+        method = 0;
     }
-    
-    return ptr;
+
+    return {ptr, method, aligned_size};
 }
 
-void PerformanceOptimizer::free_aligned_memory(void* ptr, size_t size) {
-    if (!ptr) return;
+void PerformanceOptimizer::free_aligned_memory(const AllocatedMemory& mem) {
+    if (!mem.ptr) return;
 
-    // mmap-память (Huge Pages) должна освобождаться через munmap, не через free.
-    // posix_memalign-память — через free.
-    // Поскольку мы не отслеживаем способ выделения, используем munmap для всех
-    // выделений >= huge_page_size — это безопасно для mmap-памяти и работает
-    // для posix_memalign на Linux (munmap принимает любой mmap-совместимый регион).
-    // Для posix_memalign-памяти используем free — это корректно.
-    if (size >= huge_page_size_ && huge_pages_initialized_) {
-        // Память скорее всего от mmap(MAP_HUGETLB)
-        munmap(ptr, size);
-    } else {
-        free(ptr);
+    switch (mem.method) {
+        case 1:  // mmap(Huge Pages)
+        case 2:  // mmap(regular)
+            munmap(mem.ptr, mem.size);
+            break;
+        case 0:  // posix_memalign
+        default:
+            free(mem.ptr);
+            break;
     }
+}
+
+// Устаревший API — для обратной совместимости
+void* PerformanceOptimizer::allocate_aligned_memory_old(size_t size, bool use_huge_page) {
+    auto result = allocate_aligned_memory(size, use_huge_page);
+    return result.ptr;
 }
 
 bool PerformanceOptimizer::preallocate_file(int fd, uint64_t size) {
