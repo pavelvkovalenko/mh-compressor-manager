@@ -322,6 +322,9 @@ bool init_seccomp() {
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fstat))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(lstat))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(newfstatat))) return false;
+#ifdef __NR_statx
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(statx))) return false;
+#endif
     
     // Вызовы для работы с директориями
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getdents))) return false;
@@ -354,12 +357,21 @@ bool init_seccomp() {
     // Вызовы для удаления файлов
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(unlink))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(unlinkat))) return false;
+
+    // Вызовы для переименования файлов (fs::rename)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rename))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(renameat))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(renameat2))) return false;
     
     // Вызовы для работы с памятью
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(mmap))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(munmap))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(mprotect))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(brk))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(mremap))) return false;
+#ifdef __NR_madvise
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(madvise))) return false;
+#endif
     
     // Вызовы для потоков
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(futex))) return false;
@@ -376,6 +388,12 @@ bool init_seccomp() {
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(pselect6))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(poll))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(ppoll))) return false;
+
+    // inotify (мониторинг файловой системы)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(inotify_init))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(inotify_init1))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(inotify_add_watch))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(inotify_rm_watch))) return false;
     
     // Вызовы для работы с сигналами
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rt_sigaction))) return false;
@@ -389,7 +407,17 @@ bool init_seccomp() {
 #ifdef __NR_clone3
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clone3))) return false;
 #endif
-    
+    // rseq нужен для glibc 2.35+ (restartable sequences)
+#ifdef __NR_rseq
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rseq))) return false;
+#endif
+    // set_tid_address требуется pthread_create (NPTL)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(set_tid_address))) return false;
+    // sched_yield для std::this_thread::yield()
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sched_yield))) return false;
+    // sched_setaffinity для установки CPU affinity потоков
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sched_setaffinity))) return false;
+
     // Вызовы для getrusage/gettimeofday/clock_gettime
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(gettimeofday))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clock_gettime))) return false;
@@ -418,6 +446,14 @@ bool init_seccomp() {
     
     // Вызовы для posix_fadvise
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(fadvise64))) return false;
+
+    // io_uring (если используется async_io)
+#ifdef __NR_io_uring_setup
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(io_uring_setup))) return false;
+#endif
+#ifdef __NR_io_uring_enter
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(io_uring_enter))) return false;
+#endif
     
     // Вызовы для getrandom
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getrandom))) return false;
@@ -448,6 +484,9 @@ bool init_seccomp() {
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(uname))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(getcwd))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(readahead))) return false;
+
+    // Завершение процесса (exit() из libc вызывает exit_group)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(exit_group))) return false;
     
     // Вызовы для sync_file_range/fallocate
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sync_file_range))) return false;
