@@ -154,11 +154,9 @@ public:
         }
         ++total_allocated_;
         T* result = static_cast<T*>(ptr);
-        // Добавляем в множество отслеживания для O(1) проверки double-free
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            allocated_set_.insert(result);
-        }
+        // unique_lock уже захвачен — НЕ создаём вложенный lock_guard
+        allocated_set_.insert(result);
+        lock.unlock();
         return result;
     }
     
