@@ -163,27 +163,32 @@ private:
 
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                // Перемещаем поток в локальную переменную, чтобы избежать
-                // use-after-free: std::async может пережить workers.clear()
+                // Перемещаем поток: после move worker не-joinable,
+                // workers.clear() безопасен даже если join заблокируется
                 std::thread t = std::move(worker);
 
-                // Запускаем join в отдельном потоке с флагом завершения
+                // Запускаем мониторинговый поток, который логирует прогресс
                 std::atomic<bool> join_done{false};
-                std::thread joiner([&t, &join_done]() {
-                    t.join();
-                    join_done = true;
-                });
-                joiner.detach();  // detach — мы используем atomic флаг
-
-                // Ждём завершения с таймаутом
-                auto start = std::chrono::steady_clock::now();
-                while (!join_done.load()) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    auto elapsed = std::chrono::steady_clock::now() - start;
-                    if (elapsed > THREAD_JOIN_TIMEOUT) {
-                        Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
-                        break;
+                std::thread monitor([this, &join_done]() {
+                    auto start = std::chrono::steady_clock::now();
+                    while (!join_done.load()) {
+                        std::this_thread::sleep_for(std::chrono::seconds(1));
+                        auto elapsed = std::chrono::steady_clock::now() - start;
+                        if (elapsed > std::chrono::seconds(5) &&
+                            static_cast<int>(elapsed.count()) % 5 == 0) {
+                            Logger::warning(std::format("Thread still running after {}s",
+                                                       static_cast<int>(elapsed.count())));
+                        }
                     }
+                });
+
+                // Join — может заблокироваться, но worker должен завершиться
+                // т.к. stop_flag установлен и condition.notify_all() вызван
+                t.join();
+                join_done = true;
+
+                if (monitor.joinable()) {
+                    monitor.join();
                 }
             }
         }
