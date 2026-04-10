@@ -120,13 +120,12 @@ public:
         
         // NUMA-aware выделение памяти
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
-            // Выделяем память на указанном NUMA узле
+            // ВАЖНО: mutex уже захвачен (unique_lock выше), НЕ создаём вложенный lock
             ptr = NumaUtils::allocate_on_node(buffer_size, numa_node_id_);
             if (ptr) {
                 ++total_allocated_;
-                // Добавляем в множество отслеживания для O(1) проверки double-free
-                std::lock_guard<std::mutex> lock(mutex_);
                 allocated_set_.insert(static_cast<T*>(ptr));
+                lock.unlock();
                 return static_cast<T*>(ptr);
             }
             // Fallback на стандартное выделение если NUMA аллокация не удалась

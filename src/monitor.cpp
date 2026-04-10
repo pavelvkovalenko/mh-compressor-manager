@@ -597,8 +597,7 @@ bool Monitor::is_target_extension(const std::string& filepath) {
         }
         return false;
     } else {
-        // Блокировка для потокобезопасного доступа к кэшу расширений
-        std::shared_lock<std::shared_mutex> lock(m_config_mutex);
+        // cfg_lock уже захвачен в начале функции — используем его для доступа к кэшу
         return m_extensions_cache.count(ext) > 0;
     }
 }
