@@ -74,8 +74,7 @@ size_t RateLimiter::available() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     
     // Создаем не-const копию для cleanup
-    auto* mutable_this = const_cast<RateLimiter*>(this);
-    mutable_this->cleanup_old_entries();
+    cleanup_old_entries();
     
     if (m_timestamps.size() >= m_max_operations) {
         return 0;
@@ -214,7 +213,6 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
     // Это предотвращает возможность получения привилегий через execve даже если какие-то
     // capabilities остались после drop_privileges
 #if HAVE_LIBCAP
-    #include <sys/capability.h>
     // Вместо полного сброса всех capabilities (что ломает чтение чужих файлов root'ом),
     // устанавливаем минимальный набор, необходимый для работы монитора файлов:
     //   CAP_DAC_OVERRIDE  — чтение файлов независимо от Unix-прав (target_path может принадлежать nginx)

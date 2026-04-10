@@ -85,6 +85,6 @@ private:
     };
     std::unordered_map<uint32_t, MoveCookieData> m_move_cookies;  // cookie -> данные о перемещении
     mutable std::shared_mutex m_move_mutex;  // Потокобезопасный доступ к cookie
-    static constexpr uint32_t MOVE_COOKIE_TIMEOUT_MS = 100;  // Таймаут для связки событий перемещения
+    static constexpr uint32_t MOVE_COOKIE_TIMEOUT_MS = 500;  // Таймаут для связки событий перемещения (увеличен с 100ms для надёжности)
     static constexpr size_t MAX_RECURSION_DEPTH = 20;  // Максимальная глубина рекурсии для защиты от DoS
 };
