@@ -327,17 +327,36 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/mh-compressor-manager.service
 # ============================================================================
 # Вывод информации о сборке
 # ============================================================================
+# Определяем библиотеку форматирования
+if(HAS_STD_FORMAT)
+    set(FMT_STATUS "std::format (C++23)")
+else()
+    set(FMT_STATUS "fmt library (${fmt_VERSION})")
+endif()
+
+# Получаем полную версию Brotli
+if(BROTLI_FOUND AND NOT BROTLI_VERSION)
+    # pkg_check_modules может не вернуть версию, получим её из заголовков
+    set(BROTLI_VERSION "(found)")
+endif()
+
 message(STATUS "")
 message(STATUS "=== mh-compressor-manager Build Configuration ===")
 message(STATUS "CMake Version:        ${CMAKE_VERSION}")
 message(STATUS "C++ Standard:         ${CMAKE_CXX_STANDARD}")
 message(STATUS "Compiler:             ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "Compiler Path:        ${CMAKE_CXX_COMPILER}")
+message(STATUS "String Formatting:    ${FMT_STATUS}")
 message(STATUS "Build Type:           ${CMAKE_BUILD_TYPE}")
-message(STATUS "ZLIB:                 ${ZLIB_VERSION} (${ZLIB_INCLUDE_DIRS})")
-message(STATUS "Brotli:               ${BROTLI_VERSION} (${BROTLI_INCLUDE_DIRS})")
-message(STATUS "Systemd:              ${SYSTEMD_VERSION} (${SYSTEMD_INCLUDE_DIRS})")
-message(STATUS "SELinux:              ${SELINUX_FOUND}")
-message(STATUS "io_uring:             ${HAS_IO_URING}")
-message(STATUS "NUMA:                 ${HAS_NUMA}")
+message(STATUS "")
+message(STATUS "Libraries:")
+message(STATUS "  ZLIB:               ${ZLIB_VERSION} (${ZLIB_INCLUDE_DIRS})")
+message(STATUS "  Brotli:             ${BROTLI_VERSION} (${BROTLI_INCLUDE_DIRS})")
+message(STATUS "  systemd:            ${SYSTEMD_VERSION} (${SYSTEMD_INCLUDE_DIRS})")
+message(STATUS "")
+message(STATUS "Optional Features:")
+message(STATUS "  SELinux:            ${SELINUX_FOUND}")
+message(STATUS "  io_uring:           ${HAS_IO_URING}")
+message(STATUS "  NUMA:               ${HAS_NUMA}")
 message(STATUS "============================================")
 message(STATUS "")
