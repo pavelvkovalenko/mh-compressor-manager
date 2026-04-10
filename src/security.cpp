@@ -382,6 +382,13 @@ bool init_seccomp() {
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rt_sigprocmask))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn))) return false;
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sigaltstack))) return false;
+    // signalfd4 нужен для обработки сигналов через signalfd
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(signalfd4))) return false;
+    // clone/clone3 для создания потоков (std::thread)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clone))) return false;
+#ifdef __NR_clone3
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(clone3))) return false;
+#endif
     
     // Вызовы для getrusage/gettimeofday/clock_gettime
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(gettimeofday))) return false;
