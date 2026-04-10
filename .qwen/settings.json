@@ -2,23 +2,7 @@
   "permissions": {
     "defaultMode": "yolo",
     "allow": [
-      "Bash(git commit *)",
-      "Bash(git push *)",
-      "Bash(gh *)",
-      "Bash(gh api *)",
-      "Bash(cat)",
-      "Bash(int *)",
-      "Bash(auto *)",
-      "Bash(\"{}\", *)",
-      "Bash(return *)",
-      "Bash(})",
-      "Bash(eof)",
-      "Bash(g++ *)",
-      "Bash(git *)",
-      "Bash(ssh *)",
-      "Bash(scp *)",
-      "Bash(rsync *)",
-      "WebSearch"
+      "Bash(*)"
     ]
   },
   "general": {
