@@ -13,6 +13,9 @@
       "Bash(})",
       "Bash(eof)",
       "Bash(g++ *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(rsync *)",
       "WebSearch"
     ]
   },
