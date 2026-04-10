@@ -163,21 +163,21 @@ private:
 
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                // Перемещаем поток в локальную переменную, чтобы избежать
-                // use-after-free: std::async может пережить workers.clear()
+                // Перемещаем поток в локальную переменную
                 std::thread t = std::move(worker);
 
-                // Запускаем join в отдельном потоке с флагом завершения
-                std::atomic<bool> join_done{false};
-                std::thread joiner([&t, &join_done]() {
+                // Запускаем join в detached-потоке
+                std::atomic<bool>* join_done = new std::atomic<bool>(false);
+                std::thread joiner([t = std::move(t), join_done]() mutable {
                     t.join();
-                    join_done = true;
+                    join_done->store(true);
+                    delete join_done;
                 });
-                joiner.detach();  // detach — мы используем atomic флаг
+                joiner.detach();
 
                 // Ждём завершения с таймаутом
                 auto start = std::chrono::steady_clock::now();
-                while (!join_done.load()) {
+                while (!join_done->load()) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     auto elapsed = std::chrono::steady_clock::now() - start;
                     if (elapsed > THREAD_JOIN_TIMEOUT) {
