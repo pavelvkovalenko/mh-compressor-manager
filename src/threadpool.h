@@ -163,12 +163,14 @@ private:
 
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                // Создаем future для join операции чтобы избежать блокировки если join зависнет
-                auto join_future = std::async(std::launch::async, [&worker]() {
-                    worker.join();
+                // Перемещаем поток в локальную переменную, чтобы избежать
+                // use-after-free: std::async может пережить workers.clear()
+                std::thread t = std::move(worker);
+                auto join_future = std::async(std::launch::async, [t = std::move(t)]() mutable {
+                    t.join();
                 });
 
-                // Ждем завершения с таймаутом
+                // Ждём завершения с таймаутом
                 if (join_future.wait_for(THREAD_JOIN_TIMEOUT) == std::future_status::timeout) {
                     Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
                     // НЕ вызываем detach() — это может привести к утечке ресурсов

@@ -507,22 +507,30 @@ void Monitor::run() {
         auto now = std::chrono::steady_clock::now();
         if (now - last_debounce_check >= debounce_check_interval) {
             last_debounce_check = now;
-            std::lock_guard<std::mutex> lock(m_debounce_mutex);
-            for (auto it = m_debounce_map.begin(); it != m_debounce_map.end(); ) {
-                if (now >= it->second) {
-                    Logger::debug(std::format("Debounce expired for: {}", it->first));
-                    // Проверка rate limiting перед запуском сжатия (DoS protection)
-                    if (security::g_compression_rate_limiter.try_acquire()) {
-                        if (m_on_compress) {
-                            m_on_compress(fs::path(it->first));
-                        }
+
+            // Собираем список файлов для сжатия ПОД блокировкой (быстрая операция)
+            std::vector<std::string> expired_files;
+            {
+                std::lock_guard<std::mutex> lock(m_debounce_mutex);
+                for (auto it = m_debounce_map.begin(); it != m_debounce_map.end(); ) {
+                    if (now >= it->second) {
+                        expired_files.push_back(it->first);
+                        it = m_debounce_map.erase(it);
                     } else {
-                        Logger::warning(std::format("Rate limit exceeded, skipping compression after debounce: {}", 
-                                                    it->first));
+                        ++it;
                     }
-                    it = m_debounce_map.erase(it);
+                }
+            }
+
+            // Вызываем обработчики ВНЕ блокировки — предотвращаем deadlock
+            for (const auto& path : expired_files) {
+                Logger::debug(std::format("Debounce expired for: {}", path));
+                if (security::g_compression_rate_limiter.try_acquire()) {
+                    if (m_on_compress) {
+                        m_on_compress(fs::path(path));
+                    }
                 } else {
-                    ++it;
+                    Logger::warning(std::format("Rate limit exceeded, skipping compression after debounce: {}", path));
                 }
             }
         }
