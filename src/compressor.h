@@ -16,10 +16,14 @@ public:
     static bool compress_brotli(const fs::path& input, const fs::path& output, int level);
     
     // Параллельное сжатие в оба формата за один проход чтения
-    static bool compress_dual(const fs::path& input, 
-                             const fs::path& gzip_output, 
+    // ДЕПРЕЦИРОВАНО: функция содержит критическую гонку данных (data race)
+    // на encoder state между основным и worker потоками.
+    // Не используется в main.cpp. Для удаления в будущей версии.
+    [[deprecated("compress_dual has a critical data race on encoder state and is not used. Use separate compress_gzip/compress_brotli calls instead.")]]
+    static bool compress_dual(const fs::path& input,
+                             const fs::path& gzip_output,
                              const fs::path& brotli_output,
-                             int gzip_level, 
+                             int gzip_level,
                              int brotli_level);
     
     static bool copy_metadata(const fs::path& source, const fs::path& dest);

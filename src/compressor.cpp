@@ -268,7 +268,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
             do {
                 strm.avail_out = buffer_size;
                 strm.next_out = out_buffer;
-                int ret = deflate(&strm, (bytes_read <= 0 && feof(stdin)) ? Z_FINISH : Z_NO_FLUSH);
+                int ret = deflate(&strm, Z_NO_FLUSH);
                 if (ret == Z_STREAM_ERROR) {
                     Logger::error("Gzip stream error");
                     has_error = true;
@@ -336,6 +336,8 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     
     if (has_error) {
         Logger::error("Failed to write gzip output");
+        // Удаляем частичный выходной файл
+        unlink(output.c_str());
         return false;
     }
 
@@ -578,6 +580,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     fclose(file_out); // Закрываем выходной файл
 
     if (!success) {
+        // Удаляем частичный выходной файл
+        unlink(output.c_str());
         return false;
     }
 

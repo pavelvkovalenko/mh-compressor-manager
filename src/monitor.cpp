@@ -539,15 +539,18 @@ bool Monitor::is_target_extension(const std::string& filepath) {
         Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filename));
         return false;
     }
-    
+
     size_t dot = filename.find_last_of('.');
-    
+
+    // Блокировка для безопасного чтения m_cfg
+    std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
+
     // Получаем индекс переопределения для конкретного пути
     auto override_idx = get_folder_override_index(m_cfg, filepath);
     bool process_without_ext = override_idx.has_value()
         ? m_cfg.folder_overrides[*override_idx].process_files_without_extensions
         : m_cfg.process_files_without_extensions;
-    
+
     // Поддержка файлов без расширений: если точки нет и включена опция process_files_without_extensions
     if (dot == std::string::npos) {
         // Файл без расширения
@@ -556,26 +559,25 @@ bool Monitor::is_target_extension(const std::string& filepath) {
             if (filename == "gz" || filename == "br") {
                 return false;
             }
-            // Блокировка для потокобезопасного доступа к кэшу расширений
-            std::shared_lock<std::shared_mutex> lock(m_config_mutex);
             // Для файлов без расширений всегда возвращаем true (будут обработаны)
             return true;
         }
         return false;  // Файлы без расширений не обрабатываются по умолчанию
     }
-    
-    if (dot >= filename.size() - 1) return false;  // Точка в конце имени
-    
+
+    if (dot >= filename.size() - 1) { cfg_lock.unlock(); return false; }  // Точка в конце имени
+
     std::string ext = filename.substr(dot + 1);
-    
+
     // Дополнительная проверка расширения на null-байты
     if (ext.empty() || ext.find('\0') != std::string::npos) {
+        cfg_lock.unlock();
         return false;
     }
-    
+
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    
-    if (ext == "gz" || ext == "br") return false;
+
+    if (ext == "gz" || ext == "br") { cfg_lock.unlock(); return false; }
     
     // Получаем список расширений для этой папки (с учетом переопределений)
     if (override_idx.has_value() && !m_cfg.folder_overrides[*override_idx].extensions.empty()) {
@@ -653,10 +655,14 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     // Нормализуем путь и проверяем что он находится внутри базовой директории
     std::string normalized_path = fs::weakly_canonical(full_path).string();
     std::string normalized_base = fs::weakly_canonical(fs::path(base_path)).string();
-    
-    // Проверяем что нормализованный путь начинается с базовой директории
-    if (normalized_path.find(normalized_base) != 0) {
-        Logger::warning(std::format("SECURITY: Path traversal attempt detected: {} (base: {})", 
+
+    // Проверяем что нормализованный путь находится внутри базовой директории.
+    // Важно: normalized_path == normalized_base || starts_with(normalized_base + "/")
+    // Простая проверка find(normalized_base) != 0 уязвима:
+    //   base="/data/logs", path="/data/logs-evil" — пройдёт проверку.
+    if (normalized_path != normalized_base &&
+        normalized_path.rfind(normalized_base + "/", 0) != 0) {
+        Logger::warning(std::format("SECURITY: Path traversal attempt detected: {} (base: {})",
                                      normalized_path, normalized_base));
         return;
     }
@@ -727,10 +733,25 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
         Logger::info(std::format("File moved out of monitored directory: {}", full_path.string()));
         if (m_on_delete) m_on_delete(full_path);
     } else if (mask & (IN_MODIFY | IN_CREATE | IN_MOVED_TO)) {
+        // Безопасное чтение m_cfg.debounce_delay под блокировкой
+        int delay;
+        {
+            std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
+            delay = m_cfg.debounce_delay;
+        }
         std::lock_guard<std::mutex> lock(m_debounce_mutex);
-        m_debounce_map[full_path.string()] = 
-            std::chrono::steady_clock::now() + std::chrono::seconds(m_cfg.debounce_delay);
-        Logger::debug(std::format("Scheduled compression for: {} (delay: {}s)", 
-            full_path.string(), m_cfg.debounce_delay));
+        auto now = std::chrono::steady_clock::now();
+        auto deadline = now + std::chrono::seconds(delay);
+        // Ограничиваем максимальное откладывание — не более 3x debounce_delay
+        // Это предотвращает starvation при непрерывной записи в файл
+        auto max_delay = std::chrono::seconds(delay * 3);
+        auto it = m_debounce_map.find(full_path.string());
+        if (it != m_debounce_map.end() && it->second > now + max_delay) {
+            // Уже отложено максимально — не откладываем дальше
+            return;
+        }
+        m_debounce_map[full_path.string()] = deadline;
+        Logger::debug(std::format("Scheduled compression for: {} (delay: {}s)",
+            full_path.string(), delay));
     }
 }
