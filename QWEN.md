@@ -50,7 +50,28 @@ gh pr create \
   --base main
 ```
 
-## Коммиты
-- Сообщение коммита должно быть на русском языке
-- Формат: `[Тип]: Краткое описание (до 72 символов)`
-- При необходимости добавляй подробное описание после пустой строки
+## Сборка и тестирование
+
+### Локальная сборка
+```bash
+./_build.sh
+```
+
+### Удалённая сборка по SSH
+По умолчанию все команды сборки и тестирования выполнять на удалённой машине через SSH:
+
+```bash
+ssh user@remote-host "cd /path/to/project && ./_build.sh && ./bin/compressor-manager"
+```
+
+#### Передача файлов на удалённую машину
+Перед сборкой синхронизируй изменения:
+```bash
+rsync -avz --exclude='.git' ./ user@remote-host:/path/to/project/
+```
+
+#### Проверка сборки
+После деплоя проверяй:
+1. Компиляция: `ssh user@remote-host "cd /path/to/project && make"`
+2. Запуск: `ssh user@remote-host "/path/to/project/bin/compressor-manager --test"`
+3. Логи: `ssh user@remote-host "tail -f /path/to/project/logs/app.log"`
