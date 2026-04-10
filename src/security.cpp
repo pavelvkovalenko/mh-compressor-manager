@@ -28,8 +28,10 @@
 
 namespace security {
 
-// Глобальный rate limiter: 100 операций за 60 секунд
-RateLimiter g_compression_rate_limiter(100, 60);
+// Глобальный rate limiter: 10000 операций за 60 секунд (DoS protection)
+// Для фоновой обработки больших объёмов данных — практически без ограничений.
+// Реальное ограничение задаётся через per-folder rate_limit в конфиге.
+RateLimiter g_compression_rate_limiter(10000, 60);
 
 // ============================================================================
 // RateLimiter Implementation
@@ -410,6 +412,10 @@ bool init_seccomp() {
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sched_yield))) return false;
     // sched_setaffinity для установки CPU affinity потоков
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(sched_setaffinity))) return false;
+
+    // setpriority/ioprio_set для понижения приоритета worker потоков (nice/ionice)
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(setpriority))) return false;
+    if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(ioprio_set))) return false;
 
     // Вызовы для getrusage/gettimeofday/clock_gettime
     if (!ctx_wrapper.add_rule(SCMP_ACT_ALLOW, SCMP_SYS(gettimeofday))) return false;
