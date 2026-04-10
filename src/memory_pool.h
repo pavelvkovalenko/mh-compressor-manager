@@ -82,12 +82,19 @@ public:
     }
     
     // Выделение буфера из пула (возвращает vector для удобства)
+    // ВНИМАНИЕ: vector КОПИРУЕТ данные из пула во внутреннюю память.
+    // Это НЕ тот же буфер — используйте allocate_raw()/release_raw() для
+    // zero-copy работы с пулом.
+    [[deprecated("allocate() copies data — use allocate_raw()/release_raw() for zero-copy pool access")]]
     std::vector<T> allocate() {
         T* raw_buf = allocate_raw();
         if (!raw_buf) {
             throw std::bad_alloc();
         }
-        return std::vector<T>(raw_buf, raw_buf + buffer_size / sizeof(T));
+        std::vector<T> vec(raw_buf, raw_buf + buffer_size / sizeof(T));
+        // Возвращаем raw_buf обратно в пул — vector сделал копию
+        release_raw(raw_buf);
+        return vec;
     }
     
     // Выделение сырого буфера (для прямого использования с read/write)
@@ -153,42 +160,19 @@ public:
         return result;
     }
     
-    // Возврат буфера в пул (для vector - переиспользуем напрямую без копирования)
+    // Возврат буфера в пул.
+    // ВНИМАНИЕ: std::vector владеет собственной памятью (std::allocator),
+    // а НЕ памятью пула. Этот метод НЕ помещает vector data обратно в пул —
+    // это был бы invalid-free. Используйте release_raw() для буферов из пула.
+    [[deprecated("release(vector) cannot reclaim vector's internal memory — use release_raw() instead")]]
     void release(std::vector<T>& buffer) {
         if (buffer.empty()) {
             return;
         }
-        
-        // Проверяем что размер соответствует ожидаемому
-        if (buffer.size() != buffer_size / sizeof(T)) {
-            // Несоответствующий размер — вектор владеет памятью через std::allocator,
-            // поэтому НЕ вызываем std::free() — пусть деструктор vector освободит сам.
-            // Просто убираем из tracking set и игнорируем буфер.
-            T* raw_buf = buffer.data();
-            if (raw_buf) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                allocated_set_.erase(raw_buf);
-            }
-            buffer.clear();
-            return;
-        }
-        
-        // Получаем указатель на данные vector
-        T* raw_buf = buffer.data();
-        
-        // Проверяем что буфер был выделен из этого пула (базовая проверка)
-        // В production коде можно добавить более строгую валидацию
-        if (raw_buf == nullptr) {
-            return;
-        }
-        
-        // Возвращаем буфер в пул для переиспользования
-        std::unique_lock<std::mutex> lock(mutex_);
-        free_buffers_.push(raw_buf);
-        // Освобождаем ownership у vector чтобы избежать double-free
-        // Vector будет уничтожен вызывающей стороной, но data() больше не валиден
+        // Вектор владеет своей памятью через std::allocator — не трогаем её.
+        // allocated_set_ не содержит указателей на vector internal storage,
+        // так что erase не нужен.
         buffer.clear();
-        buffer.shrink_to_fit();
     }
     
     // Возврат сырого буфера в пул (с приоритетом на per-thread кэш)
