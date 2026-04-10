@@ -166,17 +166,24 @@ private:
                 // Перемещаем поток в локальную переменную, чтобы избежать
                 // use-after-free: std::async может пережить workers.clear()
                 std::thread t = std::move(worker);
-                auto join_future = std::async(std::launch::async, [t = std::move(t)]() mutable {
+
+                // Запускаем join в отдельном потоке с флагом завершения
+                std::atomic<bool> join_done{false};
+                std::thread joiner([&t, &join_done]() {
                     t.join();
+                    join_done = true;
                 });
+                joiner.detach();  // detach — мы используем atomic флаг
 
                 // Ждём завершения с таймаутом
-                if (join_future.wait_for(THREAD_JOIN_TIMEOUT) == std::future_status::timeout) {
-                    Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
-                    // НЕ вызываем detach() — это может привести к утечке ресурсов
-                    // Поток завершится когда разблокируется
-                } else {
-                    Logger::debug("Thread joined successfully");
+                auto start = std::chrono::steady_clock::now();
+                while (!join_done.load()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    auto elapsed = std::chrono::steady_clock::now() - start;
+                    if (elapsed > THREAD_JOIN_TIMEOUT) {
+                        Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
+                        break;
+                    }
                 }
             }
         }
