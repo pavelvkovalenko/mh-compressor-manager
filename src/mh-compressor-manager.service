@@ -4,8 +4,12 @@ After=network.target
 
 [Service]
 Type=notify
+NotifyAccess=all
+TimeoutStartSec=30
+WatchdogSec=120
 ExecStart=/usr/bin/mh-compressor-manager --config /etc/mediahive/compressor-manager.conf
 Restart=on-failure
+RestartSec=5
 User=root
 Group=root
 
