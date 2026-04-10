@@ -260,30 +260,21 @@ private:
                 return ptr;
             }
         }
-        
-        // Пробуем использовать Huge Pages через mmap для больших выделений
-        if (size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
-            PerformanceOptimizer::is_huge_pages_available()) {
-            ptr = PerformanceOptimizer::allocate_aligned_memory(size, true);
-            if (ptr) {
-                return ptr;
-            }
-        }
-        // Fallback на posix_memalign
+        // Fallback на posix_memalign (без Huge Pages — они требуют tracking method)
         if (posix_memalign(&ptr, alignment, size) != 0) {
             ptr = nullptr;
         }
 #endif
         return ptr;
     }
-    
+
     void aligned_free(void* ptr) {
         if (!ptr) return;
-        
+
 #if defined(_MSC_VER)
         _aligned_free(ptr);
 #else
-        // Освобождаем через NUMA если память была выделена через NUMA
+        // NUMA-память освобождается через NUMA
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
             NumaUtils::free_on_node(ptr, buffer_size);
             return;
