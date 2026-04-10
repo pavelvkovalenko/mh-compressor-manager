@@ -530,15 +530,15 @@ void Monitor::run() {
 }
 
 bool Monitor::is_target_extension(const std::string& filepath) {
-    // Проверка имени файла на null-byte инъекции и опасные символы
-    if (!security::validate_filename(filepath)) {
-        Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filepath));
-        return false;
-    }
-    
     // Извлекаем имя файла из полного пути
     fs::path file_path(filepath);
     std::string filename = file_path.filename().string();
+
+    // Проверка имени файла на null-byte инъекции и опасные символы
+    if (!security::validate_filename(filename)) {
+        Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filename));
+        return false;
+    }
     
     size_t dot = filename.find_last_of('.');
     
