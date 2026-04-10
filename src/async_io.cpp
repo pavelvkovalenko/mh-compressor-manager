@@ -454,7 +454,7 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
         return false;
     }
 
-    if (cqe->res < 0) {
+    if (cqe && cqe->res < 0) {
         Logger::error(std::format("async write failed: {}", strerror(-cqe->res)));
         {
             std::lock_guard<std::mutex> lock(g_ring_mutex);

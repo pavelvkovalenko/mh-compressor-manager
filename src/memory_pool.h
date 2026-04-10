@@ -70,24 +70,33 @@ public:
         while (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
-            allocated_set_.erase(buf);  // Удаляем из множества отслеживания
+            allocated_set_.erase(buf);
             aligned_free(buf);
         }
-        
-        // Освобождаем буферы из per-thread кэшей
-        // Примечание: thread_local кэши очищаются автоматически при уничтожении потоков,
-        // но мы можем принудительно освободить их через итерацию по известным потокам
-        // В данной реализации thread_caches_ был удален в пользу thread_local переменной
+
+        // Освобождаем ВСЕ оставшиеся буферы из allocated_set_
+        // (те которые не были возвращены через release_raw — утечка при завершении)
+        for (auto* buf : allocated_set_) {
+            aligned_free(buf);
+        }
+        allocated_set_.clear();
         total_allocated_ = 0;
     }
     
     // Выделение буфера из пула (возвращает vector для удобства)
+    // ВНИМАНИЕ: vector КОПИРУЕТ данные из пула во внутреннюю память.
+    // Это НЕ тот же буфер — используйте allocate_raw()/release_raw() для
+    // zero-copy работы с пулом.
+    [[deprecated("allocate() copies data — use allocate_raw()/release_raw() for zero-copy pool access")]]
     std::vector<T> allocate() {
         T* raw_buf = allocate_raw();
         if (!raw_buf) {
             throw std::bad_alloc();
         }
-        return std::vector<T>(raw_buf, raw_buf + buffer_size / sizeof(T));
+        std::vector<T> vec(raw_buf, raw_buf + buffer_size / sizeof(T));
+        // Возвращаем raw_buf обратно в пул — vector сделал копию
+        release_raw(raw_buf);
+        return vec;
     }
     
     // Выделение сырого буфера (для прямого использования с read/write)
@@ -120,13 +129,12 @@ public:
         
         // NUMA-aware выделение памяти
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
-            // Выделяем память на указанном NUMA узле
+            // ВАЖНО: mutex уже захвачен (unique_lock выше), НЕ создаём вложенный lock
             ptr = NumaUtils::allocate_on_node(buffer_size, numa_node_id_);
             if (ptr) {
                 ++total_allocated_;
-                // Добавляем в множество отслеживания для O(1) проверки double-free
-                std::lock_guard<std::mutex> lock(mutex_);
                 allocated_set_.insert(static_cast<T*>(ptr));
+                lock.unlock();
                 return static_cast<T*>(ptr);
             }
             // Fallback на стандартное выделение если NUMA аллокация не удалась
@@ -148,42 +156,25 @@ public:
         }
         ++total_allocated_;
         T* result = static_cast<T*>(ptr);
-        // Добавляем в множество отслеживания для O(1) проверки double-free
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            allocated_set_.insert(result);
-        }
+        // unique_lock уже захвачен — НЕ создаём вложенный lock_guard
+        allocated_set_.insert(result);
+        lock.unlock();
         return result;
     }
     
-    // Возврат буфера в пул (для vector - переиспользуем напрямую без копирования)
+    // Возврат буфера в пул.
+    // ВНИМАНИЕ: std::vector владеет собственной памятью (std::allocator),
+    // а НЕ памятью пула. Этот метод НЕ помещает vector data обратно в пул —
+    // это был бы invalid-free. Используйте release_raw() для буферов из пула.
+    [[deprecated("release(vector) cannot reclaim vector's internal memory — use release_raw() instead")]]
     void release(std::vector<T>& buffer) {
         if (buffer.empty()) {
             return;
         }
-        
-        // Проверяем что размер соответствует ожидаемому
-        if (buffer.size() != buffer_size / sizeof(T)) {
-            // Несоответствующий размер - не принимаем
-            return;
-        }
-        
-        // Получаем указатель на данные vector
-        T* raw_buf = buffer.data();
-        
-        // Проверяем что буфер был выделен из этого пула (базовая проверка)
-        // В production коде можно добавить более строгую валидацию
-        if (raw_buf == nullptr) {
-            return;
-        }
-        
-        // Возвращаем буфер в пул для переиспользования
-        std::unique_lock<std::mutex> lock(mutex_);
-        free_buffers_.push(raw_buf);
-        // Освобождаем ownership у vector чтобы избежать double-free
-        // Vector будет уничтожен вызывающей стороной, но data() больше не валиден
+        // Вектор владеет своей памятью через std::allocator — не трогаем её.
+        // allocated_set_ не содержит указателей на vector internal storage,
+        // так что erase не нужен.
         buffer.clear();
-        buffer.shrink_to_fit();
     }
     
     // Возврат сырого буфера в пул (с приоритетом на per-thread кэш)
@@ -269,30 +260,21 @@ private:
                 return ptr;
             }
         }
-        
-        // Пробуем использовать Huge Pages через mmap для больших выделений
-        if (size >= PerformanceOptimizer::get_huge_page_size() / 2 && 
-            PerformanceOptimizer::is_huge_pages_available()) {
-            ptr = PerformanceOptimizer::allocate_aligned_memory(size, true);
-            if (ptr) {
-                return ptr;
-            }
-        }
-        // Fallback на posix_memalign
+        // Fallback на posix_memalign (без Huge Pages — они требуют tracking method)
         if (posix_memalign(&ptr, alignment, size) != 0) {
             ptr = nullptr;
         }
 #endif
         return ptr;
     }
-    
+
     void aligned_free(void* ptr) {
         if (!ptr) return;
-        
+
 #if defined(_MSC_VER)
         _aligned_free(ptr);
 #else
-        // Освобождаем через NUMA если память была выделена через NUMA
+        // NUMA-память освобождается через NUMA
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
             NumaUtils::free_on_node(ptr, buffer_size);
             return;

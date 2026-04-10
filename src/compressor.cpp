@@ -521,7 +521,14 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         
         // Обрабатываем прочитанные данные
         if (bytes_read > 0 || !feof(file_in)) {
+            int iteration_count = 0;
+            constexpr int MAX_ITERATIONS = 10000;  // Защита от бесконечного цикла
             while (available_in > 0 || !BrotliEncoderIsFinished(state)) {
+                if (++iteration_count > MAX_ITERATIONS) {
+                    Logger::error(std::format("Brotli compression iteration limit exceeded for: {}", input.string()));
+                    success = false;
+                    break;
+                }
                 size_t available_out = out_buffer.size();
                 uint8_t* next_out = out_buffer.data();
                 

@@ -163,18 +163,27 @@ private:
 
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                // Создаем future для join операции чтобы избежать блокировки если join зависнет
-                auto join_future = std::async(std::launch::async, [&worker]() {
-                    worker.join();
-                });
+                // Перемещаем поток в локальную переменную
+                std::thread t = std::move(worker);
 
-                // Ждем завершения с таймаутом
-                if (join_future.wait_for(THREAD_JOIN_TIMEOUT) == std::future_status::timeout) {
-                    Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
-                    // НЕ вызываем detach() — это может привести к утечке ресурсов
-                    // Поток завершится когда разблокируется
-                } else {
-                    Logger::debug("Thread joined successfully");
+                // Запускаем join в detached-потоке
+                std::atomic<bool>* join_done = new std::atomic<bool>(false);
+                std::thread joiner([t = std::move(t), join_done]() mutable {
+                    t.join();
+                    join_done->store(true);
+                    delete join_done;
+                });
+                joiner.detach();
+
+                // Ждём завершения с таймаутом
+                auto start = std::chrono::steady_clock::now();
+                while (!join_done->load()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    auto elapsed = std::chrono::steady_clock::now() - start;
+                    if (elapsed > THREAD_JOIN_TIMEOUT) {
+                        Logger::warning("Thread join timeout, thread may be stuck in uninterruptible wait");
+                        break;
+                    }
                 }
             }
         }
