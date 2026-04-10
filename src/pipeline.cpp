@@ -113,7 +113,7 @@ bool CompressionPipeline::compress(
         return false;
     }
     
-    // Получение размера файла
+    // Получение размера файла и сохранение времени модификации
     struct stat st;
     if (fstat(input_fd_, &st) < 0) {
         PIPE_LOG_ERROR("Не удалось получить размер файла: {}", strerror(errno));
@@ -121,7 +121,10 @@ bool CompressionPipeline::compress(
         input_fd_ = -1;
         return false;
     }
-    (void)st;  // st используется для проверки доступа и размера, file_size вычисляется при необходимости
+    // Сохраняем время модификации для копирования в сжатые файлы
+    struct timespec orig_times[2];
+    orig_times[0] = st.st_atim;  // atime
+    orig_times[1] = st.st_mtim;  // mtime
     
     // Подсказки ядру для последовательного чтения
     posix_fadvise(input_fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
@@ -204,9 +207,9 @@ bool CompressionPipeline::compress(
         return false;
     }
     
-    // Обновление временных меток после успешной записи
-    utimensat(AT_FDCWD, gzip_output_path.c_str(), nullptr, 0);
-    utimensat(AT_FDCWD, brotli_output_path.c_str(), nullptr, 0);
+    // Копирование временных меток оригинала в сжатые файлы
+    utimensat(AT_FDCWD, gzip_output_path.c_str(), orig_times, 0);
+    utimensat(AT_FDCWD, brotli_output_path.c_str(), orig_times, 0);
     
     PIPE_LOG_INFO("Конвейер сжатия успешно завершен. Время: {} мс, прочитано: {} байт, "
              "GZIP: {} байт, Brotli: {} байт",
