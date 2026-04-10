@@ -101,7 +101,7 @@ private:
     const size_t m_max_operations;
     const size_t m_window_seconds;
     mutable std::mutex m_mutex;
-    std::vector<std::chrono::steady_clock::time_point> m_timestamps;
+    mutable std::vector<std::chrono::steady_clock::time_point> m_timestamps;
 };
 
 /**
