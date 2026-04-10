@@ -372,3 +372,10 @@ else()
 endif()
 message(STATUS "============================================")
 message(STATUS "")
+
+# ============================================================================
+# Подключение тестов (опционально, через отдельную сборку)
+# ============================================================================
+# Для сборки тестов: cd tests && cmake . -B build && cmake --build build
+# enable_testing()
+# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../tests ${CMAKE_CURRENT_BINARY_DIR}/tests)
