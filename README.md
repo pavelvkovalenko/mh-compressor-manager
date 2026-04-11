@@ -1,5 +1,7 @@
 # mh-compressor-manager
 
+> **ℹ️ Примечание:** Данный файл предназначен для информирования пользователей на GitHub и содержит краткую сводную информацию о реализованных возможностях проекта. Источником требований и спецификаций является файл `TECHNICAL_SPECIFICATION.md`.
+
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
