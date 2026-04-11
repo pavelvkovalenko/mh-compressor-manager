@@ -198,6 +198,13 @@ public:
         // Сначала пробуем поместить в per-thread кэш (без блокировки)
         auto& local_cache = get_thread_cache();
         if (local_cache.size() < THREAD_CACHE_SIZE) {
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: нужно убрать буфер из allocated_set_
+            // даже при помещении в thread_local кэш, иначе деструктор пула
+            // освободит эту память (double-free / use-after-free)
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                allocated_set_.erase(buffer);
+            }
             local_cache.push_back(buffer);
             return;
         }

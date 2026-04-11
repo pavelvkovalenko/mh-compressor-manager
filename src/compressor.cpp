@@ -1716,6 +1716,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     state.strm->avail_in = size;
     state.strm->next_in = const_cast<uint8_t*>(data);
 
+    // Основной цикл: сжатие данных
     do {
         state.strm->avail_out = OUT_BUF_SIZE;
         state.strm->next_out = out_buf.data();
@@ -1745,7 +1746,35 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         if (ret == Z_STREAM_END) break;
     } while (state.strm->avail_out == 0);
 
+    // Отдельный цикл финализации при flush — Z_FINISH может требовать много вызовов
     if (flush) {
+        while (true) {
+            state.strm->avail_out = OUT_BUF_SIZE;
+            state.strm->next_out = out_buf.data();
+            int ret = deflate(state.strm, Z_FINISH);
+            if (ret == Z_STREAM_ERROR) {
+                Logger::error("gzip_stream_process: Z_STREAM_ERROR in finalize");
+                state.has_error = true;
+                return false;
+            }
+
+            size_t have = OUT_BUF_SIZE - state.strm->avail_out;
+            if (have > 0) {
+                size_t total_written = 0;
+                while (total_written < have) {
+                    ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
+                    if (n < 0) {
+                        if (errno == EINTR) continue;
+                        Logger::error(std::format("gzip_stream_process: write failed in finalize: {}", strerror(errno)));
+                        state.has_error = true;
+                        return false;
+                    }
+                    total_written += n;
+                }
+            }
+
+            if (ret == Z_STREAM_END) break;
+        }
         // Переименовываем временный файл в целевой (атомарно)
         if (fsync(state.fd_out) != 0) {
             Logger::error(std::format("gzip_stream_process: fsync failed: {}", strerror(errno)));
@@ -1801,6 +1830,13 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
     if (state.has_error || !state.initialized || !state.enc) {
         return false;
     }
+
+    // Защита от двойного flush — encoder уже финализирован
+    if (flush && state.finalized) {
+        Logger::warning("brotli_stream_process: flush called twice, ignoring");
+        return false;
+    }
+    if (flush) state.finalized = true;
 
     constexpr size_t OUT_BUF_SIZE = 128 * 1024;
     std::vector<uint8_t> out_buf(OUT_BUF_SIZE);

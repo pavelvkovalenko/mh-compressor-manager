@@ -604,19 +604,17 @@ void compress_task(const fs::path& path) {
                 bool is_last = (offset >= file_size);
 
                 // Оба алгоритма обрабатывают один чанк — данные в L3 кэше
-                if (brotli_started) {
+                if (brotli_started && !br_state.has_error) {
                     if (!Compressor::brotli_stream_process(br_state, buffer, bytes_read, is_last)) {
                         Logger::error(std::format("Brotli streaming error for {}", path.string()));
-                        brotli_success = false;
-                        stream_error = true;
+                        // Не ставим stream_error — пусть gzip продолжится
                     }
                 }
 
-                if (gzip_started) {
+                if (gzip_started && !gz_state.has_error) {
                     if (!Compressor::gzip_stream_process(gz_state, buffer, bytes_read, is_last)) {
                         Logger::error(std::format("Gzip streaming error for {}", path.string()));
-                        gzip_success = false;
-                        stream_error = true;
+                        // Не ставим stream_error — алгоритмы независимы
                     }
                 }
             }
@@ -624,25 +622,23 @@ void compress_task(const fs::path& path) {
             close(fd);
             buffer_pool().release_raw(buffer);
 
-            // Если не было ошибок streaming — считаем успешным
-            if (!stream_error) {
-                if (gzip_started && !gz_state.has_error) gzip_success = true;
-                if (brotli_started && !br_state.has_error) brotli_success = true;
+            // Каждый алгоритм оценивается независимо
+            if (gzip_started && !gz_state.has_error) gzip_success = true;
+            if (brotli_started && !br_state.has_error) brotli_success = true;
 
-                // Копируем метаданные на сжатые файлы
-                if (gzip_success) {
-                    struct stat gz_st;
-                    if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
-                        Compressor::copy_metadata(path, path.string() + ".gz");
-                        try { compressed_size += fs::file_size(path.string() + ".gz"); } catch (...) {}
-                    }
+            // Копируем метаданные на сжатые файлы
+            if (gzip_success) {
+                struct stat gz_st;
+                if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
+                    Compressor::copy_metadata(path, path.string() + ".gz");
+                    try { compressed_size += fs::file_size(path.string() + ".gz"); } catch (...) {}
                 }
-                if (brotli_success) {
-                    struct stat br_st;
-                    if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
-                        Compressor::copy_metadata(path, path.string() + ".br");
-                        try { compressed_size += fs::file_size(path.string() + ".br"); } catch (...) {}
-                    }
+            }
+            if (brotli_success) {
+                struct stat br_st;
+                if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
+                    Compressor::copy_metadata(path, path.string() + ".br");
+                    try { compressed_size += fs::file_size(path.string() + ".br"); } catch (...) {}
                 }
             }
         }

@@ -74,8 +74,9 @@ public:
         std::string final_path;    ///< Целевой путь .br
         bool initialized;
         bool has_error;
+        bool finalized;            ///< Защита от двойного flush
 
-        BrotliStreamState() : enc(nullptr), fd_out(-1), initialized(false), has_error(false) {}
+        BrotliStreamState() : enc(nullptr), fd_out(-1), initialized(false), has_error(false), finalized(false) {}
         ~BrotliStreamState();
     };
 
