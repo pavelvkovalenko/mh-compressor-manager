@@ -641,9 +641,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Главный цикл с использованием epoll для обработки сигналов через signalfd
+    int epfd = -1;  // Объявляем здесь чтобы был виден в catch
     try {
         // Создаём epoll дескриптор ОДИН раз перед циклом
-        int epfd = -1;
         if (g_signal_fd >= 0) {
             epfd = epoll_create1(EPOLL_CLOEXEC);
             if (epfd >= 0) {
