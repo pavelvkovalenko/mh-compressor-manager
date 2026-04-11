@@ -93,8 +93,8 @@ echo "  ✓ JSON: $(du -sh "$BASEDIR/json" | cut -f1)"
 echo "  Генерация TXT логов (20 файлов)..."
 for i in $(seq 1 20); do
   {
-    for j in $(seq 1 10000); do
-      echo "2024-06-15 12:$((RANDOM%60)):$((RANDOM%60)) [INFO] GET /api/v1/item/$j 200 ${RANDOM}ms ua=\"Mozilla/5.0\" ip=10.0.$((RANDOM%256)).$((RANDOM%256))"
+    for j in $(seq 1 5000); do
+      echo "2024-06-15 12:$((RANDOM%60)):$((RANDOM%60)) [INFO] GET /api/v1/item/$j 200 ${RANDOM}ms"
     done
   } > "$BASEDIR/txt/access_${i}.log.txt"
 done
