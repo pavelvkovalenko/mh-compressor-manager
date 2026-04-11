@@ -89,11 +89,11 @@ for i in $(seq 1 120); do
 done
 echo "  ✓ JSON: $(du -sh "$BASEDIR/json" | cut -f1)"
 
-# TXT (логи): 120 файлов по ~3MB = 360MB
-echo "  Генерация TXT логов (120 файлов)..."
-for i in $(seq 1 120); do
+# TXT (логи): 20 файлов по ~1MB = 20MB
+echo "  Генерация TXT логов (20 файлов)..."
+for i in $(seq 1 20); do
   {
-    for j in $(seq 1 30000); do
+    for j in $(seq 1 10000); do
       echo "2024-06-15 12:$((RANDOM%60)):$((RANDOM%60)) [INFO] GET /api/v1/item/$j 200 ${RANDOM}ms ua=\"Mozilla/5.0\" ip=10.0.$((RANDOM%256)).$((RANDOM%256))"
     done
   } > "$BASEDIR/txt/access_${i}.log.txt"

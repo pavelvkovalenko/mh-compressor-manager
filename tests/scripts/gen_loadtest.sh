@@ -79,15 +79,15 @@ for i in $(seq 1 50); do
 done
 echo "XML: 50 файлов, размер: $(du -sh "$BASEDIR/xml" | cut -f1)"
 
-# 6. TXT файлы - логи - 80 штук (~1.7GB)
+# 6. TXT файлы - логи - 20 штук (~20MB)
 echo "Генерация TXT..."
-for i in $(seq 1 80); do
+for i in $(seq 1 20); do
   FILE="$BASEDIR/txt/log_${i}.txt"
-  for j in $(seq 1 80000); do
-    echo "2024-01-15 12:$((RANDOM%60)):$((RANDOM%60)) [INFO] Request processed: method=GET path=/api/v1/resource/$j status=200 duration=${RANDOM}ms user_agent=\"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\" remote_addr=192.168.$((RANDOM%256)).$((RANDOM%256)) request_id=abc-$i-$j"
+  for j in $(seq 1 500); do
+    echo "2024-01-15 12:$((RANDOM%60)):$((RANDOM%60)) [INFO] Request processed: method=GET path=/api/v1/resource/$j status=200 duration=${RANDOM}ms user_agent=\"Mozilla/5.0\" remote_addr=192.168.$((RANDOM%256)).$((RANDOM%256)) request_id=abc-$i-$j"
   done > "$FILE"
 done
-echo "TXT: 80 файлов, размер: $(du -sh "$BASEDIR/txt" | cut -f1)"
+echo "TXT: 20 файлов, размер: $(du -sh "$BASEDIR/txt" | cut -f1)"
 
 # Итог генерации
 echo ""
