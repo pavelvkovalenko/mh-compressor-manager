@@ -95,9 +95,12 @@ public:
                                 std::chrono::seconds(5),  // Таймаут 5 секунд для предотвращения deadlock
                                 [this] { return io_slots_available > 0 || stop_flag; });
 
-                            // Если таймаут истек, проверяем не нужно ли завершаться
-                            if (!wait_result && !stop_flag) {
-                                Logger::warning("I/O slot wait timeout, possible deadlock detected");
+                            // Если таймаут истек и слот всё ещё недоступен — пропускаем задачу
+                            if (!wait_result) {
+                                if (stop_flag && tasks.empty()) return;
+                                Logger::warning("I/O slot wait timeout, requeueing task");
+                                // Не берём задачу — возвращаемся к ожиданию
+                                continue;
                             }
                             if (stop_flag && tasks.empty()) return;
                         }

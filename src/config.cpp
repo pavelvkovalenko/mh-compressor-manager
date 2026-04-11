@@ -105,7 +105,7 @@ Config load_config(int argc, char* argv[]) {
                       << "  --brotli-level <N> Brotli level (1-11)\n"
                       << "  --min-size <N>    Optimal min file size for compression (default 1024, min 256)\n"
                       << "  --dry-run         Dry run mode\n"
-                      << "  --debug           Debug logging mode\\n"
+                      << "  --debug           Debug logging mode\n"
                       << "  --version         Show version\n"
                       << "  --process-without-ext  Process files without extensions\n";
             exit(0);

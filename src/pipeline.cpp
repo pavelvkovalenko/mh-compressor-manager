@@ -379,7 +379,7 @@ void CompressionPipeline::compressor_stage([[maybe_unused]] int compression_leve
                 
                 compressed.gzip_data.resize(compressBound(input_data.size()));
                 z_stream strm = {};
-                if (deflateInit2(&strm, compression_level, Z_DEFLATED, -MAX_WBITS, 8, 
+                if (deflateInit2(&strm, compression_level, Z_DEFLATED, MAX_WBITS + 16, 8,
                                 Z_DEFAULT_STRATEGY) == Z_OK) {
                     strm.next_in = reinterpret_cast<Bytef*>(input_data.data());
                     strm.avail_in = input_data.size();

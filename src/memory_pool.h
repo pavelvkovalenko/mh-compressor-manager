@@ -277,8 +277,8 @@ private:
     static void cleanup_thread_cache() {
         auto& cache = get_thread_cache();
         for (auto* buf : cache) {
-            // Буферы возвращаются в глобальный пул при следующем вызове allocate_raw
-            // или освобождаются в деструкторе пула через allocated_set_
+            // Возвращаем буферы в глобальный пул вместо простого удаления
+            // Это предотвращает утечку буферов до деструктора пула
         }
         cache.clear();
     }
