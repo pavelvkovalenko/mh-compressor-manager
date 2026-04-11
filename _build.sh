@@ -42,8 +42,16 @@ if ! command -v cmake &> /dev/null; then
     DEPS_TO_INSTALL+=("cmake")
 fi
 
-# ZLIB (dnf и zypper: zlib-devel)
-if ! pkg-config --exists zlib 2>/dev/null && [ ! -f "/usr/include/z.h" ] && [ ! -f "/usr/local/include/z.h" ]; then
+# libdeflate — предпочтительная замена zlib (1.5-2x быстрее)
+if ! pkg-config --exists libdeflate 2>/dev/null && [ ! -f "/usr/include/libdeflate.h" ]; then
+    if [ "$PKG_MANAGER" == "dnf" ]; then DEPS_TO_INSTALL+=("libdeflate-devel");
+    elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("libdeflate-dev");
+    elif [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("libdeflate-devel");
+    elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("libdeflate"); fi
+fi
+
+# ZLIB (fallback если libdeflate недоступна)
+if ! pkg-config --exists zlib 2>/dev/null && [ ! -f "/usr/include/zlib.h" ] && [ ! -f "/usr/local/include/zlib.h" ]; then
     if [ "$PKG_MANAGER" == "dnf" ] || [ "$PKG_MANAGER" == "zypper" ]; then DEPS_TO_INSTALL+=("zlib-devel");
     elif [ "$PKG_MANAGER" == "apt" ]; then DEPS_TO_INSTALL+=("zlib1g-dev");
     elif [ "$PKG_MANAGER" == "pacman" ]; then DEPS_TO_INSTALL+=("zlib"); fi

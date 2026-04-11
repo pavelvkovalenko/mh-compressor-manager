@@ -83,15 +83,23 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ============================================================================
 find_package(PkgConfig REQUIRED)
 
-# zlib - сжатие Gzip
+# zlib - сжатие Gzip (fallback если libdeflate недоступна)
 pkg_check_modules(ZLIB QUIET zlib)
-if(NOT ZLIB_FOUND)
-    message(FATAL_ERROR 
-        "zlib library not found!\n"
-        "Please install zlib development package:\n"
-        "  - Debian/Ubuntu: sudo apt-get install zlib1g-dev\n"
-        "  - RHEL/CentOS/Fedora: sudo dnf install zlib-devel\n"
-        "  - openSUSE: sudo zypper install zlib-devel"
+
+# libdeflate — современная замена zlib, 1.5-2x быстрее при том же ratio
+pkg_check_modules(LIBDEFLATE QUIET libdeflate)
+if(LIBDEFLATE_FOUND)
+    message(STATUS "libdeflate found — using for gzip (1.5-2x faster than zlib)")
+    add_definitions(-DHAVE_LIBDEFLATE)
+elseif(ZLIB_FOUND)
+    message(STATUS "libdeflate not found — using zlib (slower)")
+else()
+    message(FATAL_ERROR
+        "Neither libdeflate nor zlib found!\n"
+        "Please install libdeflate (preferred) or zlib:\n"
+        "  - Fedora: sudo dnf install libdeflate-devel\n"
+        "  - Debian/Ubuntu: sudo apt-get install libdeflate-dev\n"
+        "  - Fallback: sudo dnf install zlib-devel"
     )
 endif()
 
@@ -167,6 +175,7 @@ set(SOURCES
     performance_optimizer.cpp
     pipeline.cpp
     numa_utils.cpp
+    cache_info.cpp
 )
 
 set(HEADERS
@@ -181,6 +190,7 @@ set(HEADERS
     performance_optimizer.h
     pipeline.h
     numa_utils.h
+    cache_info.h
 )
 
 # ============================================================================
@@ -228,12 +238,25 @@ endif()
 # ============================================================================
 # Линковка библиотек
 # ============================================================================
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    ${ZLIB_LIBRARIES}
-    ${BROTLI_LIBRARIES}
-    ${SYSTEMD_LIBRARIES}
-    pthread
-)
+# zlib всегда нужен — старый compress_gzip() использует deflate*
+# libdeflate — опционально, для ускорения gzip из памяти
+if(LIBDEFLATE_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        ${LIBDEFLATE_LIBRARIES}
+        -lz                # zlib всегда нужен для старого compress_gzip()
+        ${BROTLI_LIBRARIES}
+        ${SYSTEMD_LIBRARIES}
+        pthread
+    )
+    target_include_directories(${PROJECT_NAME} PRIVATE ${LIBDEFLATE_INCLUDE_DIRS})
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        -lz                # zlib
+        ${BROTLI_LIBRARIES}
+        ${SYSTEMD_LIBRARIES}
+        pthread
+    )
+endif()
 
 # Добавляем fmt если используется вместо std::format
 if(NOT HAS_STD_FORMAT)

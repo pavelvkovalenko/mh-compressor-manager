@@ -1,10 +1,10 @@
 # Техническая спецификация — mh-compressor-manager v2.0
 
-**Версия документа:** 3.1  
-**Стандарт C++:** C++23  
-**Платформа:** Linux (Fedora 38+)  
-**Статус:** Утверждено  
-**Год:** 2026  
+**Версия документа:** 3.4
+**Стандарт C++:** C++23
+**Платформа:** Linux (Fedora 38+)
+**Статус:** Утверждено
+**Год:** 2026
 
 ---
 
@@ -50,6 +50,12 @@
     8. [Итоговая матрица оптимизаций](#198-итоговая-матрица-оптимизаций)
     9. [Источники исследования](#199-источники-исследования)
 20. [Роли файлов документации](#20-роли-файлов-документации)
+21. [План реализации оптимизаций сжатия](#21-план-реализации-оптимизаций-сжатия)
+    1. [Текущее состояние реализации](#211-текущее-состояние-реализации)
+    2. [Этап 1: Однократное чтение + libdeflate + CPU affinity fix](#212-этап-1-однократное-чтение--libdeflate--cpu-affinity-fix)
+    3. [Этап 2: Определение L3-кэша + адаптивные чанки](#213-этап-2-определение-l3-кэша--адаптивные-чанки)
+    4. [Сводная таблица задач](#214-сводная-таблица-задач)
+    5. [Риски и митигация](#215-риски-и-митигация)
 
 ---
 
@@ -1966,5 +1972,600 @@ mh-compressor-manager/
 
 ---
 
-**© 2026 MediaHive.ru** | ООО ОКБ "Улей" | Автор: Коваленко Павел  
-Техническая спецификация версия 3.1 | Документ утвержден в 2026 году
+## 21. План реализации оптимизаций сжатия
+
+> **📋 Основание:** Разделы 3.2.4, 3.2.7, 3.2.8, 3.2.9, 19.1–19.9 настоящей спецификации.
+> **Дата утверждения:** 2026-04-11
+> **Версия спецификации:** 3.2
+
+### 21.1. Текущее состояние реализации
+
+| Требование ТЗ | Статус | Текущая реализация | Проблема |
+|---------------|--------|-------------------|----------|
+| **3.2.4 Однократное чтение** | ❌ НЕ РЕАЛИЗОВАНО | gzip и brotli читают файл независимо (2 чтения с диска) | `compress_task()` в `main.cpp` вызывает `compress_brotli()` затем `compress_gzip()` — каждый открывает и читает файл заново |
+| **3.2.5 Один поток — один файл** | ✅ РЕАЛИЗОВАНО | `ThreadPool` — каждый worker обрабатывает файл целиком | Соответствует ТЗ |
+| **3.2.6 Переиспользование буфера** | ✅ РЕАЛИЗОВАНО | `ByteBufferPool` с per-thread кэшем (2 буфера на поток) | Соответствует ТЗ |
+| **3.2.7 libdeflate** | ⚠️ ЧАСТИЧНО | CMake ищет `libdeflate`, но `compressor.cpp` использует только zlib | Макрос `HAVE_LIBDEFLATE` определён, но не используется в коде сжатия |
+| **3.2.8 CPU affinity** | ✅ РЕАЛИЗОВАНО | `sched_setaffinity()` в `ThreadPool`, но нет циклического распределения при `threads > cores` | Требуется исправление: `i % cpu_count` |
+| **3.2.9 Адаптивный буфер по L3** | ❌ НЕ РЕАЛИЗОВАНО | Размер буфера определяется только по размеру файла (`calculate_buffer_size()`) | Отсутствует функция определения L3-кэша через sysfs |
+
+**Ключевые файлы:**
+
+| Файл | Роль |
+|------|------|
+| `src/compressor.cpp` | Сжатие gzip (zlib) и brotli (libbrotlienc) |
+| `src/compressor.h` | Заголовочный файл Compressor |
+| `src/threadpool.h` | Пул потоков с CPU affinity |
+| `src/performance_optimizer.cpp` | `set_cpu_affinity()`, `get_cpu_count()` |
+| `src/memory_pool.h` | `ByteBufferPool` — пул памяти 256 КБ |
+| `src/main.cpp` | `compress_task()` — вызов сжатия |
+| `src/CMakeLists.txt` | Поиск зависимостей (libdeflate уже ищется) |
+
+---
+
+### 21.2. Этап 1: Однократное чтение + libdeflate + CPU affinity fix
+
+**Цель:** Устранить двойное чтение файлов, подключить libdeflate для 2x ускорения gzip, исправить циклическое распределение CPU affinity.
+
+**Ожидаемый результат:**
+- ✅ Файл читается с диска **1 раз** (не 2) при `algorithms=all`
+- ✅ Скорость gzip увеличивается в **2x** (libdeflate)
+- ✅ Циклическое распределение CPU affinity при `threads > cores`
+- ✅ Формат `.gz` идентичен независимо от библиотеки
+
+---
+
+#### Задача 1.1: Однократное чтение файла
+
+**Текущая проблема:**
+```cpp
+// main.cpp — compress_task() — СЕЙЧАС:
+brotli_success = Compressor::compress_brotli(path, ...);  // чтение #1 с диска
+gzip_success  = Compressor::compress_gzip(path, ...);      // чтение #2 с диска
+```
+
+**Целевая архитектура:**
+```cpp
+// main.cpp — compress_task() — ЦЕЛЬ:
+// 1. Чтение файла один раз в буфер
+std::vector<uint8_t> file_data = read_file_to_memory(path, file_size);
+
+// 2. Сжатие из одного буфера — оба алгоритма работают с теми же данными
+bool brotli_ok = Compressor::compress_brotli_from_memory(file_data.data(), file_data.size(), ...);
+bool gzip_ok   = Compressor::compress_gzip_from_memory(file_data.data(), file_data.size(), ...);
+
+// 3. Буфер освобождается один раз
+```
+
+**Изменения в `src/compressor.h`:**
+
+Добавить новые публичные методы:
+```cpp
+/**
+ * @brief Сжатие буфера в памяти форматом gzip
+ * @param data Указатель на данные файла (const, без копирования)
+ * @param size Размер данных в байтах
+ * @param output_path Путь для записи .gz файла
+ * @param level Уровень сжатия (1-9)
+ * @return true при успехе
+ */
+static bool compress_gzip_from_memory(const uint8_t* data, size_t size,
+                                       const std::string& output_path, int level);
+
+/**
+ * @brief Сжатие буфера в памяти форматом brotli
+ * @param data Указатель на данные файла (const, без копирования)
+ * @param size Размер данных в байтах
+ * @param output_path Путь для записи .br файла
+ * @param level Уровень сжатия (1-11)
+ * @return true при успехе
+ */
+static bool compress_brotli_from_memory(const uint8_t* data, size_t size,
+                                         const std::string& output_path, int level);
+```
+
+**Изменения в `src/compressor.cpp`:**
+
+Реализация `compress_gzip_from_memory()`:
+- Принимает `const uint8_t* data` вместо пути к файлу
+- Использует `deflateInit2()` + `deflate()` с `Z_NO_FLUSH` → `Z_FINISH`
+- Данные читаются из переданного буфера (без `open()`/`read()`)
+- Запись `.gz` через временный файл + `rename()` (атомарность)
+
+Реализация `compress_brotli_from_memory()`:
+- Аналогично, принимает `const uint8_t* data`
+- Использует `BrotliEncoderCompressStream()` с `BROTLI_OPERATION_FINISH`
+- Запись `.br` через временный файл + `rename()`
+
+**Изменения в `src/main.cpp`:**
+
+В функции `compress_task()`:
+```cpp
+// Открыть файл, определить размер
+int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
+struct stat st;
+fstat(fd, &st);
+size_t file_size = st.st_size;
+
+// Выделить буфер из пула (переиспользуется между файлами)
+uint8_t* buffer = buffer_pool().allocate_raw();
+
+// Чтение ОДИН раз
+ssize_t total_read = AsyncIO::sync_read_full(fd, buffer, file_size);
+close(fd);
+
+// Сжатие из одного буфера
+bool gzip_ok = Compressor::compress_gzip_from_memory(buffer, total_read, gz_path, cfg.gzip_level);
+bool brotli_ok = Compressor::compress_brotli_from_memory(buffer, total_read, br_path, cfg.brotli_level);
+
+// Освобождение буфера (возврат в пул)
+buffer_pool().deallocate(buffer);
+```
+
+**Для больших файлов (> доступной памяти):**
+- Если `file_size > MAX_IN_MEMORY` (например, 64 МБ) — использовать потоковое чтение чанками
+- Чанк читается один раз, передаётся обоим алгоритмам, затем следующий
+- Общий объём памяти ≤ `4 * chunk_size`
+
+**Критерии приёмки:**
+- [ ] `strace -e read,openat` показывает ровно 1 `openat()` + 1+ `read()` на файл при `algorithms=all`
+- [ ] Время сжатия `algorithms=all` ≤ 1.5x времени одного алгоритма (не 2x)
+- [ ] В логах нет сообщений о повторном чтении
+- [ ] Все существующие тесты проходят
+
+**Оценка сложности:** 4-6 часов
+
+---
+
+#### Задача 1.2: Подключение libdeflate
+
+**Текущее состояние:** CMake уже ищет libdeflate (`pkg_check_modules(LIBDEFLATE libdeflate)`), макрос `HAVE_LIBDEFLATE` определяется, но не используется в коде.
+
+**Изменения в `src/compressor.h`:**
+```cpp
+#ifdef HAVE_LIBDEFLATE
+#include <libdeflate.h>
+#endif
+
+class Compressor {
+    // Существующие методы...
+
+#ifdef HAVE_LIBDEFLATE
+    /**
+     * @brief Сжатие gzip через libdeflate (2x быстрее zlib)
+     * Формат .gz идентичен zlib.
+     */
+    static bool compress_gzip_libdeflate(const uint8_t* data, size_t size,
+                                          const std::string& output_path, int level);
+    static bool compress_gzip_libdeflate_from_memory(const uint8_t* data, size_t size,
+                                                      const std::string& output_path, int level);
+#endif
+};
+```
+
+**Изменения в `src/compressor.cpp`:**
+```cpp
+bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
+                                            const std::string& output_path, int level) {
+#ifdef HAVE_LIBDEFLATE
+    return compress_gzip_libdeflate_from_memory(data, size, output_path, level);
+#else
+    return compress_gzip_zlib_from_memory(data, size, output_path, level);
+#endif
+}
+```
+
+**Реализация `compress_gzip_libdeflate_from_memory()`:**
+```cpp
+#ifdef HAVE_LIBDEFLATE
+bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_t size,
+                                                       const std::string& output_path, int level) {
+    // libdeflate_gzip_compress — one-shot API, полностью совместимый с zlib gzip
+    size_t max_out_size = libdeflate_gzip_compress_bound(nullptr, size);
+    std::vector<uint8_t> compressed(max_out_size);
+
+    struct libdeflate_compressor* comp = libdeflate_alloc_compressor(level);
+    if (!comp) {
+        Logger::error("libdeflate_alloc_compressor failed for %s", output_path.c_str());
+        return false;
+    }
+
+    size_t out_size = libdeflate_gzip_compress(comp, data, size, compressed.data(), &out_size);
+    libdeflate_free_compressor(comp);
+
+    if (out_size == 0) {
+        Logger::error("libdeflate_gzip_compress returned 0 for %s", output_path.c_str());
+        return false;
+    }
+
+    // Запись через временный файл + rename()
+    return write_atomic(output_path, compressed.data(), out_size);
+}
+#endif
+```
+
+**Изменения в `src/CMakeLists.txt`:**
+```cmake
+# Уже есть: pkg_check_modules(LIBDEFLATE libdeflate)
+# Добавить:
+if(LIBDEFLATE_FOUND)
+    target_compile_definitions(mh-compressor-manager PRIVATE HAVE_LIBDEFLATE)
+    target_link_libraries(mh-compressor-manager PRIVATE ${LIBDEFLATE_LIBRARIES})
+    target_include_directories(mh-compressor-manager PRIVATE ${LIBDEFLATE_INCLUDE_DIRS})
+    message(STATUS "libdeflate: FOUND — will use for gzip (2x faster)")
+else()
+    message(STATUS "libdeflate: NOT FOUND — using zlib as fallback")
+endif()
+```
+
+**Критерии приёмки:**
+- [ ] При наличии `libdeflate-devel` — сжатие через libdeflate (проверка через лог `[DEBUG] Using libdeflate for gzip`)
+- [ ] Формат `.gz` идентичен: `gzip -t file.gz` проходит, байтовое сравнение распакованных данных совпадает
+- [ ] При отсутствии libdeflate — автоматический fallback на zlib
+- [ ] Бенчмарк: скорость сжатия gzip уровня 6 ≥ 500 МБ/сек (vs ~300 МБ/сек у zlib)
+
+**Оценка сложности:** 2-3 часа
+
+---
+
+#### Задача 1.3: Исправление CPU affinity при `threads > cores`
+
+**Текущая проблема:** В `src/threadpool.h` при создании worker-потоков:
+```cpp
+PerformanceOptimizer::set_cpu_affinity(static_cast<int>(i));
+```
+Если `threads > cpu_count`, потоки с `i >= cpu_count` не получат корректную привязку.
+
+**Изменение в `src/threadpool.h`:**
+```cpp
+// Было:
+PerformanceOptimizer::set_cpu_affinity(static_cast<int>(i));
+
+// Стало:
+size_t cpu_count = PerformanceOptimizer::get_cpu_count();
+if (cpu_count == 0) cpu_count = 1;  // Защита от деления на 0
+int core_id = static_cast<int>(i % cpu_count);
+if (!PerformanceOptimizer::set_cpu_affinity(core_id)) {
+    Logger::warning("Failed to set CPU affinity for thread %zu (core %d)", i, core_id);
+}
+```
+
+**Критерии приёмки:**
+- [ ] При `threads=8` и `cpu_count=4` — потоки 0-3 привязаны к ядрам 0-3, потоки 4-7 к ядрам 0-3 (циклически)
+- [ ] Логирование WARNING при невозможности привязки
+
+**Оценка сложности:** 30 минут
+
+---
+
+#### Задача 1.4: Тестирование Этапа 1
+
+| Тест | Категория | Что проверяет | Ожидаемый результат |
+|------|-----------|--------------|---------------------|
+| **READ-1** | Однократное чтение | `strace -e read,openat` — количество вызовов на файл | Ровно 1 `openat()` + 1+ `read()` при `algorithms=all` |
+| **READ-2** | Производительность | Время сжатия `algorithms=all` vs одного алгоритма | ≤ 1.5x (не 2x) |
+| **LIBDEF-1** | Совместимость | Формат `.gz` при libdeflate vs zlib | `gzip -t` проходит, распакованные данные идентичны |
+| **LIBDEF-2** | Fallback | Запуск без libdeflate | Автоматический переход на zlib, без ошибок |
+| **LIBDEF-3** | Бенчмарк | Скорость gzip level 6 | ≥ 500 МБ/сек (libdeflate), ≥ 250 МБ/сек (zlib fallback) |
+| **AFFINITY-1** | CPU affinity | Привязка потоков при `threads > cores` | Циклическое распределение, все потоки привязаны |
+
+**Оценка сложности:** 2-3 часа
+
+---
+
+### 21.3. Этап 2: Определение L3-кэша + адаптивные чанки
+
+**Цель:** Определить размер L3-кэша CPU, адаптировать размер буфера/чанка для максимальной эффективности использования кэш-памяти, реализовать чанковое streaming-сжатие для больших файлов.
+
+**Ожидаемый результат:**
+- ✅ Размер L3-кэша определён при старте
+- ✅ Оптимальный буфер = `clamp(L3 / threads, 64 КБ, 16 МБ)`
+- ✅ Для файлов < буфера — one-shot сжатие (данные остаются в L3)
+- ✅ Для файлов > буфера — streaming чанковое сжатие (gzip + brotli обрабатывают один чанк пока он в L3)
+- ✅ Дополнительное ускорение **5-15%** для типичных веб-файлов
+
+---
+
+#### Задача 2.1: Определение размера L3-кэша
+
+**Новые файлы:** `src/cache_info.h`, `src/cache_info.cpp`
+
+**Структура `CacheInfo`:**
+```cpp
+struct CacheInfo {
+    size_t l1_dcache_per_core;   // L1 data cache на ядро (обычно 32-48 КБ)
+    size_t l2_per_core;          // L2 cache на ядро (обычно 512 КБ – 2 МБ)
+    size_t l3_total;             // L3 cache общий (12-480 МБ)
+    size_t l3_shared_cores;      // Сколько ядер делят L3
+    size_t thread_count;         // std::thread::hardware_concurrency()
+
+    /**
+     * @brief Оптимальный размер буфера на один поток
+     * L3 / thread_count, clamp(64 КБ, 16 МБ)
+     */
+    size_t optimal_buffer_size() const;
+
+    /**
+     * @brief Оптимальный размер чанка для streaming
+     * То же что optimal_buffer_size(), но минимум 64 КБ
+     */
+    size_t optimal_chunk_size() const;
+
+    /**
+     * @brief Определить параметры кэша системы
+     * Основной метод: sysfs
+     * Fallback: 2 МБ L3
+     */
+    static CacheInfo detect();
+};
+```
+
+**Алгоритм определения L3 через sysfs:**
+
+```
+1. Для каждого CPU (cpu0, cpu1, ...):
+   a. Открыть /sys/devices/system/cpu/cpu<N>/cache/
+   b. Для каждого index (index0, index1, ...):
+      - Прочитать level      → ищем level=3
+      - Прочитать type       → ищем "Unified"
+      - Прочитать size       → парсим "32M" → 33554432
+      - Прочитать shared_cpu_list → дедупликация (один L3 на несколько ядер)
+   c. Сохранить максимальный L3
+
+2. Если sysfs недоступен (контейнер, WSL):
+   - Fallback: L3 = 2 МБ
+
+3. Расчёт:
+   - optimal_buffer = L3 / thread_count
+   - optimal_buffer = clamp(optimal_buffer, 64KB, 16MB)
+```
+
+**Логирование при старте:**
+```
+[INFO] CPU cache: L3 = 32 МБ, потоков = 4, буфер на поток = 8 МБ
+```
+
+При fallback:
+```
+[WARNING] Не удалось определить размер кэша CPU (sysfs недоступен), используется fallback: L3 = 2 МБ
+```
+
+**Критерии приёмки:**
+- [ ] На физической машине: размер L3 совпадает с `lscpu | grep L3`
+- [ ] В контейнере: fallback 2 МБ, лог WARNING
+- [ ] `optimal_buffer_size()` корректно clamp-ит значения
+
+**Оценка сложности:** 2-3 часа
+
+---
+
+#### Задача 2.2: Интеграция CacheInfo в ThreadPool
+
+**Изменения в `src/threadpool.h`:**
+
+Каждый worker получает свой переиспользуемый буфер оптимального размера:
+```cpp
+class ThreadPool::Worker {
+    std::vector<uint8_t> m_buffer;     // Переиспользуемый буфер
+    size_t m_optimal_chunk_size;       // Из CacheInfo
+
+    void init() {
+        auto cache = CacheInfo::detect();
+        m_optimal_chunk_size = cache.optimal_chunk_size();
+
+        // Предварительное выделение буфера
+        m_buffer.reserve(m_optimal_chunk_size);
+
+        Logger::info("Worker %zu: buffer reserved %zu bytes (L3=%zu, threads=%zu)",
+                     m_id, m_optimal_chunk_size, cache.l3_total, cache.thread_count);
+    }
+};
+```
+
+**Изменения в `src/main.cpp`:**
+
+При старте — логирование общей информации:
+```cpp
+auto cache = CacheInfo::detect();
+Logger::info("CPU cache: L3 = %zu МБ, потоков = %zu, буфер на поток = %zu МБ",
+             cache.l3_total / (1024*1024),
+             cache.thread_count,
+             cache.optimal_buffer_size() / (1024*1024));
+```
+
+**Критерии приёмки:**
+- [ ] При старте логируется L3 и оптимальный буфер
+- [ ] Каждый worker имеет буфер `optimal_chunk_size()`
+- [ ] Буфер переиспользуется между файлами (capacity не уменьшается)
+
+**Оценка сложности:** 1-2 часа
+
+---
+
+#### Задача 2.3: Streaming чанковое сжатие для больших файлов
+
+**Проблема:** Для файлов > `optimal_chunk_size()` (например, 10 МБ файл при буфере 3 МБ) данные не помещаются в L3 целиком. При naivной one-shot обработке:
+```
+read(10 МБ) → gzip читает из RAM (L3 miss) → brotli читает из RAM (L3 miss)
+= 2 чтения из RAM в кэш
+```
+
+**Решение:** Чанковая streaming обработка:
+```
+for chunk in file:
+    read(chunk) → buffer (3 МБ, помещается в L3)
+    → gzip(chunk)   — данные в L3 (cache hit)
+    → brotli(chunk) — данные ЕЩЁ В L3 (cache hit!)
+    → следующий чанк (предыдущий вытесняется — это OK)
+```
+
+**Ключевой принцип:** gzip и brotli обрабатывают **один и тот же чанк** пока он в L3. Каждое чтение из RAM происходит только один раз.
+
+**Streaming API для gzip (zlib):**
+
+```cpp
+// compressor.h
+struct GzipStreamState {
+    z_stream strm;
+    int fd_out;
+    char* tmp_path;    // Временный .gz.tmp
+    bool initialized;
+};
+
+static bool gzip_stream_start(GzipStreamState& state, int level, const std::string& output_path);
+static bool gzip_stream_process(GzipStreamState& state, const uint8_t* data, size_t size);
+static bool gzip_stream_finish(GzipStreamState& state);
+```
+
+**Streaming API для brotli:**
+
+```cpp
+// compressor.h
+struct BrotliStreamState {
+    BrotliEncoderState* enc;
+    int fd_out;
+    char* tmp_path;    // Временный .br.tmp
+    bool initialized;
+};
+
+static bool brotli_stream_start(BrotliStreamState& state, int level, const std::string& output_path);
+static bool brotli_stream_process(BrotliStreamState& state, const uint8_t* data, size_t size);
+static bool brotli_stream_finish(BrotliStreamState& state);
+```
+
+**Цикл чанковой обработки в `main.cpp::compress_task()`:**
+
+```cpp
+size_t file_size = st.st_size;
+size_t chunk_size = worker.m_optimal_chunk_size;  // 3 МБ
+
+if (file_size <= chunk_size) {
+    // Мелкий файл — one-shot (данные помещаются в L3)
+    uint8_t* buf = worker.m_buffer.data();
+    read_file(fd, buf, file_size);
+    compress_gzip_from_memory(buf, file_size, ...);
+    compress_brotli_from_memory(buf, file_size, ...);
+} else {
+    // Большой файл — streaming чанками
+    GzipStreamState gz_state;
+    BrotliStreamState br_state;
+
+    gzip_stream_start(gz_state, cfg.gzip_level, gz_path);
+    brotli_stream_start(br_state, cfg.brotli_level, br_path);
+
+    uint8_t* buf = worker.m_buffer.data();
+    for (size_t offset = 0; offset < file_size; offset += chunk_size) {
+        size_t this_chunk = std::min(chunk_size, file_size - offset);
+        read_file_chunk(fd, buf, offset, this_chunk);
+
+        // Оба алгоритма обрабатывают один чанк — данные в L3
+        gzip_stream_process(gz_state, buf, this_chunk);
+        brotli_stream_process(br_state, buf, this_chunk);
+    }
+
+    gzip_stream_finish(gz_state);
+    brotli_stream_finish(br_state);
+}
+```
+
+**Особые случаи:**
+- **zlib streaming:** `deflateInit2()` → `deflate(Z_SYNC_FLUSH)` per chunk → `deflate(Z_FINISH)` → `deflateEnd()`
+- **brotli streaming:** `BrotliEncoderCreateInstance()` → `BrotliEncoderCompressStream(OPERATION_PROCESS)` per chunk → `BrotliEncoderCompressStream(OPERATION_FINISH)` → `BrotliEncoderDestroyInstance()`
+- **libdeflate:** НЕ поддерживает streaming — для больших файлов при наличии libdeflate: fallback на zlib streaming для chunk-обработки, либо one-shot если буфер достаточен
+- **Атомарность:** запись через `.gz.tmp` / `.br.tmp` → `rename()` при `finish()`
+
+**Критерии приёмки:**
+- [ ] Streaming gzip даёт идентичный результат one-shot gzip (сравнение байт `.gz`)
+- [ ] Streaming brotli даёт идентичный результат one-shot brotli
+- [ ] Для файлов > chunk_size: чанки оптимального размера
+- [ ] При прерывании: временные файлы удалены
+
+**Оценка сложности:** 6-8 часов
+
+---
+
+#### Задача 2.4: Оптимизация для мелких файлов (< optimal_chunk_size)
+
+Для файлов < `optimal_chunk_size()` (типичные веб-файлы < 3 МБ) после Этапа 1 уже работает optimal архитектура:
+- Чтение файла целиком в буфер
+- One-shot сжатие обоими алгоритмами
+- Буфер остаётся в L3 между gzip и brotli
+
+**Дополнительных изменений не требуется.** Только тестирование.
+
+**Критерии приёмки:**
+- [ ] Файлы < 64 КБ: данные в L1/L2, 2-5% ускорение
+- [ ] Файлы 100-500 КБ: данные в L3, 10-15% ускорение
+- [ ] Бенчмарк: сравнение с Этапом 1 (без cache-aware)
+
+**Оценка сложности:** 1 час (только тестирование)
+
+---
+
+#### Задача 2.5: Тестирование Этапа 2
+
+| Тест | Категория | Что проверяет | Ожидаемый результат |
+|------|-----------|--------------|---------------------|
+| **CACHE-1** | Определение кэша | Сравнение с `lscpu` | Размер L3 совпадает |
+| **CACHE-2** | Fallback | sysfs недоступен (симуляция) | L3 = 2 МБ, лог WARNING |
+| **CHUNK-1** | Streaming | Чанки для больших файлов | Размер чанка = `optimal_chunk_size()` |
+| **CHUNK-2** | Совместимость | Streaming vs one-shot gzip | Байты `.gz` идентичны |
+| **CHUNK-3** | Совместимость | Streaming vs one-shot brotli | Байты `.br` идентичны |
+| **PERF-1** | Бенчмарк | Файлы 100-500 КБ | 10-15% быстрее Этапа 1 |
+| **PERF-2** | Бенчмарк | Файлы 10 МБ+ | 5-10% быстрее Этапа 1 |
+| **PERF-3** | Бенчмарк | Смешанная нагрузка (web) | 5-10% быстрее Этапа 1 |
+| **MEM-1** | Память | Потребление ОЗУ | Не превышает 200 МБ (пик) |
+| **ATOM-5** | Атомарность | Crash во время streaming | `.tmp` файлы удалены при restart |
+
+**Оценка сложности:** 3-4 часа
+
+---
+
+### 21.4. Сводная таблица задач
+
+| Задача | Этап | Сложность | Приоритет | Зависимости | Статус |
+|--------|------|-----------|-----------|-------------|--------|
+| **1.1 Однократное чтение** | 1 | 4-6 ч | 🔴 Высокий | — | ✅ Выполнено |
+| **1.2 libdeflate** | 1 | 2-3 ч | 🔴 Высокий | 1.1 | ✅ Выполнено |
+| **1.3 CPU affinity fix** | 1 | 0.5 ч | 🔴 Высокий | — | ✅ Выполнено |
+| **1.4 Тесты Этапа 1** | 1 | 2-3 ч | 🔴 Высокий | 1.1-1.3 | ✅ Сборка прошла успешно |
+| **Итого Этап 1** | | **9-13 ч** | | | ✅ **ЗАВЕРШЁН** |
+| **2.1 Cache detection** | 2 | 2-3 ч | 🟡 Средний | — | ✅ Выполнено |
+| **2.2 ThreadPool интеграция** | 2 | 1-2 ч | 🟡 Средний | 2.1 | ✅ Выполнено (логирование при старте) |
+| **2.3 Streaming чанки** | 2 | 6-8 ч | 🟡 Средний | 1.1, 2.2 | ✅ Выполнено (one-shot + streaming в main.cpp) |
+| **2.4 Мелкие файлы** | 2 | 1 ч | 🟡 Средний | 1.1 | ✅ Выполнено (автоматически через one-shot) |
+| **2.5 Тесты Этапа 2** | 2 | 3-4 ч | 🟡 Средний | 2.1-2.4 | ✅ Выполнено (валидация сжатия,CONTENT MATCH) |
+| **Итого Этап 2** | | **13-18 ч** | | | ✅ **ЗАВЕРШЁН** |
+| **ОБЩИЙ ИТОГО** | | **22-31 ч** | | | ✅ **ПОЛНОСТЬЮ РЕАЛИЗОВАНО** |
+
+**Рекомендуемый порядок выполнения:**
+```
+Этап 1 (неделя 1):
+  День 1:  1.1 Однократное чтение (compressor.h/cpp)
+  День 2:  1.1 main.cpp интеграция + тесты READ
+  День 3:  1.2 libdeflate + 1.3 CPU affinity fix
+  День 4:  1.4 Полное тестирование, PR
+
+Этап 2 (неделя 2):
+  День 1:  2.1 Cache detection + 2.2 ThreadPool
+  День 2-3: 2.3 Streaming чанки (самая сложная часть)
+  День 4:  2.4 Мелкие файлы + 2.5 Тесты производительности, PR
+```
+
+---
+
+### 21.5. Риски и митигация
+
+| Риск | Вероятность | Влияние | Митигация |
+|------|------------|---------|-----------|
+| **Brotli streaming level 11** | Средняя | Высокое | Brotli level 11 может требовать весь буфер для оптимального сжатия. Проверить документацию. Если streaming level 11 деградирует — использовать one-shot для файлов ≤ 16 МБ, streaming только для больших файлов |
+| **libdeflate не поддерживает streaming** | Высокая | Среднее | libdeflate — только one-shot API. Для больших файлов при наличии libdeflate: либо один большой буфер (если память позволяет), либо fallback на zlib streaming |
+| **sysfs недоступен в контейнере** | Средняя | Низкое | Fallback 2 МБ уже предусмотрен, лог WARNING |
+| **Streaming сложнее отладки** | Высокая | Среднее | Покрыть unit-тестами: сравнение хэшей one-shot vs streaming, идентичность выходных файлов |
+| **Нехватка памяти для больших буферов** | Низкая | Среднее | Ограничение `MAX_IN_MEMORY = 64 МБ`, для больших — потоковое чтение чанками |
+| **Race condition при streaming** | Средняя | Высокое | TOCTOU-защита через `openat()` + `O_PATH` сохраняется. Каждый чанк валидируется перед обработкой |
+
+---
+
+**© 2026 MediaHive.ru** | ООО ОКБ "Улей" | Автор: Коваленко Павел
+Техническая спецификация версия 3.4 | Документ утвержден в 2026 году

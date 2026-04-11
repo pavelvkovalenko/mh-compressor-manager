@@ -4,6 +4,12 @@
 #include "monitor.h"
 #include "threadpool.h"
 #include "security.h"
+#include "async_io.h"
+#include "memory_pool.h"
+#include "cache_info.h"
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <systemd/sd-daemon.h>
 #include <csignal>
@@ -93,6 +99,7 @@ struct PerformanceMetrics {
 };
 
 PerformanceMetrics g_metrics;
+CacheInfo g_cache;  // Кэш CPU (определяется при старте, ТЗ §3.2.9)
 
 // Безопасное получение копии указателя на конфигурацию
 std::shared_ptr<Config> get_config() {
@@ -428,59 +435,213 @@ void compress_task(const fs::path& path) {
             ? *cfg->folder_overrides[*override_idx].compression_level_brotli
             : cfg->brotli_level;
 
-        // Приоритет brotli если включен - сначала сжимаем brotli (лучшее сжатие)
-        bool prefer_brotli = (cfg->algorithms == "all" || cfg->algorithms == "brotli");
+        // === ОДНОКРАТНОЕ ЧТЕНИЕ (ТЗ §3.2.4) ===
+        // Открываем файл один раз, читаем в буфер, сжимаем из буфера оба формата
+        int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
+        if (fd < 0) {
+            Logger::error(std::format("Failed to open file for reading: {} - {}", path.string(), strerror(errno)));
+            g_metrics.failed_tasks++;
+            return;
+        }
 
-        if (prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
-            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", brotli_level);
-            if (brotli_success) {
-                // Безопасная проверка существования файла через lstat после сжатия
-                struct stat br_st;
-                if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
-                    Compressor::copy_metadata(path, path.string() + ".br");
-                    try {
-                        compressed_size += fs::file_size(path.string() + ".br");
-                    } catch (const fs::filesystem_error& e) {
-                        Logger::warning(std::format("Cannot get compressed file size: {} - {}", path.string() + ".br", e.what()));
-                    } catch (const std::exception& e) {
-                        Logger::warning(std::format("Error getting compressed file size: {} - {}", path.string() + ".br", e.what()));
+        struct stat st;
+        if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+            close(fd);
+            Logger::error(std::format("Not a regular file: {}", path.string()));
+            g_metrics.failed_tasks++;
+            return;
+        }
+
+        size_t file_size = static_cast<size_t>(st.st_size);
+
+        // Определяем размер чанка на основе кэша CPU (ТЗ §3.2.9)
+        // CacheInfo уже определён в main() — используем глобальное значение
+        size_t chunk_size = g_cache.optimal_chunk_size();
+
+        // Порог переключения: файлы <= chunk_size — one-shot, > chunk_size — streaming
+        // Ограничиваем максимум размером буфера пула (256 КБ по умолчанию) для защиты от EFAULT
+        constexpr size_t BUFFER_CAPACITY = 262144;  // ByteBufferPool BASE_BUFFER_SIZE
+        size_t effective_chunk = std::min(chunk_size, BUFFER_CAPACITY);
+
+        bool use_streaming = (file_size > effective_chunk);
+
+        if (!use_streaming) {
+            // === ONE-SHOT: файл помещается в память целиком ===
+            // Выделяем буфер из пула (переиспользуется между файлами)
+            uint8_t* buffer = buffer_pool().allocate_raw();
+            if (!buffer) {
+                close(fd);
+                Logger::error(std::format("Failed to allocate buffer for reading: {}", path.string()));
+                g_metrics.failed_tasks++;
+                return;
+            }
+
+            // Чтение файла ОДИН раз
+            ssize_t total_read = 0;
+            size_t remaining = file_size;
+            uint8_t* ptr = buffer;
+            while (remaining > 0) {
+                ssize_t n = read(fd, ptr, remaining);
+                if (n < 0) {
+                    if (errno == EINTR) continue;
+                    Logger::error(std::format("Failed to read file {}: {} - {}", path.string(), remaining, strerror(errno)));
+                    break;
+                }
+                if (n == 0) break;  // EOF
+                ptr += n;
+                total_read += n;
+                remaining -= n;
+            }
+            close(fd);
+
+            if (static_cast<size_t>(total_read) != file_size) {
+                Logger::warning(std::format("Partial read: expected {} bytes, got {} bytes for {}", file_size, total_read, path.string()));
+            }
+
+            // Сжатие из одного буфера (данные остаются в L3 кэше CPU)
+            bool prefer_brotli = (cfg->algorithms == "all" || cfg->algorithms == "brotli");
+
+            if (prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
+                brotli_success = Compressor::compress_brotli_from_memory(buffer, total_read, path.string() + ".br", brotli_level);
+                if (brotli_success) {
+                    struct stat br_st;
+                    if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
+                        Compressor::copy_metadata(path, path.string() + ".br");
+                        try { compressed_size += fs::file_size(path.string() + ".br"); } catch (...) {}
                     }
                 }
             }
-        }
 
-        if (cfg->algorithms == "all" || cfg->algorithms == "gzip") {
-            gzip_success = Compressor::compress_gzip(path, path.string() + ".gz", gzip_level);
-            if (gzip_success) {
-                // Безопасная проверка существования файла через lstat после сжатия
-                struct stat gz_st;
-                if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
-                    Compressor::copy_metadata(path, path.string() + ".gz");
-                    try {
-                        compressed_size += fs::file_size(path.string() + ".gz");
-                    } catch (const fs::filesystem_error& e) {
-                        Logger::warning(std::format("Cannot get compressed file size: {} - {}", path.string() + ".gz", e.what()));
-                    } catch (const std::exception& e) {
-                        Logger::warning(std::format("Error getting compressed file size: {} - {}", path.string() + ".gz", e.what()));
+            if (cfg->algorithms == "all" || cfg->algorithms == "gzip") {
+                gzip_success = Compressor::compress_gzip_from_memory(buffer, total_read, path.string() + ".gz", gzip_level);
+                if (gzip_success) {
+                    struct stat gz_st;
+                    if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
+                        Compressor::copy_metadata(path, path.string() + ".gz");
+                        try { compressed_size += fs::file_size(path.string() + ".gz"); } catch (...) {}
                     }
                 }
             }
-        }
 
-        // Если brotli не был выполнен первым (только gzip режим)
-        if (!prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
-            brotli_success = Compressor::compress_brotli(path, path.string() + ".br", brotli_level);
-            if (brotli_success) {
-                // Безопасная проверка существования файла через lstat после сжатия
-                struct stat br_st;
-                if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
-                    Compressor::copy_metadata(path, path.string() + ".br");
-                    try {
-                        compressed_size += fs::file_size(path.string() + ".br");
-                    } catch (const fs::filesystem_error& e) {
-                        Logger::warning(std::format("Cannot get compressed file size: {} - {}", path.string() + ".br", e.what()));
-                    } catch (const std::exception& e) {
-                        Logger::warning(std::format("Error getting compressed file size: {} - {}", path.string() + ".br", e.what()));
+            if (!prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
+                brotli_success = Compressor::compress_brotli_from_memory(buffer, total_read, path.string() + ".br", brotli_level);
+                if (brotli_success) {
+                    struct stat br_st;
+                    if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
+                        Compressor::copy_metadata(path, path.string() + ".br");
+                        try { compressed_size += fs::file_size(path.string() + ".br"); } catch (...) {}
+                    }
+                }
+            }
+
+            buffer_pool().release_raw(buffer);
+        } else {
+            // === STREAMING: чанковое сжатие для больших файлов (ТЗ §21.3-Задача 2.3) ===
+            // Читаем чанками, оба алгоритма обрабатывают один чанк пока он в L3
+            Logger::debug(std::format("Using streaming compression for {} ({} bytes, chunk = {} bytes)",
+                                       path.string(), file_size, effective_chunk));
+
+            Compressor::GzipStreamState gz_state;
+            Compressor::BrotliStreamState br_state;
+
+            bool gzip_started = false;
+            bool brotli_started = false;
+
+            // Запускаем streaming для включённых алгоритмов
+            bool prefer_brotli = (cfg->algorithms == "all" || cfg->algorithms == "brotli");
+
+            if (prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
+                brotli_started = Compressor::brotli_stream_start(br_state, brotli_level, path.string() + ".br", st.st_mode);
+            }
+
+            if (cfg->algorithms == "all" || cfg->algorithms == "gzip") {
+                gzip_started = Compressor::gzip_stream_start(gz_state, gzip_level, path.string() + ".gz", st.st_mode);
+            }
+
+            if (!brotli_started && !gzip_started) {
+                close(fd);
+                Logger::error(std::format("No compression algorithms enabled for {}", path.string()));
+                g_metrics.failed_tasks++;
+                return;
+            }
+
+            // Выделяем чанк-буфер
+            uint8_t* buffer = buffer_pool().allocate_raw();
+            if (!buffer) {
+                close(fd);
+                Logger::error(std::format("Failed to allocate streaming buffer: {}", path.string()));
+                g_metrics.failed_tasks++;
+                return;
+            }
+
+            // Читаем и сжимаем чанками
+            size_t offset = 0;
+            bool stream_error = false;
+
+            while (offset < file_size && !stream_error) {
+                size_t this_chunk = std::min(effective_chunk, file_size - offset);
+                ssize_t bytes_read = 0;
+                size_t remaining_read = this_chunk;
+                uint8_t* ptr = buffer;
+
+                while (remaining_read > 0) {
+                    ssize_t n = read(fd, ptr, remaining_read);
+                    if (n < 0) {
+                        if (errno == EINTR) continue;
+                        Logger::error(std::format("Streaming read error at offset {}: {}", offset, strerror(errno)));
+                        stream_error = true;
+                        break;
+                    }
+                    if (n == 0) break;
+                    ptr += n;
+                    bytes_read += n;
+                    remaining_read -= n;
+                }
+
+                if (stream_error) break;
+
+                offset += this_chunk;
+                bool is_last = (offset >= file_size);
+
+                // Оба алгоритма обрабатывают один чанк — данные в L3 кэше
+                if (brotli_started) {
+                    if (!Compressor::brotli_stream_process(br_state, buffer, bytes_read, is_last)) {
+                        Logger::error(std::format("Brotli streaming error for {}", path.string()));
+                        brotli_success = false;
+                        stream_error = true;
+                    }
+                }
+
+                if (gzip_started) {
+                    if (!Compressor::gzip_stream_process(gz_state, buffer, bytes_read, is_last)) {
+                        Logger::error(std::format("Gzip streaming error for {}", path.string()));
+                        gzip_success = false;
+                        stream_error = true;
+                    }
+                }
+            }
+
+            close(fd);
+            buffer_pool().release_raw(buffer);
+
+            // Если не было ошибок streaming — считаем успешным
+            if (!stream_error) {
+                if (gzip_started && !gz_state.has_error) gzip_success = true;
+                if (brotli_started && !br_state.has_error) brotli_success = true;
+
+                // Копируем метаданные на сжатые файлы
+                if (gzip_success) {
+                    struct stat gz_st;
+                    if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
+                        Compressor::copy_metadata(path, path.string() + ".gz");
+                        try { compressed_size += fs::file_size(path.string() + ".gz"); } catch (...) {}
+                    }
+                }
+                if (brotli_success) {
+                    struct stat br_st;
+                    if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
+                        Compressor::copy_metadata(path, path.string() + ".br");
+                        try { compressed_size += fs::file_size(path.string() + ".br"); } catch (...) {}
                     }
                 }
             }
@@ -589,6 +750,14 @@ int main(int argc, char* argv[]) {
     // Инициализация логгера ДО сброса привилегий (чтобы логи писались от root)
     Logger::init("mh-compressor-manager", g_cfg->debug);
     Logger::info("Starting mh-compressor-manager");
+
+    // Определение параметров кэша CPU для оптимизации буферов (ТЗ §3.2.9)
+    g_cache = CacheInfo::detect();
+    Logger::info(std::format("CPU cache: L3 = {} МБ, потоков = {}, буфер на поток = {} КБ",
+                              g_cache.l3_total / (1024 * 1024),
+                              g_cache.thread_count,
+                              g_cache.optimal_buffer_size() / 1024));
+
     Logger::info(std::format("Target paths: {}", g_cfg->target_paths.size()));
     for (const auto& p : g_cfg->target_paths) {
         Logger::info(std::format("  - {}", p));

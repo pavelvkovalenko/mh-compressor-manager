@@ -3,6 +3,9 @@
 #include "memory_pool.h"
 #include "async_io.h"
 #include "performance_optimizer.h"
+#ifdef HAVE_LIBDEFLATE
+#include <libdeflate.h>
+#endif
 #include <fstream>
 #include <vector>
 #include <zlib.h>
@@ -64,7 +67,7 @@ constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
 // Пул буферов создаётся при первом сжатии (lazy), а не при старте процесса.
 // Иначе до main() выполнялась тяжёлая инициализация (mmap / NUMA), и даже
 // «mh-compressor-manager --help» зависал на заметное время.
-namespace {
+// Сделана публичной для использования из main.cpp (однократное чтение, ТЗ §3.2.4)
 ByteBufferPool& buffer_pool() {
     static ByteBufferPool pool(16, -1, ByteBufferPool::MAX_POOL_SIZE);
     return pool;
@@ -75,7 +78,6 @@ std::atomic<size_t>& pool_shrink_counter() {
     static std::atomic<size_t> counter{0};
     return counter;
 }
-}  // namespace
 
 // Выравнивание для O_DIRECT (должно быть кратно размеру сектора, обычно 512 байт)
 constexpr size_t DIRECT_IO_ALIGNMENT = 4096;
@@ -1404,5 +1406,487 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         }
     }
     
+    return true;
+}
+
+// ============================================================================
+// Однократное чтение: сжатие из буфера в памяти (ТЗ §3.2.4)
+// ============================================================================
+
+/**
+ * @brief Атомарная запись в файл через временный файл + rename()
+ * Используется функциями compress_*_from_memory
+ */
+namespace {
+bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t size, mode_t mode) {
+    // Создаём временный файл
+    std::string tmp_path_str = output_path.string() + ".tmp";
+    fs::path tmp_path = tmp_path_str;
+
+    int fd_out = open(tmp_path_str.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode);
+    if (fd_out < 0) {
+        int saved_errno = errno;
+        Logger::error(std::format("Failed to open temp file {}: {}", tmp_path_str, strerror(saved_errno)));
+        return false;
+    }
+
+    // Записываем все данные
+    size_t total_written = 0;
+    while (total_written < size) {
+        ssize_t written = write(fd_out, data + total_written, size - total_written);
+        if (written < 0) {
+            if (errno == EINTR) continue;
+            int saved_errno = errno;
+            close(fd_out);
+            unlink(tmp_path_str.c_str());
+            Logger::error(std::format("Failed to write temp file {}: {}", tmp_path_str, strerror(saved_errno)));
+            return false;
+        }
+        total_written += written;
+    }
+
+    // Синхронизируем и закрываем
+    if (fsync(fd_out) != 0) {
+        int saved_errno = errno;
+        close(fd_out);
+        unlink(tmp_path_str.c_str());
+        Logger::error(std::format("fsync failed for {}: {}", tmp_path_str, strerror(saved_errno)));
+        return false;
+    }
+    close(fd_out);
+
+    // Атомарное переименование
+    if (rename(tmp_path_str.c_str(), output_path.c_str()) != 0) {
+        int saved_errno = errno;
+        unlink(tmp_path_str.c_str());
+        Logger::error(std::format("rename failed {} -> {}: {}", tmp_path_str, output_path.string(), strerror(saved_errno)));
+        return false;
+    }
+
+    return true;
+}
+}  // namespace
+
+bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
+                                            const fs::path& output_path, int level) {
+    if (!data || size == 0) {
+        Logger::error("compress_gzip_from_memory: null data or zero size");
+        return false;
+    }
+
+    // Проверка диапазона уровня сжатия
+    if (!validate_compression_level(level, 1, 9)) {
+        Logger::warning(std::format("Invalid gzip level {}, using default 6", level));
+        level = 6;
+    }
+
+    // Определяем стратегию: libdeflate (2x быстрее) или zlib
+#ifdef HAVE_LIBDEFLATE
+    return compress_gzip_libdeflate_from_memory(data, size, output_path, level);
+#else
+    return compress_gzip_zlib_from_memory(data, size, output_path, level);
+#endif
+}
+
+bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
+                                              const fs::path& output_path, int level) {
+    if (!data || size == 0) {
+        Logger::error("compress_brotli_from_memory: null data or zero size");
+        return false;
+    }
+
+    // Проверка диапазона уровня сжатия
+    if (!validate_compression_level(level, 1, 11)) {
+        Logger::warning(std::format("Invalid brotli level {}, using default 4", level));
+        level = 4;
+    }
+
+    // Создаём кодировщик Brotli
+    BrotliEncoderState* state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
+    if (!state) {
+        Logger::error("Failed to create Brotli encoder");
+        return false;
+    }
+
+    BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, (uint32_t)level);
+    BrotliEncoderSetParameter(state, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
+
+    // Выделяем буфер вывода
+    size_t max_compressed_size = BrotliEncoderMaxCompressedSize(size);
+    std::vector<uint8_t> compressed(max_compressed_size);
+
+    const uint8_t* next_in = data;
+    size_t available_in = size;
+    uint8_t* next_out = compressed.data();
+    size_t available_out = max_compressed_size;
+
+    if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH,
+                                      &available_in, &next_in,
+                                      &available_out, &next_out,
+                                      nullptr)) {
+        Logger::error(std::format("Brotli compression stream error for output: {}", output_path.string()));
+        BrotliEncoderDestroyInstance(state);
+        return false;
+    }
+
+    size_t compressed_size = max_compressed_size - available_out;
+    BrotliEncoderDestroyInstance(state);
+
+    if (compressed_size == 0) {
+        Logger::error(std::format("Brotli produced zero bytes for output: {}", output_path.string()));
+        return false;
+    }
+
+    // Атомарная запись
+    if (!write_atomic_file(output_path, compressed.data(), compressed_size, 0644)) {
+        return false;
+    }
+
+    Logger::debug(std::format("Brotli compressed from memory: {} bytes -> {} bytes -> {}",
+                               size, compressed_size, output_path.string()));
+    return true;
+}
+
+// ============================================================================
+// zlib backend для compress_*_from_memory (fallback если libdeflate недоступен)
+// ============================================================================
+
+bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size,
+                                                  const fs::path& output_path, int level) {
+    // Проверка диапазона
+    if (!validate_compression_level(level, 1, 9)) {
+        level = 6;
+    }
+
+    // Определяем стратегию сжатия
+    int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
+
+    z_stream strm = {};
+    if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
+        Logger::error("Failed to init gzip stream (zlib)");
+        return false;
+    }
+
+    // Выделяем буфер вывода
+    size_t max_compressed_size = compressBound(size);
+    std::vector<uint8_t> compressed(max_compressed_size);
+
+    strm.avail_in = size;
+    strm.next_in = const_cast<uint8_t*>(data);  // zlib требует не-const, но не модифицирует
+    strm.avail_out = max_compressed_size;
+    strm.next_out = compressed.data();
+
+    // Сжимаем всё за один проход (one-shot для данных в памяти)
+    int ret = deflate(&strm, Z_FINISH);
+    if (ret != Z_STREAM_END) {
+        Logger::error(std::format("Gzip deflate error (zlib), ret={}", ret));
+        deflateEnd(&strm);
+        return false;
+    }
+
+    size_t compressed_size = max_compressed_size - strm.avail_out;
+    deflateEnd(&strm);
+
+    if (compressed_size == 0) {
+        Logger::error(std::format("Gzip produced zero bytes (zlib) for output: {}", output_path.string()));
+        return false;
+    }
+
+    // Атомарная запись
+    if (!write_atomic_file(output_path, compressed.data(), compressed_size, 0644)) {
+        return false;
+    }
+
+    Logger::debug(std::format("Gzip compressed from memory (zlib): {} bytes -> {} bytes -> {}",
+                               size, compressed_size, output_path.string()));
+    return true;
+}
+
+// ============================================================================
+// libdeflate backend для compress_gzip_from_memory (ТЗ §3.2.7, 2x быстрее zlib)
+// ============================================================================
+
+#ifdef HAVE_LIBDEFLATE
+bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_t size,
+                                                       const fs::path& output_path, int level) {
+    // Определяем максимальный размер сжатых данных
+    size_t max_out_size = libdeflate_gzip_compress_bound(nullptr, size);
+    std::vector<uint8_t> compressed(max_out_size);
+
+    // Создаём компрессор
+    struct libdeflate_compressor* comp = libdeflate_alloc_compressor(level);
+    if (!comp) {
+        Logger::error(std::format("libdeflate_alloc_compressor failed for {}", output_path.string()));
+        return false;
+    }
+
+    // Сжимаем
+    size_t actual_out_size = libdeflate_gzip_compress(comp, data, size, compressed.data(), max_out_size);
+    libdeflate_free_compressor(comp);
+
+    if (actual_out_size == 0) {
+        Logger::error(std::format("libdeflate_gzip_compress failed for {}", output_path.string()));
+        return false;
+    }
+
+    // Атомарная запись
+    if (!write_atomic_file(output_path, compressed.data(), actual_out_size, 0644)) {
+        return false;
+    }
+
+    Logger::debug(std::format("Gzip compressed from memory (libdeflate): {} bytes -> {} bytes -> {}",
+                               size, actual_out_size, output_path.string()));
+    return true;
+}
+#endif  // HAVE_LIBDEFLATE
+
+// ============================================================================
+// Streaming API для чанкового сжатия (ТЗ §3.2.9, §21.3, §21.3-Задача 2.3)
+// ============================================================================
+
+// Деструкторы
+Compressor::GzipStreamState::~GzipStreamState() {
+    if (strm) {
+        deflateEnd(strm);
+        delete strm;
+        strm = nullptr;
+    }
+    if (fd_out >= 0) {
+        close(fd_out);
+        fd_out = -1;
+    }
+    if (!tmp_path.empty()) {
+        unlink(tmp_path.c_str());
+    }
+}
+
+Compressor::BrotliStreamState::~BrotliStreamState() {
+    if (enc) {
+        BrotliEncoderDestroyInstance(enc);
+        enc = nullptr;
+    }
+    if (fd_out >= 0) {
+        close(fd_out);
+        fd_out = -1;
+    }
+    if (!tmp_path.empty()) {
+        unlink(tmp_path.c_str());
+    }
+}
+
+// GZIP streaming
+bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::path& output_path, mode_t src_mode) {
+    state.tmp_path = output_path.string() + ".tmp";
+    state.final_path = output_path.string();
+    state.has_error = false;
+
+    // Открываем временный файл
+    state.fd_out = open(state.tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, src_mode & 0666);
+    if (state.fd_out < 0) {
+        Logger::error(std::format("gzip_stream_start: failed to open temp file {}: {}", state.tmp_path, strerror(errno)));
+        state.has_error = true;
+        return false;
+    }
+
+    // Инициализируем deflate
+    state.strm = new z_stream();
+    memset(state.strm, 0, sizeof(z_stream));
+
+    int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
+    if (deflateInit2(state.strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
+        Logger::error("gzip_stream_start: deflateInit2 failed");
+        state.has_error = true;
+        return false;
+    }
+
+    state.initialized = true;
+    Logger::debug(std::format("gzip_stream_start: {}", output_path.string()));
+    return true;
+}
+
+bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data, size_t size, bool flush) {
+    if (state.has_error || !state.initialized || !state.strm) {
+        return false;
+    }
+
+    // Буфер вывода — 128 КБ (достаточно для большинства чанков)
+    constexpr size_t OUT_BUF_SIZE = 128 * 1024;
+    std::vector<uint8_t> out_buf(OUT_BUF_SIZE);
+
+    state.strm->avail_in = size;
+    state.strm->next_in = const_cast<uint8_t*>(data);
+
+    do {
+        state.strm->avail_out = OUT_BUF_SIZE;
+        state.strm->next_out = out_buf.data();
+
+        int ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
+        if (ret == Z_STREAM_ERROR) {
+            Logger::error("gzip_stream_process: Z_STREAM_ERROR");
+            state.has_error = true;
+            return false;
+        }
+
+        size_t have = OUT_BUF_SIZE - state.strm->avail_out;
+        if (have > 0) {
+            size_t total_written = 0;
+            while (total_written < have) {
+                ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
+                if (n < 0) {
+                    if (errno == EINTR) continue;
+                    Logger::error(std::format("gzip_stream_process: write failed: {}", strerror(errno)));
+                    state.has_error = true;
+                    return false;
+                }
+                total_written += n;
+            }
+        }
+
+        if (ret == Z_STREAM_END) break;
+    } while (state.strm->avail_out == 0);
+
+    if (flush) {
+        // Переименовываем временный файл в целевой (атомарно)
+        if (fsync(state.fd_out) != 0) {
+            Logger::error(std::format("gzip_stream_process: fsync failed: {}", strerror(errno)));
+            state.has_error = true;
+            return false;
+        }
+        close(state.fd_out);
+        state.fd_out = -1;
+
+        if (rename(state.tmp_path.c_str(), state.final_path.c_str()) != 0) {
+            Logger::error(std::format("gzip_stream_process: rename failed: {}", strerror(errno)));
+            state.has_error = true;
+            return false;
+        }
+        state.tmp_path.clear();  // Больше не нужно удалять временный файл
+        Logger::debug(std::format("gzip_stream_process: finished, renamed to {}", state.final_path));
+    }
+
+    return true;
+}
+
+// BROTLI streaming
+bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const fs::path& output_path, mode_t src_mode) {
+    state.tmp_path = output_path.string() + ".tmp";
+    state.final_path = output_path.string();
+    state.has_error = false;
+
+    // Открываем временный файл
+    state.fd_out = open(state.tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, src_mode & 0666);
+    if (state.fd_out < 0) {
+        Logger::error(std::format("brotli_stream_start: failed to open temp file {}: {}", state.tmp_path, strerror(errno)));
+        state.has_error = true;
+        return false;
+    }
+
+    // Создаём encoder
+    state.enc = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
+    if (!state.enc) {
+        Logger::error("brotli_stream_start: BrotliEncoderCreateInstance failed");
+        state.has_error = true;
+        return false;
+    }
+
+    BrotliEncoderSetParameter(state.enc, BROTLI_PARAM_QUALITY, (uint32_t)level);
+    BrotliEncoderSetParameter(state.enc, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
+
+    state.initialized = true;
+    Logger::debug(std::format("brotli_stream_start: {}", output_path.string()));
+    return true;
+}
+
+bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* data, size_t size, bool flush) {
+    if (state.has_error || !state.initialized || !state.enc) {
+        return false;
+    }
+
+    constexpr size_t OUT_BUF_SIZE = 128 * 1024;
+    std::vector<uint8_t> out_buf(OUT_BUF_SIZE);
+
+    const uint8_t* next_in = data;
+    size_t available_in = size;
+
+    BrotliEncoderOperation op = flush ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS;
+
+    while (available_in > 0 || !BrotliEncoderIsFinished(state.enc)) {
+        size_t available_out = OUT_BUF_SIZE;
+        uint8_t* next_out = out_buf.data();
+
+        if (!BrotliEncoderCompressStream(state.enc, op,
+                                          &available_in, &next_in,
+                                          &available_out, &next_out,
+                                          nullptr)) {
+            Logger::error("brotli_stream_process: BrotliEncoderCompressStream failed");
+            state.has_error = true;
+            return false;
+        }
+
+        size_t have = OUT_BUF_SIZE - available_out;
+        if (have > 0) {
+            size_t total_written = 0;
+            while (total_written < have) {
+                ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
+                if (n < 0) {
+                    if (errno == EINTR) continue;
+                    Logger::error(std::format("brotli_stream_process: write failed: {}", strerror(errno)));
+                    state.has_error = true;
+                    return false;
+                }
+                total_written += n;
+            }
+        }
+
+        if (available_in == 0 && !flush) break;
+        if (BrotliEncoderIsFinished(state.enc)) break;
+    }
+
+    if (flush) {
+        // Убеждаемся что encoder полностью завершил
+        while (!BrotliEncoderIsFinished(state.enc)) {
+            size_t available_out = OUT_BUF_SIZE;
+            uint8_t* next_out = out_buf.data();
+
+            if (!BrotliEncoderCompressStream(state.enc, BROTLI_OPERATION_FINISH,
+                                              nullptr, nullptr,
+                                              &available_out, &next_out,
+                                              nullptr)) {
+                state.has_error = true;
+                return false;
+            }
+
+            size_t have = OUT_BUF_SIZE - available_out;
+            if (have > 0) {
+                size_t total_written = 0;
+                while (total_written < have) {
+                    ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
+                    if (n < 0) {
+                        if (errno == EINTR) continue;
+                        state.has_error = true;
+                        return false;
+                    }
+                    total_written += n;
+                }
+            }
+        }
+
+        if (fsync(state.fd_out) != 0) {
+            Logger::error(std::format("brotli_stream_process: fsync failed: {}", strerror(errno)));
+            state.has_error = true;
+            return false;
+        }
+        close(state.fd_out);
+        state.fd_out = -1;
+
+        if (rename(state.tmp_path.c_str(), state.final_path.c_str()) != 0) {
+            Logger::error(std::format("brotli_stream_process: rename failed: {}", strerror(errno)));
+            state.has_error = true;
+            return false;
+        }
+        state.tmp_path.clear();
+        Logger::debug(std::format("brotli_stream_process: finished, renamed to {}", state.final_path));
+    }
+
     return true;
 }

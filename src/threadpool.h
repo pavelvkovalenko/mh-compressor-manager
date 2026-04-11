@@ -54,9 +54,14 @@ public:
         workers.reserve(threads);
         for (size_t i = 0; i < threads; ++i) {
             workers.emplace_back([this, i] {
-                // Устанавливаем CPU affinity для каждого потока если возможно
-                if (i < static_cast<size_t>(PerformanceOptimizer::get_cpu_count())) {
-                    PerformanceOptimizer::set_cpu_affinity(static_cast<int>(i));
+                // Устанавливаем CPU affinity для каждого потока с циклическим распределением (ТЗ §3.2.8)
+                {
+                    size_t cpu_count = static_cast<size_t>(PerformanceOptimizer::get_cpu_count());
+                    if (cpu_count == 0) cpu_count = 1;  // Защита от деления на 0
+                    int core_id = static_cast<int>(i % cpu_count);
+                    if (!PerformanceOptimizer::set_cpu_affinity(core_id)) {
+                        Logger::warning(std::format("Failed to set CPU affinity for thread {} (core {})", i, core_id));
+                    }
                 }
 
                 // Понижаем приоритет CPU (nice=10) — фоновые задачи уступают nginx и другим важным процессам
