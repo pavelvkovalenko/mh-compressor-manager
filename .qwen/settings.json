@@ -10,12 +10,12 @@
   },
   "context": {
     "fileName": [
-      "QWEN.md",
-      "RULES.md",
-      "DEPLOY.md",
-      "CONTRIBUTING.md",
-      "TECHNICAL_SPECIFICATION.md",
       "README.md",
+      "CONTRIBUTING.md",
+      "docs/specification/TECHNICAL_SPECIFICATION.md",
+      "docs/development/RULES.md",
+      "docs/development/DEPLOY.md",
+      "docs/development/QWEN.md",
       "tests/TEST_SCRIPTS.md"
     ]
   },

@@ -414,21 +414,28 @@ ls -la /proc/$(pgrep mh-compressor-manager)/fd | wc -l
 
 ```
 mh-compressor-manager/
-├── src/                          # Исходный код
-│   ├── CMakeLists.txt            # Конфигурация сборки
-│   ├── main.cpp                  # Точка входа
-│   ├── config.cpp/h              # Парсинг конфигурации
-│   ├── compressor.cpp/h          # Алгоритмы сжатия
-│   ├── monitor.cpp/h             # Мониторинг inotify
-│   ├── logger.cpp/h              # Система логирования
-│   ├── threadpool.h              # Пул потоков
-│   ├── compressor-manager.conf   # Пример конфигурации
-│   └── mh-compressor-manager.service  # Systemd юнит
-├── build-rpm.sh                  # Скрипт сборки RPM
-├── mh-compressor-manager.spec    # SPEC файл для RPM
-├── LICENSE                       # Лицензия MIT
-├── README.md                     # Этот файл
-└── TECHNICAL_SPECIFICATION.html  # Техническое задание
+├── README.md                          ← Этот файл (обзор для GitHub)
+├── LICENSE                            ← Лицензия MIT
+├── CONTRIBUTING.md                    ← Правила Pull Request
+├── .gitignore
+├── _build.sh / _install.sh            ← Скрипты сборки
+├── build-rpm.sh                       ← Сборка RPM
+├── mh-compressor-manager.spec         ← SPEC файл
+│
+├── docs/                              ← Документация
+│   ├── README.md                      ← Оглавление документации
+│   ├── specification/
+│   │   ├── TECHNICAL_SPECIFICATION.md ← Тех. спецификация
+│   │   └── TECHNICAL_SPECIFICATION.html
+│   └── development/
+│       ├── RULES.md                   ← Правила кода
+│       ├── DEPLOY.md                  ← Сборка и деплой
+│       └── QWEN.md                    ← Контекст AI
+│
+├── src/                               ← Исходный код
+│   └── ...
+└── tests/                             ← Тесты
+    └── TEST_SCRIPTS.md                ← Реестр тестовых скриптов
 ```
 
 ---
@@ -528,7 +535,7 @@ SOFTWARE.
 |-----|------------|
 | **Репозиторий** | [https://github.com/pavelvkovalenko/mh-compressor-manager.git](https://github.com/pavelvkovalenko/mh-compressor-manager.git) |
 | **Issues** | [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues) |
-| **Документация** | [README.md](README.md), [TECHNICAL_SPECIFICATION.md](TECHNICAL_SPECIFICATION.md) |
+| **Документация** | [docs/README.md](docs/README.md), [Спецификация](docs/specification/TECHNICAL_SPECIFICATION.md) |
 | **Техническое задание** | ТЗ версия 3.1 |
 | **Лицензия** | [MIT](LICENSE) |
 
