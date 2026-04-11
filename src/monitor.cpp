@@ -156,9 +156,15 @@ void Monitor::start() {
     Logger::info("Monitor started (inotify ready, watches will be added asynchronously)");
 
     // Обход директорий и добавление watch — в отдельном потоке (joinable, не detached)
-    m_watch_thread = std::thread([this]() {
-        for (const auto& path_str : m_cfg.target_paths) {
-            add_watch_recursive(fs::path(path_str));
+    // Копируем target_paths под блокировкой для защиты от data race
+    std::vector<std::string> watch_paths;
+    {
+        std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
+        watch_paths = m_cfg.target_paths;
+    }
+    m_watch_thread = std::thread([this, watch_paths = std::move(watch_paths)]() mutable {
+        for (const auto& path : watch_paths) {
+            add_watch_recursive(fs::path(path));
         }
         Logger::info("All directory watches added");
     });
@@ -231,16 +237,18 @@ void Monitor::scan_existing_files() {
                             
                             try {
                                 // Безопасное получение времени модификации через lstat (не следует за symlink)
-                                struct stat src_st, gz_st, br_st;
-                                
+                                struct stat src_st{};
+                                struct stat gz_st{};
+                                struct stat br_st{};
+
                                 if (lstat(entry.path().c_str(), &src_st) != 0) {
                                     continue;
                                 }
                                 auto src_time = std::chrono::system_clock::from_time_t(src_st.st_mtime);
-                                
+
                                 // Безопасная проверка сжатых файлов через lstat (не следует за symlink)
-                                bool gz_exists = (lstat(gz.c_str(), &gz_st) == 0 && !S_ISLNK(gz_st.st_mode));
-                                bool br_exists = (lstat(br.c_str(), &br_st) == 0 && !S_ISLNK(br_st.st_mode));
+                                bool gz_exists = (lstat(gz.c_str(), &gz_st) == 0 && !S_ISLNK(gz_st.st_mode) && S_ISREG(gz_st.st_mode));
+                                bool br_exists = (lstat(br.c_str(), &br_st) == 0 && !S_ISLNK(br_st.st_mode) && S_ISREG(br_st.st_mode));
                                 
                                 // Проверяем наличие сжатых версий
                                 missing_gz = !gz_exists;
@@ -459,7 +467,13 @@ void Monitor::run() {
                     if (overflow_detected && m_on_compress) {
                         Logger::info("Rescanning directories after inotify overflow...");
                         try {
-                            for (const auto& path_str : m_cfg.target_paths) {
+                            // Берём копию target_paths под блокировкой для защиты от data race
+                            std::vector<std::string> target_paths;
+                            {
+                                std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
+                                target_paths = m_cfg.target_paths;
+                            }
+                            for (const auto& path_str : target_paths) {
                                 fs::path base_path(path_str);
                                 struct stat st;
                                 if (lstat(base_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
@@ -692,8 +706,14 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     
     // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Проверка и очистка пути для защиты от Path Traversal ===
     // Нормализуем путь и проверяем что он находится внутри базовой директории
-    std::string normalized_path = fs::weakly_canonical(full_path).string();
-    std::string normalized_base = fs::weakly_canonical(fs::path(base_path)).string();
+    std::string normalized_path, normalized_base;
+    try {
+        normalized_path = fs::weakly_canonical(full_path).string();
+        normalized_base = fs::weakly_canonical(fs::path(base_path)).string();
+    } catch (const fs::filesystem_error& e) {
+        Logger::warning(std::format("Path normalization failed for {}: {}", full_path.string(), e.what()));
+        return;
+    }
 
     // Проверяем что нормализованный путь находится внутри базовой директории.
     // Важно: normalized_path == normalized_base || starts_with(normalized_base + "/")
@@ -792,11 +812,19 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
         // Это предотвращает starvation при непрерывной записи в файл
         auto max_delay = std::chrono::seconds(delay * 3);
         auto it = m_debounce_map.find(full_path.string());
-        if (it != m_debounce_map.end() && it->second > now + max_delay) {
-            // Уже отложено максимально — не откладываем дальше
-            return;
+        if (it != m_debounce_map.end()) {
+            // Если файл уже в map — проверяем не достигли ли max deadline от ПЕРВОГО события
+            // Сравниваем текущий deadline с now + max_delay — если уже превышен, не откладываем дальше
+            if (it->second > now + max_delay) {
+                // Уже отложено максимально — не откладываем дальше, deadline остаётся прежним
+                return;
+            }
+            // Обновляем deadline, но не дальше чем now + max_delay от текущего момента
+            it->second = std::min(deadline, now + max_delay);
+        } else {
+            // Первое событие для этого файла
+            m_debounce_map[full_path.string()] = deadline;
         }
-        m_debounce_map[full_path.string()] = deadline;
         Logger::debug(std::format("Scheduled compression for: {} (delay: {}s)",
             full_path.string(), delay));
     }
