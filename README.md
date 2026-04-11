@@ -159,10 +159,10 @@ list=txt js css svg json html htm map
 algorithms=all
 
 # Уровень сжатия Gzip (1-9)
-gzip_level=6
+gzip_level=9
 
 # Уровень сжатия Brotli (1-11)
-brotli_level=4
+brotli_level=11
 
 # Задержка перед сжатием после изменения файла (сек)
 debounce_delay=2
@@ -177,8 +177,8 @@ debounce_delay=2
 | `threads` | integer | `0` (авто) | Количество потоков пула |
 | `list` | string | `txt js css...` | Список расширений файлов |
 | `algorithms` | string | `all` | Алгоритмы: `gzip`, `brotli`, `all` |
-| `gzip_level` | integer | `6` | Уровень сжатия Gzip (1-9) |
-| `brotli_level` | integer | `4` | Уровень сжатия Brotli (1-11) |
+| `gzip_level` | integer | `9` | Уровень сжатия Gzip (1-9) |
+| `brotli_level` | integer | `11` | Уровень сжатия Brotli (1-11) |
 | `debounce_delay` | integer | `2` | Задержка перед сжатием (сек) |
 
 > ⚠️ **Важно:** Аргументы командной строки имеют приоритет над настройками в файле конфигурации.
@@ -201,6 +201,7 @@ mh-compressor-manager [ОПЦИИ]
 | `--gzip-level <N>` | Уровень сжатия Gzip (1-9) | `--gzip-level 9` |
 | `--brotli-level <N>` | Уровень сжатия Brotli (1-11) | `--brotli-level 11` |
 | `--min-size <N>` | Минимальный размер файла для сжатия | `--min-size 256` |
+| `--debug` | Режим отладочного логирования | `--debug` |
 | `--dry-run` | Режим проверки (без сжатия) | `--dry-run` |
 | `--help`, `-h` | Вывод справки | `--help` |
 | `--version`, `-v` | Вывод версии | `--version` |
@@ -526,14 +527,14 @@ SOFTWARE.
 | **Репозиторий** | [https://github.com/pavelvkovalenko/mh-compressor-manager.git](https://github.com/pavelvkovalenko/mh-compressor-manager.git) |
 | **Issues** | [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues) |
 | **Документация** | [README.md](README.md), [TECHNICAL_SPECIFICATION.md](TECHNICAL_SPECIFICATION.md) |
-| **Техническое задание** | ТЗ версия 3.0 |
+| **Техническое задание** | ТЗ версия 3.1 |
 | **Лицензия** | [MIT](LICENSE) |
 
 ---
 
 <div align="center">
 
-**mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 3.0
+**mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 3.1
 
 © 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Лицензия MIT.
 
