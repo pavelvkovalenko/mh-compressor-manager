@@ -36,11 +36,12 @@ public:
     static constexpr size_t CACHE_LINE_SIZE = 64;
     
     // Размер per-thread кэша (количество буферов на поток)
-    static constexpr size_t THREAD_CACHE_SIZE = 4;
-    
+    static constexpr size_t THREAD_CACHE_SIZE = 2;
+
     // Максимальное количество буферов в пуле для предотвращения чрезмерного потребления памяти
-    // При размере буфера 256KB: 64 буфера = 16MB максимум на пул
-    static constexpr size_t MAX_POOL_SIZE = 64;
+    // При размере буфера 256KB: 16 буферов = 4MB максимум на пул
+    // Для 3 пулов (gzip in/out, brotli out) = 12MB суммарно
+    static constexpr size_t MAX_POOL_SIZE = 16;
     
     explicit MemoryPool(size_t initial_capacity = 8, int numa_node_id = -1, size_t max_size = MAX_POOL_SIZE) 
         : buffer_size(DefaultSize), 
@@ -241,6 +242,25 @@ public:
     
     size_t get_buffer_size() const {
         return buffer_size;
+    }
+
+    // Освобождение неиспользуемых буферов (вызывается периодически для снижения потребления памяти)
+    // Возвращает количество освобождённых буферов
+    size_t shrink(size_t keep_count = 4) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        size_t freed = 0;
+
+        // Освобождаем лишние буферы из глобального пула
+        while (free_buffers_.size() > keep_count) {
+            auto* buf = free_buffers_.front();
+            free_buffers_.pop();
+            allocated_set_.erase(buf);
+            aligned_free(buf);
+            --total_allocated_;
+            ++freed;
+        }
+
+        return freed;
     }
     
 private:

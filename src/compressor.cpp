@@ -66,8 +66,14 @@ constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
 // «mh-compressor-manager --help» зависал на заметное время.
 namespace {
 ByteBufferPool& buffer_pool() {
-    static ByteBufferPool pool(32, -1, ByteBufferPool::MAX_POOL_SIZE);
+    static ByteBufferPool pool(16, -1, ByteBufferPool::MAX_POOL_SIZE);
     return pool;
+}
+
+// Счётчик для периодического освобождения буферов пула
+std::atomic<size_t>& pool_shrink_counter() {
+    static std::atomic<size_t> counter{0};
+    return counter;
 }
 }  // namespace
 
@@ -265,15 +271,18 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     // Выделяем буферы из пула один раз вне цикла с оптимальным размером
     uint8_t* in_buffer = buffer_pool().allocate_raw();
     uint8_t* out_buffer = buffer_pool().allocate_raw();
-    
+
     if (!in_buffer || !out_buffer) {
         Logger::error("Failed to allocate buffers from pool");
         deflateEnd(&strm);
         close(fd_in);
         close(fd_out);
+        // Освобождаем то что удалось выделить
+        if (in_buffer) buffer_pool().release_raw(in_buffer);
+        if (out_buffer) buffer_pool().release_raw(out_buffer);
         return false;
     }
-    
+
     bool has_error = false;
 
     do {
@@ -368,6 +377,12 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
 
     Logger::debug(std::format("Gzip compressed: {} -> {}", input.string(), output.string()));
+
+    // Периодическое освобождение неиспользуемых буферов пула (каждые 10 сжатий)
+    if (++pool_shrink_counter() % 10 == 0) {
+        buffer_pool().shrink(4);
+    }
+
     return true;
 }
 
@@ -641,6 +656,12 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
 
     Logger::debug(std::format("Brotli compressed: {} -> {}", input.string(), output.string()));
+
+    // Периодическое освобождение неиспользуемых буферов пула (каждые 10 сжатий)
+    if (++pool_shrink_counter() % 10 == 0) {
+        buffer_pool().shrink(4);
+    }
+
     return true;
 }
 

@@ -212,7 +212,8 @@ bool PerformanceOptimizer::advise_file_access(int fd, bool sequential, bool no_r
     }
     
     if (posix_fadvise(fd, 0, 0, advice) != 0) {
-        Logger::warning(std::format("posix_fadvise failed: {}", strerror(errno)));
+        // Это не ошибка — просто подсказка ОС, которую можно игнорировать
+        Logger::debug(std::format("posix_fadvise failed (non-critical): {}", strerror(errno)));
         return false;
     }
     

@@ -274,13 +274,8 @@ void Monitor::scan_existing_files() {
                             }
                             
                             if (need_compress) {
-                                // Проверка rate limiting перед запуском сжатия (DoS protection)
-                                if (!security::g_compression_rate_limiter.try_acquire()) {
-                                    Logger::warning(std::format("Rate limit exceeded, skipping compression: {}", 
-                                                                entry.path().string()));
-                                    continue;
-                                }
-                                
+                                // Rate limiter НЕ применяется к initial scan — это фоновая обработка, не DoS
+                                // Initial scan запускается один раз при старте, реальная защита — через очередь ThreadPool
                                 to_compress++;
                                 m_on_compress(entry.path());
                             }
