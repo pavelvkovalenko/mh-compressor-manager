@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
 # check_context_changes.sh — Проверка изменений файлов с момента загрузки в контекст
 #
+# Метка времени ХРАНИТСЯ В КОНТЕКСТЕ БЕСЕДЫ (в памяти сессии), а не в файле.
+# Это позволяет запускать параллельные ветки обсуждения без конфликтов.
+#
 # Использование:
-#   bash check_context_changes.sh              # Проверить изменения
-#   bash check_context_changes.sh --update     # Обновить метку времени (после загрузки в контекст)
-#   bash check_context_changes.sh --reset      # Сбросить метку времени
+#   bash audit/check_context_changes.sh <timestamp>     — Проверить изменения с указанной метки
+#   bash audit/check_context_changes.sh --list-files    — Вывести список отслеживаемых файлов и их даты
+#
+# Аргумент <timestamp> — это Unix timestamp (секунды с epoch), сохранённый в контексте беседы
+# после загрузки документации. Получить текущий timestamp: date +%s
+#
+# Пример сохранения метки в контекст (выполняет AI-ассистент):
+#   Текущий timestamp: 1712850000 (2026-04-11 15:00:00)
+#   Запомни: context_doc_timestamp=1712850000
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-TIMESTAMP_FILE="${SCRIPT_DIR}/.context/last_loaded.txt"
 CONFIG_FILE="${PROJECT_DIR}/.settings"
 
-# Файлы для отслеживания
+# Файлы для отслеживания (относительно корня проекта)
 DOC_FILES=(
     "docs/specification/TECHNICAL_SPECIFICATION.md"
     "docs/development/QWEN.md"
@@ -27,54 +35,48 @@ DOC_FILES=(
     "tests/TEST_SCRIPTS.md"
 )
 
-# Получение метки времени загрузки в контекст
-get_context_timestamp() {
-    if [[ -f "$TIMESTAMP_FILE" ]]; then
-        source "$TIMESTAMP_FILE"
-        echo "${CONTEXT_TIMESTAMP:-0}"
-    else
-        echo "0"
-    fi
-}
+# Вывести список отслеживаемых файлов с датами изменений
+list_files() {
+    echo "📋 Отслеживаемые файлы документации:"
+    echo ""
+    for f in "${DOC_FILES[@]}"; do
+        local filepath="${PROJECT_DIR}/${f}"
+        if [[ -f "$filepath" ]]; then
+            local mod_ts
+            mod_ts=$(stat -c %Y "$filepath" 2>/dev/null || echo "0")
+            local mod_date
+            mod_date=$(date -d "@${mod_ts}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "недоступно")
+            echo "   📄 ${f}"
+            echo "      Изменён: ${mod_date}"
+        else
+            echo "   ❌ ${f} (НЕ НАЙДЕН)"
+        fi
+    done
 
-# Обновление метки времени
-update_timestamp() {
-    local ts
-    ts=$(date +%s)
-    echo "CONTEXT_TIMESTAMP=${ts}" > "$TIMESTAMP_FILE"
-    echo "✅ Метка времени обновлена: $(date -d "@${ts}" '+%Y-%m-%d %H:%M:%S')"
-}
-
-# Сброс метки времени
-reset_timestamp() {
-    echo "CONTEXT_TIMESTAMP=0" > "$TIMESTAMP_FILE"
-    echo "🔄 Метка времени сброшена"
-}
-
-# Проверка изменений
-check_changes() {
-    local context_ts
-    context_ts=$(get_context_timestamp)
-
-    if [[ "$context_ts" == "0" ]]; then
-        echo "⚠️  Метка времени не установлена. Загрузите документацию в контекст и выполните:"
-        echo "    bash audit/check_context_changes.sh --update"
+    # Файл настроек
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local mod_ts
+        mod_ts=$(stat -c %Y "$CONFIG_FILE" 2>/dev/null || echo "0")
+        local mod_date
+        mod_date=$(date -d "@${mod_ts}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "недоступно")
         echo ""
-        echo "📋 Список файлов для проверки:"
-        for f in "${DOC_FILES[@]}"; do
-            if [[ -f "${PROJECT_DIR}/${f}" ]]; then
-                local mod_ts
-                mod_ts=$(stat -c %Y "${PROJECT_DIR}/${f}" 2>/dev/null || echo "недоступен")
-                echo "   ${f} (изменён: $(date -d "@${mod_ts}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "недоступен"))"
-            else
-                echo "   ${f} (НЕ НАЙДЕН)"
-            fi
-        done
-        return 0
+        echo "   ⚙️  .settings"
+        echo "      Изменён: ${mod_date}"
     fi
+    echo ""
+}
 
+# Проверить изменения с указанной метки времени
+check_changes() {
+    local context_ts="$1"
+    local now_ts
+    now_ts=$(date +%s)
+    local now_date
+    now_date=$(date -d "@${now_ts}" '+%Y-%m-%d %H:%M:%S')
     local context_date
-    context_date=$(date -d "@${context_ts}" '+%Y-%m-%d %H:%M:%S')
+    context_date=$(date -d "@${context_ts}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "некорректная метка")
+
+    echo "📅 Текущее время: ${now_date}"
     echo "📅 Документация загружена в контекст: ${context_date}"
     echo ""
 
@@ -89,8 +91,7 @@ check_changes() {
             if [[ "$mod_ts" -gt "$context_ts" ]]; then
                 local mod_date
                 mod_date=$(date -d "@${mod_ts}" '+%Y-%m-%d %H:%M:%S')
-                local ago
-                ago=$((mod_ts - context_ts))
+                local ago=$((mod_ts - context_ts))
                 local ago_str=""
                 if [[ $ago -lt 60 ]]; then
                     ago_str="${ago} сек назад"
@@ -114,7 +115,18 @@ check_changes() {
         if [[ "$mod_ts" -gt "$context_ts" ]]; then
             local mod_date
             mod_date=$(date -d "@${mod_ts}" '+%Y-%m-%d %H:%M:%S')
-            changed_files+=(".settings (изменён: ${mod_date})")
+            local ago=$((mod_ts - context_ts))
+            local ago_str=""
+            if [[ $ago -lt 60 ]]; then
+                ago_str="${ago} сек назад"
+            elif [[ $ago -lt 3600 ]]; then
+                ago_str="$((ago / 60)) мин назад"
+            elif [[ $ago -lt 86400 ]]; then
+                ago_str="$((ago / 3600)) ч назад"
+            else
+                ago_str="$((ago / 86400)) дн назад"
+            fi
+            changed_files+=(".settings (изменён: ${mod_date}, ${ago_str})")
             ((changed_count++))
         fi
     fi
@@ -129,7 +141,9 @@ check_changes() {
         echo "📌 Действия:"
         echo "   1. Прочитай изменённые файлы: cat <файл>"
         echo "   2. Загрузи изменения в контекст беседы"
-        echo "   3. Обнови метку времени: bash audit/check_context_changes.sh --update"
+        echo "   3. Обнови метку времени в контексте (не в файле!)"
+        echo ""
+        echo "💡 Текущий timestamp для сохранения в контекст: $(date +%s)"
         return 1
     else
         echo "✅ Документация не изменялась с момента загрузки в контекст"
@@ -139,13 +153,32 @@ check_changes() {
 
 # Основная логика
 case "${1:-}" in
-    --update)
-        update_timestamp
+    --list-files)
+        list_files
         ;;
-    --reset)
-        reset_timestamp
+    --help|-h)
+        echo "Использование: bash audit/check_context_changes.sh <timestamp>"
+        echo ""
+        echo "  <timestamp>    Unix timestamp (секунды) — метка загрузки в контекст"
+        echo "  --list-files   Вывести список отслеживаемых файлов с датами"
+        echo "  --help         Показать эту справку"
+        echo ""
+        echo "Метка времени хранится в КОНТЕКСТЕ БЕСЕДЫ (в памяти сессии), а не в файле."
+        echo "Это позволяет запускать параллельные ветки обсуждения без конфликтов."
+        ;;
+    "")
+        echo "❌ Ошибка: не указана метка времени"
+        echo ""
+        echo "Использование: bash audit/check_context_changes.sh <timestamp>"
+        echo ""
+        echo "Метка времени должна быть передана как аргумент и храниться в контексте беседы."
+        echo "Получить текущий timestamp: date +%s"
+        echo ""
+        echo "Пример:"
+        echo "  bash audit/check_context_changes.sh 1712850000"
+        exit 1
         ;;
     *)
-        check_changes
+        check_changes "$1"
         ;;
 esac

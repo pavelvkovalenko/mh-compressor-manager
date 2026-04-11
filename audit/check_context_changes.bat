@@ -1,56 +1,49 @@
 @echo off
 REM check_context_changes.bat — Проверка изменений файлов с момента загрузки в контекст
 REM Для Windows
+REM
+REM Метка времени ХРАНИТСЯ В КОНТЕКСТЕ БЕСЕДЫ, а не в файле.
+REM Передаётся как аргумент командной строки.
+REM
 REM Использование:
-REM   check_context_changes.bat              — Проверить изменения
-REM   check_context_changes.bat --update     — Обновить метку времени
-REM   check_context_changes.bat --reset      — Сбросить метку времени
+REM   audit\check_context_changes.bat <timestamp>     — Проверить изменения
+REM   audit\check_context_changes.bat --list-files    — Список файлов с датами
+REM
+REM Аргумент <timestamp> — Unix timestamp из контекста беседы.
+REM Получить текущий: powershell -Command "[int][double]::Parse((Get-Date -UFormat %%s))"
 
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_DIR=%SCRIPT_DIR%.."
-set "TIMESTAMP_FILE=%SCRIPT_DIR%.context\last_loaded.txt"
-set "CONFIG_FILE=%PROJECT_DIR%\.settings"
 
-if "%1"=="--update" goto update
-if "%1"=="--reset" goto reset
-goto check
+if "%1"=="--list-files" goto list
+if "%1"=="" goto no_args
 
-:update
-for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
-set "YY=%dt:~2,2%" & set "YYYY=%dt:~0,4%" & set "MM=%dt:~4,2%" & set "DD=%dt:~6,2%"
-set "HH=%dt:~8,2%" & set "Min=%dt:~10,2%" & set "Sec=%dt:~12,2%"
-set "TIMESTAMP=%YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%"
-echo CONTEXT_TIMESTAMP=!TIMESTAMP! > "%TIMESTAMP_FILE%"
-echo [OK] Метка времени обновлена: !TIMESTAMP!
-goto end
-
-:reset
-echo CONTEXT_TIMESTAMP=0 > "%TIMESTAMP_FILE%"
-echo [RESET] Метка времени сброшена
-goto end
-
-:check
-if not exist "%TIMESTAMP_FILE%" (
-    echo [WARN] Метка времени не установлена. Загрузите документацию в контекст и выполните:
-    echo    audit\check_context_changes.bat --update
-    goto end
-)
-
-for /f "tokens=2 delims==" %%a in (%TIMESTAMP_FILE%) do set "CONTEXT_TS=%%a"
-
-if "%CONTEXT_TS%"=="0" (
-    echo [WARN] Метка времени сброшена. Загрузите документацию и выполните --update
-    goto end
-)
-
-echo [INFO] Документация загружена в контекст: %CONTEXT_TS%
-echo.
+echo [OK] Проверка изменений с метки времени: %1
 echo Запустите: git status --short ^| findstr ".md"
-echo Для ручного просмотра изменений.
-echo.
-echo [OK] Проверка завершена
+echo Для просмотра изменённых файлов документации.
+goto end
+
+:list
+echo Список отслеживаемых файлов:
+echo   docs/specification/TECHNICAL_SPECIFICATION.md
+echo   docs/development/QWEN.md
+echo   docs/development/RULES.md
+echo   docs/development/DEPLOY.md
+echo   CONTRIBUTING.md
+echo   README.md
+echo   audit/CHANGELOG.md
+echo   audit/ROUND_HISTORY.md
+echo   audit/AUDIT_CYCLE.md
+echo   tests/TEST_SCRIPTS.md
+goto end
+
+:no_args
+echo [ERROR] Не указана метка времени
+echo Использование: audit\check_context_changes.bat ^<timestamp^>
+echo Метка времени хранится в КОНТЕКСТЕ БЕСЕДЫ.
+echo Получить текущий: powershell -Command "[int][double]::Parse((Get-Date -UFormat %%s))"
 
 :end
 endlocal

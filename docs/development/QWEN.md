@@ -108,25 +108,21 @@
 ### Использование скрипта
 
 ```bash
-# Проверить изменения (Linux/macOS)
-bash audit/check_context_changes.sh
+# Проверить изменения (Linux/macOS) — метка из контекста беседы
+bash audit/check_context_changes.sh <timestamp>
 
-# Обновить метку времени (после загрузки в контекст)
-bash audit/check_context_changes.sh --update
+# Вывести список отслеживаемых файлов
+bash audit/check_context_changes.sh --list-files
 
-# Сбросить метку времени
-bash audit/check_context_changes.sh --reset
+# Windows
+audit\check_context_changes.bat <timestamp>
 ```
 
-```cmd
-REM Проверить изменения (Windows)
-audit\check_context_changes.bat
-
-REM Обновить метку времени
-audit\check_context_changes.bat --update
-```
-
-**После загрузки документации в контекст — ОБЯЗАТЕЛЬНО вызови `--update`** для фиксации метки времени.
+> ⚠️ **Метка времени хранится в КОНТЕКСТЕ БЕСЕДЫ, а НЕ в файле.**
+> Каждая ветка обсуждения хранит свою собственную метку — конфликтов нет.
+>
+> **После загрузки документации в контекст** — получи текущий timestamp (`date +%s`)
+> и запомни его в контексте как `context_doc_timestamp`.
 
 ## Qwen Added Memories
 - ПРАВИЛО: Перед началом работы над ЛЮБЫМ вопросом пользователя — ОБЯЗАТЕЛЬНО перечитывай все изменившиеся файлы .md в проекте. Они могли быть изменены другим редактором или вручную. Не полагайся на кэш или предыдущую версию — всегда читай актуальное содержимое файлов перед тем как вносить изменения или отвечать. Это касается: docs/specification/TECHNICAL_SPECIFICATION.md, QWEN.md, RULES.md, DEPLOY.md, CONTRIBUTING.md, TEST_SCRIPTS.md и любых других .md файлов проекта.
