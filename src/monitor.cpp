@@ -735,6 +735,11 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     bool is_target = is_target_extension(full_path.string());
     bool is_compressed = is_compressed_extension(name);
 
+    // Игнорируем временные файлы сжатия (.gz.tmp, .br.tmp)
+    if (name.size() > 4 && (name.substr(name.size() - 4) == ".tmp")) {
+        return;
+    }
+
     if (!is_target && !is_compressed) {
         return;
     }
