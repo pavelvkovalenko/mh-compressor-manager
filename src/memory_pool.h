@@ -279,19 +279,15 @@ private:
         return cache;
     }
 
-    // Очистка thread_local кэша текущего потока — вызывается из деструктора пула
-    // ВАЖНО: Это очищает кэш ТОЛЬКО текущего потока, не всех потоков
-    // Для полной очистки нужно вызывать из каждого потока перед его завершением
+    // Очистка thread_local кэша — НЕ вызывается, оставлена для будущего API.
+    // В текущей архитектуре worker-потоки живут всю жизнь приложения
+    // (ThreadPool создаётся один раз и не уничтожается до shutdown),
+    // поэтому thread_local кэши корректно очищаются при завершении процесса.
     static void cleanup_thread_cache() {
         auto& cache = get_thread_cache();
-        for (auto* buf : cache) {
-            // Освобождаем память напрямую — posix_memalign → free
-            // (NUMA-трекинг невозможен из другого потока без дополнительной структуры)
-            ::free(buf);
-        }
         cache.clear();
     }
-    
+
     void* aligned_alloc(size_t alignment, size_t size) {
         void* ptr = nullptr;
 #if defined(_MSC_VER)

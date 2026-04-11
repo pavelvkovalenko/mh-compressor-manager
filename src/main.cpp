@@ -600,6 +600,15 @@ void compress_task(const fs::path& path) {
 
                 if (stream_error) break;
 
+                // Если read вернул 0 до того как мы прочитали весь файл — ошибка
+                if (bytes_read == 0) {
+                    if (offset < file_size) {
+                        Logger::error(std::format("Premature EOF for {}: read {} of {} bytes", path.string(), offset, file_size));
+                        stream_error = true;
+                    }
+                    break;
+                }
+
                 offset += bytes_read;
                 bool is_last = (offset >= file_size);
 
