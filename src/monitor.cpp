@@ -226,6 +226,11 @@ void Monitor::scan_existing_files() {
                 
                 if (S_ISREG(st.st_mode)) {
                     std::string filepath = entry.path().string();
+                    // Проверка имени файла на опасные символы (ТЗ §8.4)
+                    if (!security::validate_filename(entry.path().filename().string())) {
+                        Logger::warning(std::format("Skipping file with invalid name during scan: {}", filepath));
+                        continue;
+                    }
                     if (is_target_extension(filepath)) {
                         scanned++;
                         if (m_on_compress) {

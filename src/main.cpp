@@ -409,6 +409,8 @@ void compress_task(const fs::path& path) {
         g_metrics.files_skipped_small++;
         g_metrics.bytes_skipped_small += original_size;
         g_metrics.completed_tasks++;
+        // Удаляем устаревшие сжатые копии — файл стал слишком мал для сжатия
+        Compressor::safe_remove_compressed(path);
         return;
     }
 

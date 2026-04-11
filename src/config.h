@@ -57,6 +57,7 @@ struct Config {
     int cli_gzip_level = -1;
     int cli_brotli_level = -1;
     int cli_min_size = -1;  // CLI override для optimal_min_compress_size (--min-size)
+    bool cli_debug = false;  // CLI override для debug
     bool dry_run = false;
 };
 
