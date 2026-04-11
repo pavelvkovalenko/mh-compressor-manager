@@ -1680,6 +1680,9 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     state.final_path = output_path.string();
     state.has_error = false;
 
+    // Удаляем stale временный файл если остался с прошлого раза
+    unlink(state.tmp_path.c_str());
+
     // Открываем временный файл
     state.fd_out = open(state.tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, src_mode & 0666);
     if (state.fd_out < 0) {
@@ -1801,6 +1804,9 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
     state.tmp_path = output_path.string() + ".tmp";
     state.final_path = output_path.string();
     state.has_error = false;
+
+    // Удаляем stale временный файл если остался с прошлого раза
+    unlink(state.tmp_path.c_str());
 
     // Открываем временный файл
     state.fd_out = open(state.tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, src_mode & 0666);
