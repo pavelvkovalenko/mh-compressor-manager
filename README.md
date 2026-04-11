@@ -159,10 +159,10 @@ list=txt js css svg json html htm map
 algorithms=all
 
 # Уровень сжатия Gzip (1-9)
-gzip_level=9
+gzip_level=6
 
 # Уровень сжатия Brotli (1-11)
-brotli_level=11
+brotli_level=4
 
 # Задержка перед сжатием после изменения файла (сек)
 debounce_delay=2
@@ -177,8 +177,8 @@ debounce_delay=2
 | `threads` | integer | `0` (авто) | Количество потоков пула |
 | `list` | string | `txt js css...` | Список расширений файлов |
 | `algorithms` | string | `all` | Алгоритмы: `gzip`, `brotli`, `all` |
-| `gzip_level` | integer | `9` | Уровень сжатия Gzip (1-9) |
-| `brotli_level` | integer | `11` | Уровень сжатия Brotli (1-11) |
+| `gzip_level` | integer | `6` | Уровень сжатия Gzip (1-9) |
+| `brotli_level` | integer | `4` | Уровень сжатия Brotli (1-11) |
 | `debounce_delay` | integer | `2` | Задержка перед сжатием (сек) |
 
 > ⚠️ **Важно:** Аргументы командной строки имеют приоритет над настройками в файле конфигурации.
@@ -200,6 +200,7 @@ mh-compressor-manager [ОПЦИИ]
 | `--ext <list>` | Список расширений | `--ext "js css html"` |
 | `--gzip-level <N>` | Уровень сжатия Gzip (1-9) | `--gzip-level 9` |
 | `--brotli-level <N>` | Уровень сжатия Brotli (1-11) | `--brotli-level 11` |
+| `--min-size <N>` | Минимальный размер файла для сжатия | `--min-size 256` |
 | `--dry-run` | Режим проверки (без сжатия) | `--dry-run` |
 | `--help`, `-h` | Вывод справки | `--help` |
 | `--version`, `-v` | Вывод версии | `--version` |
@@ -210,14 +211,17 @@ mh-compressor-manager [ОПЦИИ]
 # Запуск с настройками по умолчанию
 sudo mh-compressor-manager
 
-# Запуск в режиме отладки
-sudo mh-compressor-manager --debug --dir /var/www/mysite
+# Запуск с переопределением директории
+sudo mh-compressor-manager --dir /var/www/mysite
 
 # Тестовый запуск без реального сжатия
-sudo mh-compressor-manager --dry-run --debug
+sudo mh-compressor-manager --dry-run
 
 # Запуск с переопределением уровней сжатия
 sudo mh-compressor-manager --gzip-level 9 --brotli-level 11
+
+# Запуск с настройкой минимального размера файла
+sudo mh-compressor-manager --min-size 512
 
 # Просмотр версии
 mh-compressor-manager --version
@@ -310,10 +314,10 @@ ls -la /var/www/html/test.js*  # Файлы .gz и .br должны отсутс
 # Проверка статуса
 sudo systemctl status mh-compressor-manager
 
-# Просмотр логов
+# Просмотр логов (ошибки)
 sudo journalctl -u mh-compressor-manager -p err
 
-# Проверка конфигурации
+# Проверка конфигурации в режиме dry-run
 sudo mh-compressor-manager --config /etc/mediahive/compressor-manager.conf --dry-run
 ```
 
@@ -521,15 +525,15 @@ SOFTWARE.
 |-----|------------|
 | **Репозиторий** | [https://github.com/pavelvkovalenko/mh-compressor-manager.git](https://github.com/pavelvkovalenko/mh-compressor-manager.git) |
 | **Issues** | [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues) |
-| **Документация** | [README.md](README.md), [README.html](https://html-preview.github.io/?url=https://github.com/pavelvkovalenko/mh-compressor-manager/blob/main/README.html), [TECHNICAL_SPECIFICATION.html](https://html-preview.github.io/?url=https://github.com/pavelvkovalenko/mh-compressor-manager/blob/main/TECHNICAL_SPECIFICATION.html) |
-| **Техническое задание** | ТЗ версия 2 |
+| **Документация** | [README.md](README.md), [TECHNICAL_SPECIFICATION.md](TECHNICAL_SPECIFICATION.md) |
+| **Техническое задание** | ТЗ версия 3.0 |
 | **Лицензия** | [MIT](LICENSE) |
 
 ---
 
 <div align="center">
 
-**mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 2
+**mh-compressor-manager v1.0.0** | Документация соответствует ТЗ версия 3.0
 
 © 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Лицензия MIT.
 
