@@ -3,12 +3,14 @@
 #include <vector>
 #include <filesystem>
 #include <cstdint>
+#include <sys/stat.h>
 
-// Forward-объявления для streaming структур
+// Forward-объявление для zlib
 struct z_stream_s;
 typedef z_stream_s z_stream;
-struct BrotliEncoderStateStruct;
-typedef struct BrotliEncoderStateStruct BrotliEncoderState;
+
+// Brotli — нельзя forward-declare, нужен полный заголовок
+#include <brotli/encode.h>
 
 namespace fs = std::filesystem;
 
