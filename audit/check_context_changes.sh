@@ -9,7 +9,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TIMESTAMP_FILE="${SCRIPT_DIR}/.context/last_loaded.txt"
 CONFIG_FILE="${PROJECT_DIR}/.settings"
 
