@@ -445,8 +445,36 @@ void Monitor::run() {
                     }
 
                     // Пакетная обработка событий с передачей маски
+                    bool overflow_detected = false;
                     for (const auto& [wd, mask, name, cookie] : batch_events) {
+                        // Проверка переполнения очереди inotify
+                        if (mask & IN_Q_OVERFLOW) {
+                            Logger::warning("inotify queue overflow detected — some events may have been lost. Initiating rescan.");
+                            overflow_detected = true;
+                        }
                         process_event(wd, mask, name, cookie);
+                    }
+
+                    // При переполнении inotify — запускаем повторное сканирование для восстановления пропущенных изменений
+                    if (overflow_detected && m_on_compress) {
+                        Logger::info("Rescanning directories after inotify overflow...");
+                        try {
+                            for (const auto& path_str : m_cfg.target_paths) {
+                                fs::path base_path(path_str);
+                                struct stat st;
+                                if (lstat(base_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                                    for (const auto& entry : fs::recursive_directory_iterator(base_path,
+                                            fs::directory_options::skip_permission_denied)) {
+                                        if (entry.is_regular_file() && is_target_extension(entry.path().string())) {
+                                            m_on_compress(entry.path());
+                                        }
+                                    }
+                                }
+                            }
+                            Logger::info("Rescan completed after inotify overflow");
+                        } catch (const std::exception& e) {
+                            Logger::error(std::format("Rescan after inotify overflow failed: {}", e.what()));
+                        }
                     }
                     
                     // Очищаем старые cookie перемещения (таймаут)

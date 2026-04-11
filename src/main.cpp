@@ -228,11 +228,12 @@ void reload_config() {
         }
 
         if (g_monitor) {
-            // ИСПОЛЬЗУЕМ HOT RELOAD вместо полной пересоздания монитора
-            // Это сохраняет состояние inotify и не требует остановки/запуска потока
-            g_monitor->reload_config(*g_cfg);
-
-            Logger::info("Monitor configuration updated via hot reload (no restart needed)");
+            // Берём копию конфига под блокировкой для безопасной передачи в монитор
+            auto cfg_copy = get_config();
+            if (cfg_copy) {
+                g_monitor->reload_config(*cfg_copy);
+                Logger::info("Monitor configuration updated via hot reload (no restart needed)");
+            }
         }
 
         Logger::info("Configuration reload completed successfully");
