@@ -1791,7 +1791,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         state.fd_out = -1;
 
         if (rename(state.tmp_path.c_str(), state.final_path.c_str()) != 0) {
-            Logger::error(std::format("gzip_stream_process: rename failed: {}", strerror(errno)));
+            Logger::error(std::format("gzip_stream_process: rename failed: {} -> {} (errno: {})", state.tmp_path, state.final_path, strerror(errno)));
             state.has_error = true;
             return false;
         }
@@ -1925,7 +1925,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
         state.fd_out = -1;
 
         if (rename(state.tmp_path.c_str(), state.final_path.c_str()) != 0) {
-            Logger::error(std::format("brotli_stream_process: rename failed: {}", strerror(errno)));
+            Logger::error(std::format("brotli_stream_process: rename failed: {} -> {} (errno: {})", state.tmp_path, state.final_path, strerror(errno)));
             state.has_error = true;
             return false;
         }
