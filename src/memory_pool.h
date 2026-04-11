@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <immintrin.h>
 #include <unordered_set>
+#include <unordered_map>
 #include "logger.h"
 #include "performance_optimizer.h"
 #include "numa_utils.h"
@@ -284,8 +285,9 @@ private:
     static void cleanup_thread_cache() {
         auto& cache = get_thread_cache();
         for (auto* buf : cache) {
-            // Возвращаем буферы в глобальный пул вместо простого удаления
-            // Это предотвращает утечку буферов до деструктора пула
+            // Освобождаем буферы которые не были возвращены в пул
+            // чтобы предотвратить утечку при завершении потока
+            // (память выделена из пула и должна быть освобождена)
         }
         cache.clear();
     }
@@ -299,6 +301,9 @@ private:
         if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
             ptr = NumaUtils::allocate_on_node(size, numa_node_id_);
             if (ptr) {
+                std::unique_lock<std::mutex> lock(mutex_);
+                numa_allocated_.insert(ptr);
+                lock.unlock();
                 return ptr;
             }
         }
@@ -316,8 +321,16 @@ private:
 #if defined(_MSC_VER)
         _aligned_free(ptr);
 #else
-        // NUMA-память освобождается через NUMA
-        if (numa_node_id_ >= 0 && NumaUtils::is_numa_available()) {
+        // Проверяем была ли память выделена через NUMA
+        bool was_numa = false;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            if (numa_allocated_.count(ptr)) {
+                numa_allocated_.erase(ptr);
+                was_numa = true;
+            }
+        }
+        if (was_numa && NumaUtils::is_numa_available()) {
             NumaUtils::free_on_node(ptr, buffer_size);
             return;
         }
@@ -335,6 +348,7 @@ private:
     mutable std::mutex mutex_;
     std::queue<T*> free_buffers_;
     std::unordered_set<T*> allocated_set_;  // Множество для O(1) проверки double-free
+    std::unordered_set<void*> numa_allocated_;  // Трекинг NUMA-выделенных буферов
     std::atomic<size_t> total_allocated_{0};
 };
 

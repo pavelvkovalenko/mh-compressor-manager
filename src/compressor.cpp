@@ -366,14 +366,15 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     
     // Закрываем файлы с синхронизацией
     close(fd_in);
-    if (!AsyncIO::close_file_sync(fd_out, !has_error)) {
-        Logger::error("Failed to close output file");
+    if (has_error) {
+        // При ошибке просто закрываем и удаляем частичный файл
+        close(fd_out);
+        Logger::error("Failed to write gzip output");
+        unlink(output.c_str());
         return false;
     }
-    
-    if (has_error) {
-        Logger::error("Failed to write gzip output");
-        // Удаляем частичный выходной файл
+    if (!AsyncIO::close_file_sync(fd_out, true)) {
+        Logger::error("Failed to close output file");
         unlink(output.c_str());
         return false;
     }
@@ -609,10 +610,11 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                 size_t written = buffer_size - available_out;
                 if (written > 0) {
                     if (fwrite(out_buffer, 1, written, file_out) != written) {
-                        if (errno == ENOSPC) {
-                            Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
+                        int err = errno;
+                        if (err == ENOSPC) {
+                            Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(err)));
                         } else {
-                            Logger::error(std::format("Failed to write compressed data: {}", strerror(errno)));
+                            Logger::error(std::format("Failed to write compressed data: {}", strerror(err)));
                         }
                         success = false;
                         break;
@@ -641,24 +643,26 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     // Возвращаем буферы в пул
     buffer_pool().release_raw(in_buffer);
     buffer_pool().release_raw(out_buffer);
-    
+
+    if (!success) {
+        // Ошибка сжатия — закрываем файлы и удаляем частичный вывод
+        fclose(file_in);
+        fclose(file_out);
+        unlink(output.c_str());
+        return false;
+    }
+
     // Flush ДО закрытия файла - правильный порядок
     if (fflush(file_out) != 0 || fsync(fileno(file_out)) != 0) {
         Logger::error("Failed to flush brotli output");
         fclose(file_in);
         fclose(file_out);
-        unlink(output.c_str());  // Удаляем частичный файл
-        return false;
-    }
-    
-    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
-    fclose(file_out); // Закрываем выходной файл
-
-    if (!success) {
-        // Удаляем частичный выходной файл
         unlink(output.c_str());
         return false;
     }
+
+    fclose(file_in);  // Закрываем FILE*, fdopen забрал дескриптор
+    fclose(file_out); // Закрываем выходной файл
 
     Logger::debug(std::format("Brotli compressed: {} -> {}", input.string(), output.string()));
 
@@ -1723,12 +1727,13 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     state.strm->next_in = const_cast<uint8_t*>(data);
 
     // Основной цикл: сжатие данных
+    int last_ret = Z_OK;
     do {
         state.strm->avail_out = OUT_BUF_SIZE;
         state.strm->next_out = out_buf.data();
 
-        int ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
-        if (ret == Z_STREAM_ERROR) {
+        last_ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
+        if (last_ret == Z_STREAM_ERROR) {
             Logger::error("gzip_stream_process: Z_STREAM_ERROR");
             state.has_error = true;
             return false;
@@ -1749,11 +1754,13 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
             }
         }
 
-        if (ret == Z_STREAM_END) break;
+        if (last_ret == Z_STREAM_END) break;
     } while (state.strm->avail_out == 0);
 
-    // Отдельный цикл финализации при flush — Z_FINISH может требовать много вызовов
-    if (flush) {
+    // Отдельный цикл финализации при flush — Z_FINISH может требовать много вызовов.
+    // Пропускаем если первый цикл уже завершил stream (Z_STREAM_END) — иначе
+    // повторный deflate(Z_FINISH) на завершённом stream вернёт Z_STREAM_ERROR.
+    if (flush && last_ret != Z_STREAM_END) {
         while (true) {
             state.strm->avail_out = OUT_BUF_SIZE;
             state.strm->next_out = out_buf.data();
