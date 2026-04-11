@@ -103,7 +103,7 @@ Config load_config(int argc, char* argv[]) {
                       << "  --ext <list>      Extensions (override)\n"
                       << "  --gzip-level <N>  Gzip level (1-9)\n"
                       << "  --brotli-level <N> Brotli level (1-11)\n"
-                      << "  --min-size <N>    Min file size for compression (default 256)\n"
+                      << "  --min-size <N>    Optimal min file size for compression (default 1024, min 256)\n"
                       << "  --dry-run         Dry run mode\n"
                       << "  --version         Show version\n"
                       << "  --process-without-ext  Process files without extensions\n";
@@ -152,12 +152,12 @@ Config load_config(int argc, char* argv[]) {
         else if (arg == "--dry-run") cfg.dry_run = true;
         else if (arg == "--min-size" && i + 1 < argc) {
             ++i;
-            int sz = 256;
+            int sz = 1024;
             auto result = std::from_chars(argv[i], argv[i] + std::strlen(argv[i]), sz);
-            if (result.ec == std::errc() && result.ptr == argv[i] + std::strlen(argv[i]) && sz >= 128) {
+            if (result.ec == std::errc() && result.ptr == argv[i] + std::strlen(argv[i]) && sz >= 256) {
                 cfg.cli_min_size = sz;
             } else {
-                Logger::warning(std::format("Invalid --min-size value '{}', ignoring", argv[i]));
+                Logger::warning(std::format("Invalid --min-size value '{}' (must be >= 256), ignoring", argv[i]));
             }
         }
         else if (arg == "--process-without-ext") cfg.process_files_without_extensions = true;
@@ -287,28 +287,23 @@ Config load_config(int argc, char* argv[]) {
                     cfg.debounce_delay = delay;
                 }
                 else if (key == "min_compress_size") {
-                    size_t sz = 256;
-                    auto result = std::from_chars(val.data(), val.data() + val.size(), sz);
-                    if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
-                        Logger::warning("Invalid min_compress_size format, using default 256");
-                        sz = 256;
-                    } else if (sz < 128) {
-                        Logger::warning(std::format("min_compress_size {} too low (min 128), using default 256", sz));
-                        sz = 256;
-                    }
-                    cfg.min_compress_size = sz;
+                    // MIN_COMPRESS_SIZE захаркожен на 256 — параметр из конфига игнорируется
+                    // для обратной совместимости логируем informational сообщение
+                    Logger::info("min_compress_size from config is ignored; hardcoded minimum is 256 bytes (use optimal_min_compress_size to adjust)");
                 }
-                else if (key == "optimal_compress_size") {
+                else if (key == "optimal_min_compress_size" || key == "optimal_compress_size") {
+                    // Поддержка обоих имён для обратной совместимости
                     size_t sz = 1024;
                     auto result = std::from_chars(val.data(), val.data() + val.size(), sz);
                     if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
-                        Logger::warning("Invalid optimal_compress_size format, using default 1024");
+                        Logger::warning("Invalid optimal_min_compress_size format, using default 1024");
                         sz = 1024;
-                    } else if (sz < 512) {
-                        Logger::warning(std::format("optimal_compress_size {} too low (min 512), using default 1024", sz));
-                        sz = 1024;
+                    } else if (sz < Config::MIN_COMPRESS_SIZE) {
+                        Logger::warning(std::format("optimal_min_compress_size {} below hardcoded minimum ({} bytes), using {}",
+                                                    sz, Config::MIN_COMPRESS_SIZE, Config::MIN_COMPRESS_SIZE));
+                        sz = Config::MIN_COMPRESS_SIZE;
                     }
-                    cfg.optimal_compress_size = sz;
+                    cfg.optimal_min_compress_size = sz;
                 }
                 else if (key == "io_delay_us") {
                     int delay = 0;
@@ -441,7 +436,13 @@ Config load_config(int argc, char* argv[]) {
     if (!cfg.cli_exts.empty()) cfg.extensions = cfg.cli_exts;
     if (cfg.cli_gzip_level != -1) cfg.gzip_level = cfg.cli_gzip_level;
     if (cfg.cli_brotli_level != -1) cfg.brotli_level = cfg.cli_brotli_level;
-    if (cfg.cli_min_size != -1) cfg.min_compress_size = cfg.cli_min_size;
+    if (cfg.cli_min_size != -1) {
+        cfg.optimal_min_compress_size = cfg.cli_min_size;
+    }
+    // Гарантируем что фактический порог не ниже захаркоженного минимума
+    if (cfg.optimal_min_compress_size < Config::MIN_COMPRESS_SIZE) {
+        cfg.optimal_min_compress_size = Config::MIN_COMPRESS_SIZE;
+    }
 
     // Normalize extensions (lowercase)
     for (auto& ext : cfg.extensions) {

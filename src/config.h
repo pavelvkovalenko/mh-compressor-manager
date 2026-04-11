@@ -28,9 +28,13 @@ struct Config {
     int debounce_delay = 2; // seconds
     std::string config_path = "/etc/mediahive/compressor-manager.conf";
 
-    // Минимальный и оптимальный размер файла для сжатия (ТЗ §4)
-    size_t min_compress_size = 256;       // Файлы < 256 байт не сжимаются
-    size_t optimal_compress_size = 1024;  // Файлы >= 1 КБ — оптимальны для сжатия
+    // Минимальный размер файла для сжатия (ТЗ §4)
+    // MIN_COMPRESS_SIZE = 256 байт — захардкожен, не настраивается пользователем
+    static constexpr size_t MIN_COMPRESS_SIZE = 256;
+
+    // OPTIMAL_MIN_COMPRESS_SIZE — настраиваемый порог (по умолчанию 1024)
+    // Фактический минимум = max(MIN_COMPRESS_SIZE, optimal_min_compress_size)
+    size_t optimal_min_compress_size = 1024;
 
     // Ограничение I/O нагрузки (глобальные настройки)
     int io_delay_us = 0;         // Задержка между файлами (микросекунды)
@@ -52,7 +56,7 @@ struct Config {
     std::vector<std::string> cli_exts;
     int cli_gzip_level = -1;
     int cli_brotli_level = -1;
-    int cli_min_size = -1;  // CLI override для min_compress_size
+    int cli_min_size = -1;  // CLI override для optimal_min_compress_size (--min-size)
     bool dry_run = false;
 };
 

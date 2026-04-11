@@ -400,9 +400,11 @@ void compress_task(const fs::path& path) {
     }
 
     // Проверка минимального размера файла (ТЗ §4)
-    if (original_size > 0 && original_size < cfg->min_compress_size) {
+    // Фактический порог = max(захаркоженный минимум, настраиваемый порог)
+    const size_t effective_min = std::max(Config::MIN_COMPRESS_SIZE, cfg->optimal_min_compress_size);
+    if (original_size > 0 && original_size < effective_min) {
         Logger::debug(std::format("Skipping file {}: size {} bytes < minimum threshold ({} bytes)",
-                                  path.string(), original_size, cfg->min_compress_size));
+                                  path.string(), original_size, effective_min));
         g_metrics.files_skipped_small++;
         g_metrics.bytes_skipped_small += original_size;
         g_metrics.completed_tasks++;
