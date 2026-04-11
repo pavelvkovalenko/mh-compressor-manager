@@ -681,12 +681,19 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     // Проверяем является ли файл целевым (исходным) или сжатым
     bool is_target = is_target_extension(full_path.string());
     bool is_compressed = is_compressed_extension(name);
-    
+
     if (!is_target && !is_compressed) {
         return;
     }
 
-    Logger::debug(std::format("Event detected: mask={}, path={}, type={}, cookie={}", 
+    // Проверка на symlink — symlink-файлы не обрабатываем (potentially dangerous)
+    struct stat path_st;
+    if (lstat(full_path.c_str(), &path_st) == 0 && S_ISLNK(path_st.st_mode)) {
+        Logger::debug(std::format("Skipping symlink event: {}", full_path.string()));
+        return;
+    }
+
+    Logger::debug(std::format("Event detected: mask={}, path={}, type={}, cookie={}",
                               mask, full_path.string(), 
                               is_compressed ? "compressed" : "target",
                               cookie));

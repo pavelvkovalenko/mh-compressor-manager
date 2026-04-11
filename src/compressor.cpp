@@ -643,6 +643,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         Logger::error("Failed to flush brotli output");
         fclose(file_in);
         fclose(file_out);
+        unlink(output.c_str());  // Удаляем частичный файл
         return false;
     }
     

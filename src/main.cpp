@@ -556,6 +556,12 @@ int main(int argc, char* argv[]) {
         Logger::info(std::format("  - {}", p));
     }
 
+    // Валидация конфигурации
+    if (g_cfg->target_paths.empty()) {
+        Logger::error("No target paths configured, exiting");
+        return 1;
+    }
+
     // Инициализация безопасной обработки сигналов через signalfd
     // ВАЖНО: Должно быть ДО seccomp, т.к. seccomp блокирует signalfd4 syscall
     if (!init_signal_fd()) {
@@ -690,6 +696,11 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         Logger::error(std::format("Exception in main loop: {}", e.what()));
         g_running = false;
+        // Закрываем epoll дескриптор при исключении
+        if (epfd >= 0) {
+            close(epfd);
+            epfd = -1;
+        }
     }
 
     // Graceful shutdown с таймаутом вместо немедленной остановки
