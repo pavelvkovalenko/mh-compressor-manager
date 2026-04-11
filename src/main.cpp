@@ -11,6 +11,7 @@
 #include <sys/signalfd.h>
 #include <unistd.h>
 #include <cstring>
+#include <cstdio>
 #include <sys/stat.h>
 #if __has_include(<format>)
 #include <format>
@@ -565,7 +566,24 @@ void delete_task(const fs::path& path) {
 int main(int argc, char* argv[]) {
     // Загрузка конфигурации
     g_cfg = std::make_unique<Config>(load_config(argc, argv));
-    
+
+    // EDGE-2: Проверка существования целевых директорий (ДО инициализации ресурсов)
+    for (const auto& path_str : g_cfg->target_paths) {
+        struct stat st;
+        if (lstat(path_str.c_str(), &st) != 0) {
+            fprintf(stderr, "Error: Directory does not exist: %s\n", path_str.c_str());
+            return 2;
+        }
+        if (!S_ISDIR(st.st_mode)) {
+            fprintf(stderr, "Error: Path is not a directory: %s\n", path_str.c_str());
+            return 2;
+        }
+        if (S_ISLNK(st.st_mode)) {
+            fprintf(stderr, "Error: Path is a symlink (potential attack): %s\n", path_str.c_str());
+            return 2;
+        }
+    }
+
     // Инициализация логгера ДО сброса привилегий (чтобы логи писались от root)
     Logger::init("mh-compressor-manager", g_cfg->debug);
     Logger::info("Starting mh-compressor-manager");
