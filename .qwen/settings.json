@@ -14,6 +14,7 @@
       "RULES.md",
       "DEPLOY.md",
       "CONTRIBUTING.md",
+      "TECHNICAL_SPECIFICATION.md",
       "tests/TEST_SCRIPTS.md"
     ]
   },

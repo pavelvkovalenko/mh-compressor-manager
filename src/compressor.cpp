@@ -561,25 +561,21 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     BrotliEncoderSetParameter(state, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
     BrotliEncoderSetParameter(state, BROTLI_PARAM_SIZE_HINT, 0);
 
-    // Вычисляем оптимальный размер буфера на основе размера файла
-    size_t buffer_size = calculate_buffer_size(input_st.st_size);
-    
-    // Выравниваем размер буфера для O_DIRECT если используется прямой I/O
-    bool use_direct_io = (fd_out >= 0);
-    if (use_direct_io) {
-        buffer_size = align_for_direct_io(buffer_size);
+    const size_t buffer_size = buffer_pool().get_buffer_size();
+    uint8_t* in_buffer = buffer_pool().allocate_raw();
+    uint8_t* out_buffer = buffer_pool().allocate_raw();
+    if (!in_buffer || !out_buffer) {
+        Logger::error("Failed to allocate buffers from pool for brotli");
+        fclose(file_in); fclose(file_out);
+        return false;
     }
-    
-    // Выделяем буферы один раз вне цикла с оптимальным размером
-    std::vector<uint8_t> in_buffer(buffer_size);
-    std::vector<uint8_t> out_buffer(buffer_size);
     bool success = true;
 
     while (true) {
         // Читаем порцию из входного файла через fdopen FILE*
-        size_t bytes_read = fread(in_buffer.data(), 1, in_buffer.size(), file_in);
+        size_t bytes_read = fread(in_buffer, 1, buffer_size, file_in);
         
-        const uint8_t* next_in = in_buffer.data();
+        const uint8_t* next_in = in_buffer;
         size_t available_in = bytes_read;
         
         // Обрабатываем прочитанные данные
@@ -592,8 +588,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                     success = false;
                     break;
                 }
-                size_t available_out = out_buffer.size();
-                uint8_t* next_out = out_buffer.data();
+                size_t available_out = buffer_size;
+                uint8_t* next_out = out_buffer;
                 
                 if (!BrotliEncoderCompressStream(state,
                         feof(file_in) ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS,
@@ -605,9 +601,9 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
                     break;
                 }
                 
-                size_t written = out_buffer.size() - available_out;
+                size_t written = buffer_size - available_out;
                 if (written > 0) {
-                    if (fwrite(out_buffer.data(), 1, written, file_out) != written) {
+                    if (fwrite(out_buffer, 1, written, file_out) != written) {
                         if (errno == ENOSPC) {
                             Logger::error(std::format("No space left on device while writing {}: {}", output.string(), strerror(errno)));
                         } else {
@@ -637,6 +633,9 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
 
     BrotliEncoderDestroyInstance(state);
+    // Возвращаем буферы в пул
+    buffer_pool().release_raw(in_buffer);
+    buffer_pool().release_raw(out_buffer);
     
     // Flush ДО закрытия файла - правильный порядок
     if (fflush(file_out) != 0 || fsync(fileno(file_out)) != 0) {
