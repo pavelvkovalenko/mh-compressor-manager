@@ -371,7 +371,9 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
         // вызовом add_watch_recursive_impl для каждой поддиректории
         for (const auto& entry : fs::directory_iterator(base_path,
                 fs::directory_options::skip_permission_denied)) {
-            if (entry.is_directory()) {
+            // Проверяем symlink_status чтобы НЕ следовать за symlink
+            auto symlink_st = entry.symlink_status();
+            if (symlink_st.type() == fs::file_type::directory) {
                 // Дополнительная проверка через lstat для каждой директории
                 if (lstat(entry.path().c_str(), &st) == 0 && !S_ISLNK(st.st_mode) && S_ISDIR(st.st_mode)) {
                     int wd_sub = inotify_add_watch(m_inotify_fd.get(), entry.path().c_str(),

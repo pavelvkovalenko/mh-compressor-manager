@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <fstream>
+#include <sstream>
 #include <cstring>
 #include <stdexcept>
 

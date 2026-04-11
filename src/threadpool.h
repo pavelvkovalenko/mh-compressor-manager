@@ -203,10 +203,13 @@ private:
                     while (!join_done.load()) {
                         std::this_thread::sleep_for(std::chrono::seconds(1));
                         auto elapsed = std::chrono::steady_clock::now() - start;
-                        if (elapsed > std::chrono::seconds(5) &&
-                            static_cast<int>(elapsed.count()) % 5 == 0) {
-                            Logger::warning(std::format("Thread still running after {}s",
-                                                       static_cast<int>(elapsed.count())));
+                        if (elapsed > std::chrono::seconds(60)) {
+                            Logger::error("Thread join timeout (60s), aborting monitor");
+                            break;
+                        }
+                        int secs = static_cast<int>(elapsed.count());
+                        if (secs >= 5 && secs % 5 == 0) {
+                            Logger::warning(std::format("Thread still running after {}s", secs));
                         }
                     }
                 });

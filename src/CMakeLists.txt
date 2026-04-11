@@ -258,6 +258,9 @@ else()
     )
 endif()
 
+# Макросы для pipeline.cpp — zlib и brotli всегда доступны
+target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_ZLIB HAVE_LIBBROTLI)
+
 # Добавляем fmt если используется вместо std::format
 if(NOT HAS_STD_FORMAT)
     if(fmt_FOUND)

@@ -40,6 +40,7 @@ static std::map<std::string, int> device_numa_cache;
 static std::mutex device_numa_cache_mutex;
 
 bool NumaUtils::initialize() {
+#if HAVE_NUMA
     if (numa_available() == 0) {
         numa_available_ = true;
         numa_node_count_ = numa_num_configured_nodes();
@@ -54,6 +55,12 @@ bool NumaUtils::initialize() {
         NUMA_LOG_INFO("NUMA не доступен в этой системе");
         return false;
     }
+#else
+    numa_available_ = false;
+    numa_node_count_ = 1;
+    NUMA_LOG_INFO("NUMA support disabled (libnuma not found at compile time)");
+    return false;
+#endif
 }
 
 int NumaUtils::get_numa_node_count() {
@@ -101,6 +108,7 @@ int NumaUtils::get_file_numa_node(const fs::path& path) {
 }
 
 bool NumaUtils::bind_current_thread_to_node(int node_id) {
+#if HAVE_NUMA
     if (!numa_available_ || node_id < 0 || node_id >= numa_node_count_) {
         return false;
     }
@@ -122,9 +130,14 @@ bool NumaUtils::bind_current_thread_to_node(int node_id) {
     numa_bitmask_free(nodemask);
     NUMA_LOG_WARN("Не удалось привязать поток к NUMA узлу {}", node_id);
     return false;
+#else
+    (void)node_id;
+    return false;
+#endif
 }
 
 void* NumaUtils::allocate_on_node(size_t size, int node_id) {
+#if HAVE_NUMA
     if (!numa_available_) {
         return malloc(size);
     }
@@ -141,18 +154,29 @@ void* NumaUtils::allocate_on_node(size_t size, int node_id) {
     
     NUMA_LOG_DEBUG("Выделено {} байт на NUMA узле {}", size, node_id);
     return ptr;
+#else
+    (void)node_id;
+    (void)size;
+    return malloc(size);
+#endif
 }
 
 void NumaUtils::free_on_node(void* ptr, size_t size) {
+#if HAVE_NUMA
     if (!numa_available_ || !ptr) {
         free(ptr);
         return;
     }
-    
+
     numa_free(ptr, size);
+#else
+    (void)size;
+    free(ptr);
+#endif
 }
 
 bool NumaUtils::bind_memory_to_node(void* ptr, size_t size, int node_id) {
+#if HAVE_NUMA
     if (!numa_available_ || !ptr) {
         return false;
     }
@@ -179,30 +203,41 @@ bool NumaUtils::bind_memory_to_node(void* ptr, size_t size, int node_id) {
     numa_bitmask_free(nodemask);
     NUMA_LOG_WARN("Не удалось привязать память к NUMA узлу {}: {}", node_id, strerror(errno));
     return false;
+#else
+    (void)ptr;
+    (void)size;
+    (void)node_id;
+    return false;
+#endif
 }
 
 int NumaUtils::get_optimal_node_for_device(const fs::path& device_path) {
+#if HAVE_NUMA
     if (!numa_available_) {
         return 0;
     }
-    
+
     try {
         // Получаем канонический путь
         fs::path canonical = fs::canonical(device_path);
-        
+
         // Пытаемся определить устройство через stat
         struct stat st;
         if (stat(canonical.c_str(), &st) < 0) {
             return 0;
         }
-        
+
         // Для простоты возвращаем узел 0
         // В реальной реализации можно парсить /sys/block/*/device/numa_node
         NUMA_LOG_DEBUG("Оптимальный NUMA узел для {}: 0 (по умолчанию)", device_path.string());
         return 0;
-        
+
     } catch (const std::exception& e) {
         NUMA_LOG_WARN("Ошибка определения устройства для {}: {}", device_path.string(), e.what());
         return 0;
     }
+#else
+    (void)device_path;
+    return 0;
+#endif
 }
