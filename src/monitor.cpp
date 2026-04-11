@@ -808,7 +808,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
         // Файл был перемещён из monitored директории - удаляем сжатые копии
         Logger::info(std::format("File moved out of monitored directory: {}", full_path.string()));
         if (m_on_delete) m_on_delete(full_path);
-    } else if (mask & (IN_MODIFY | IN_CREATE | IN_MOVED_TO)) {
+    } else if (!is_compressed && (mask & (IN_MODIFY | IN_CREATE | IN_MOVED_TO))) {
         // Безопасное чтение m_cfg.debounce_delay под блокировкой
         int delay;
         {
