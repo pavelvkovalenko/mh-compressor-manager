@@ -1,4 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env python3
+import os
+
+script = r"""#!/bin/bash
 set -e
 BASEDIR=/srv/123/loadtest
 echo "=== Генерация нагрузочных тестовых данных (1GB+) ==="
@@ -26,3 +29,13 @@ for f in "$BASEDIR"/log_*; do mv "$f" "${f}.txt"; done
 echo "=== ИТОГ ==="
 echo "Всего файлов: $(find "$BASEDIR" -type f | wc -l)"
 echo "Общий размер: $(du -sh "$BASEDIR" | cut -f1)"
+"""
+
+path = r"\\wsl$\fedora\home\kane\Projects\mh-compressor-manager\tests\scripts\gen_loadtest.sh"
+if not os.path.exists(os.path.dirname(path)):
+    path = r"c:\opt\Data\Projects\mh-compressor-manager\tests\scripts\gen_loadtest.sh"
+
+with open(path, "w", newline="\n") as f:
+    f.write(script)
+os.chmod(path, 0o755)
+print(f"Written to {path}")
