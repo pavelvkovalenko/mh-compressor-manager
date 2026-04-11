@@ -1252,7 +1252,7 @@ $ stat style.css style.css.br
 | **algorithms** | `gzip`, `brotli`, `all` |
 | **gzip_level** | `1`, `6`, `9` |
 | **brotli_level** | `1`, `6`, `11` |
-| **min_compress_size** | `256`, `512`, `1024` |
+| **min_compress_size** | `256`, `512`, `1024` (для тестирования также `128` — проверка что файлы ниже порога не сжимаются) |
 | **threads** | `0` (авто), `1`, `2`, `4` |
 | **debounce_delay** | `1`, `2`, `5` |
 
