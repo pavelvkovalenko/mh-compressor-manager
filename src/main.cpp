@@ -10,15 +10,20 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-#include <systemd/sd-daemon.h>
 #include <csignal>
 #include <atomic>
 #include <sys/signalfd.h>
-#include <unistd.h>
 #include <cstring>
 #include <cstdio>
-#include <sys/stat.h>
+#include <sys/epoll.h>
+#include <filesystem>
+#include <thread>
+#include <chrono>
+#include <unordered_map>
+#include <memory>
+#include <future>
+#include <shared_mutex>
+#include <systemd/sd-daemon.h>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -27,15 +32,6 @@ namespace std {
     using fmt::format;
 }
 #endif
-#include <filesystem>
-#include <thread>
-#include <chrono>
-#include <unordered_map>
-#include <memory>
-#include <fcntl.h>
-#include <sys/epoll.h>
-#include <future>
-#include <shared_mutex>
 
 namespace fs = std::filesystem;
 
