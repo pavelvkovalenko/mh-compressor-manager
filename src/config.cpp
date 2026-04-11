@@ -103,6 +103,7 @@ Config load_config(int argc, char* argv[]) {
                       << "  --ext <list>      Extensions (override)\n"
                       << "  --gzip-level <N>  Gzip level (1-9)\n"
                       << "  --brotli-level <N> Brotli level (1-11)\n"
+                      << "  --min-size <N>    Min file size for compression (default 256)\n"
                       << "  --dry-run         Dry run mode\n"
                       << "  --version         Show version\n"
                       << "  --process-without-ext  Process files without extensions\n";
@@ -149,6 +150,16 @@ Config load_config(int argc, char* argv[]) {
             cfg.cli_brotli_level = level;
         }
         else if (arg == "--dry-run") cfg.dry_run = true;
+        else if (arg == "--min-size" && i + 1 < argc) {
+            ++i;
+            int sz = 256;
+            auto result = std::from_chars(argv[i], argv[i] + std::strlen(argv[i]), sz);
+            if (result.ec == std::errc() && result.ptr == argv[i] + std::strlen(argv[i]) && sz >= 128) {
+                cfg.cli_min_size = sz;
+            } else {
+                Logger::warning(std::format("Invalid --min-size value '{}', ignoring", argv[i]));
+            }
+        }
         else if (arg == "--process-without-ext") cfg.process_files_without_extensions = true;
     }
 
@@ -274,6 +285,30 @@ Config load_config(int argc, char* argv[]) {
                         delay = 2;
                     }
                     cfg.debounce_delay = delay;
+                }
+                else if (key == "min_compress_size") {
+                    size_t sz = 256;
+                    auto result = std::from_chars(val.data(), val.data() + val.size(), sz);
+                    if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                        Logger::warning("Invalid min_compress_size format, using default 256");
+                        sz = 256;
+                    } else if (sz < 128) {
+                        Logger::warning(std::format("min_compress_size {} too low (min 128), using default 256", sz));
+                        sz = 256;
+                    }
+                    cfg.min_compress_size = sz;
+                }
+                else if (key == "optimal_compress_size") {
+                    size_t sz = 1024;
+                    auto result = std::from_chars(val.data(), val.data() + val.size(), sz);
+                    if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
+                        Logger::warning("Invalid optimal_compress_size format, using default 1024");
+                        sz = 1024;
+                    } else if (sz < 512) {
+                        Logger::warning(std::format("optimal_compress_size {} too low (min 512), using default 1024", sz));
+                        sz = 1024;
+                    }
+                    cfg.optimal_compress_size = sz;
                 }
                 else if (key == "io_delay_us") {
                     int delay = 0;
@@ -406,6 +441,7 @@ Config load_config(int argc, char* argv[]) {
     if (!cfg.cli_exts.empty()) cfg.extensions = cfg.cli_exts;
     if (cfg.cli_gzip_level != -1) cfg.gzip_level = cfg.cli_gzip_level;
     if (cfg.cli_brotli_level != -1) cfg.brotli_level = cfg.cli_brotli_level;
+    if (cfg.cli_min_size != -1) cfg.min_compress_size = cfg.cli_min_size;
 
     // Normalize extensions (lowercase)
     for (auto& ext : cfg.extensions) {

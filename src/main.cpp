@@ -61,18 +61,23 @@ struct PerformanceMetrics {
     std::atomic<uint64_t> failed_tasks{0};
     std::atomic<uint64_t> bytes_processed{0};
     std::atomic<uint64_t> bytes_compressed{0};
+    // Метрики пропущенных малых файлов (ТЗ §4)
+    std::atomic<uint64_t> files_skipped_small{0};
+    std::atomic<uint64_t> bytes_skipped_small{0};
     std::chrono::steady_clock::time_point start_time;
-    
+
     PerformanceMetrics() : start_time(std::chrono::steady_clock::now()) {}
-    
+
     void log_summary() const {
         auto now = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
-        
+
         Logger::info("=== Performance Summary ===");
         Logger::info(std::format("Total tasks: {}", total_tasks.load()));
         Logger::info(std::format("Completed: {}", completed_tasks.load()));
         Logger::info(std::format("Failed: {}", failed_tasks.load()));
+        Logger::info(std::format("Skipped (too small): {}", files_skipped_small.load()));
+        Logger::info(std::format("Bytes skipped (small): {}", bytes_skipped_small.load()));
         Logger::info(std::format("Bytes processed: {}", bytes_processed.load()));
         Logger::info(std::format("Bytes compressed: {}", bytes_compressed.load()));
         if (bytes_processed.load() > 0) {
@@ -392,6 +397,16 @@ void compress_task(const fs::path& path) {
         Logger::warning(std::format("Cannot get file size: {} - {}", path.string(), e.what()));
     } catch (const std::exception& e) {
         Logger::warning(std::format("Error getting file size: {} - {}", path.string(), e.what()));
+    }
+
+    // Проверка минимального размера файла (ТЗ §4)
+    if (original_size > 0 && original_size < cfg->min_compress_size) {
+        Logger::debug(std::format("Skipping file {}: size {} bytes < minimum threshold ({} bytes)",
+                                  path.string(), original_size, cfg->min_compress_size));
+        g_metrics.files_skipped_small++;
+        g_metrics.bytes_skipped_small += original_size;
+        g_metrics.completed_tasks++;
+        return;
     }
 
     if (!cfg->dry_run) {
