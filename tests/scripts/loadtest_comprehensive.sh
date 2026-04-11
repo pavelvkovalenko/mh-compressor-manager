@@ -89,14 +89,12 @@ for i in $(seq 1 120); do
 done
 echo "  ✓ JSON: $(du -sh "$BASEDIR/json" | cut -f1)"
 
-# TXT (логи): 20 файлов по ~1MB = 20MB
-echo "  Генерация TXT логов (20 файлов)..."
-for i in $(seq 1 20); do
-  {
-    for j in $(seq 1 5000); do
-      echo "2024-06-15 12:$((RANDOM%60)):$((RANDOM%60)) [INFO] GET /api/v1/item/$j 200 ${RANDOM}ms"
-    done
-  } > "$BASEDIR/txt/access_${i}.log.txt"
+# TXT (логи): 120 файлов по ~3MB = 360MB — ГЕНЕРАЦИЯ ЧЕРЕЗ dd + base64
+echo "  Генерация TXT логов (120 файлов)..."
+for i in $(seq 1 120); do
+  FILE="$BASEDIR/txt/access_${i}.log.txt"
+  head -c 3000000 /dev/urandom | base64 | tr '\n' ' ' | fold -w 200 | head -n 30000 | \
+    awk '{printf "2024-06-15 12:%02d:%02d [INFO] GET /api/v1/item/%d 200 %dms ua=\"Mozilla/5.0\" ip=10.0.%d.%d\n", int(rand()*60), int(rand()*60), NR, int(rand()*5000), int(rand()*256), int(rand()*256)}' > "$FILE"
 done
 echo "  ✓ TXT: $(du -sh "$BASEDIR/txt" | cut -f1)"
 
