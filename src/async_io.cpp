@@ -294,7 +294,7 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
         std::lock_guard<std::mutex> lock(g_ring_mutex);
         ret = io_uring_wait_cqe_timeout(&g_ring, &cqe, &timeout);
     }
-    if (ret != 0) {
+    if (ret < 0) {
         if (ret == -ETIME) {
             Logger::error("io_uring operation timed out after 30 seconds");
         } else {
@@ -444,7 +444,7 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
         std::lock_guard<std::mutex> lock(g_ring_mutex);
         ret = io_uring_wait_cqe_timeout(&g_ring, &cqe, &timeout);
     }
-    if (ret != 0) {
+    if (ret < 0) {
         if (ret == -ETIME) {
             Logger::error("io_uring write operation timed out after 30 seconds");
         } else {

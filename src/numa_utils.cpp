@@ -40,11 +40,11 @@ static std::map<std::string, int> device_numa_cache;
 static std::mutex device_numa_cache_mutex;
 
 bool NumaUtils::initialize() {
-    if (numa_available()) {
+    if (numa_available() == 0) {
         numa_available_ = true;
         numa_node_count_ = numa_num_configured_nodes();
         NUMA_LOG_INFO("NUMA доступен: {} узлов", numa_node_count_);
-        
+
         // Инициализация политик NUMA
         numa_set_interleave_mask(numa_all_nodes_ptr);
         return true;
