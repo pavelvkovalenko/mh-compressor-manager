@@ -248,7 +248,7 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     }
 
     // Предварительное выделение места на диске для оптимизации записи (SSD/NVMe)
-    PerformanceOptimizer::preallocate_file(fd_out, st.st_size);
+    // preallocate удалён — размер сжатого файла неизвестен заранее
     // Подсказка ядру о паттерне доступа: запись один раз
     PerformanceOptimizer::advise_file_access(fd_out, false, false, true);
 
@@ -535,7 +535,7 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
 
     // Предварительное выделение места на диске для оптимизации записи (SSD/NVMe)
-    PerformanceOptimizer::preallocate_file(fd_out, input_st.st_size);
+    // preallocate удалён — размер сжатого файла неизвестен заранее
     // Подсказка ядру о паттерне доступа: запись один раз
     PerformanceOptimizer::advise_file_access(fd_out, false, false, true);
     
@@ -788,7 +788,7 @@ bool Compressor::compress_dual(const fs::path& input,
     }
 
     // Предварительное выделение места для gzip файла
-    PerformanceOptimizer::preallocate_file(fd_gzip, st.st_size);
+    // preallocate удалён
     PerformanceOptimizer::advise_file_access(fd_gzip, false, false, true);
 
     // Удаление устаревших brotli файлов
@@ -818,7 +818,7 @@ bool Compressor::compress_dual(const fs::path& input,
     }
 
     // Предварительное выделение места для brotli файла
-    PerformanceOptimizer::preallocate_file(fd_brotli, st.st_size);
+    // preallocate удалён
     PerformanceOptimizer::advise_file_access(fd_brotli, false, false, true);
     
     // === Инициализация потоков сжатия ===
