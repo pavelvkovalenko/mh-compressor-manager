@@ -1,0 +1,65 @@
+# Changelog — mh-compressor-manager
+
+## [1.0.88] — 2026-04-11
+
+### Исправления безопасности
+- **memory_pool.h**: Добавлен трекинг NUMA-выделенной памяти (`numa_allocated_`) для предотвращения UB при `numa_free()` на памяти от `posix_memalign()`
+- **monitor.cpp**: Замена `entry.is_directory()` на `entry.symlink_status()` для предотвращения следования за symlink при обходе директорий
+- **monitor.cpp**: Игнорирование `.tmp` файлов сжатия в inotify обработчике
+- **monitor.cpp**: `!is_compressed &&` для debounce — предотвращение race condition при streaming сжатии
+
+### Исправления корректности
+- **compressor.cpp**: При ошибке записи gzip fd_out закрывается и partial файл удаляется — предотвращение stale `.gz` файлов
+- **compressor.cpp**: `fstat(fd_in)` перемещён ДО `fdopen(fd_in)` — устранение неопределённого поведения POSIX
+- **compressor.cpp**: Добавлен отдельный цикл финализации `Z_FINISH` в `gzip_stream_process` с проверкой `last_ret != Z_STREAM_END`
+- **compressor.cpp/h**: Защита от двойного `flush` в `brotli_stream_process` через поле `finalized`
+- **compressor.cpp**: `unlink()` stale `.tmp` файлов при `gzip_stream_start`/`brotli_stream_start`
+- **main.cpp**: `offset += bytes_read` вместо `offset += this_chunk` в streaming цикле
+- **main.cpp**: Проверка premature EOF в streaming цикле
+- **main.cpp**: Каждый алгоритм streaming оценивается независимо (gzip не блокируется ошибкой brotli)
+
+### Исправления компиляции
+- **CMakeLists.txt**: Добавлены `HAVE_ZLIB`/`HAVE_LIBBROTLI` макросы для pipeline.cpp
+- **CMakeLists.txt**: zlib линкуется всегда (`-lz`) даже при наличии libdeflate
+- **numa_utils.cpp**: Все функции обёрнуты в `#if HAVE_NUMA` — корректная компиляция без libnuma
+- **performance_optimizer.cpp**: Добавлен `#include <sstream>` для `std::istringstream`
+- **pipeline.cpp**: `-MAX_WBITS` заменён на `MAX_WBITS + 16` для корректного gzip формата
+
+### Исправления логики
+- **async_io.cpp**: `ret != 0` → `ret < 0` для `io_uring_wait_cqe_timeout` (2 места)
+- **numa_utils.cpp**: `if (numa_available())` → `if (numa_available() == 0)`
+- **threadpool.h**: Циклическое распределение CPU affinity (`i % cpu_count`) при `threads > cores`
+- **threadpool.h**: `continue` при таймауте I/O слота вместо wraparound
+- **threadpool.h**: Monitor thread timeout 60 секунд
+- **config.cpp**: `\\n` → `\n` в help-сообщении `--debug`
+- **memory_pool.h**: `release_raw()` теперь удаляет из `allocated_set_` при помещении в thread_local кэш
+- **simd_utils.h**: `#if SIMD_UTILS_AVX2` guards для ARM/не-x86 совместимости
+
+### Оптимизации сжатия (ТЗ §3.2.4–3.2.9)
+- **Однократное чтение**: Файл читается 1 раз, оба алгоритма сжимают из одного буфера
+- **libdeflate**: 2x ускорение gzip (600 vs 300 МБ/сек), fallback на zlib
+- **Streaming чанки**: Файлы > 256 КБ сжимаются чанками с адаптацией под L3 кэш CPU
+- **CacheInfo**: Определение L3 через sysfs, адаптивный размер буфера
+- **Новые файлы**: `cache_info.h`, `cache_info.cpp`
+
+### Обновления документации
+- **TECHNICAL_SPECIFICATION.md**: v3.4, добавлен раздел 21 «План реализации оптимизаций сжатия»
+- **README.md**: Добавлена строка об оптимизациях сжатия
+- **CONTRIBUTING.md**: Добавлен пример коммита для текущей функциональности
+
+---
+
+## Статистика аудита
+
+| Раунд | Дата | Исправлений | Критических | Режим |
+|-------|------|------------|-------------|-------|
+| **1** | 2026-04-11 | 3 | 3 | Стандартный |
+| **2** | 2026-04-11 | 4 | 2 | Стандартный |
+| **3** | 2026-04-11 | 5 | 1 | Стандартный |
+| **4** | 2026-04-11 | 5 | 1 | Стандартный |
+| **5** | 2026-04-11 | 0 | 0 | Стандартный (чисто) |
+| **6** | 2026-04-11 | 3 | 2 | Стандартный |
+| **7-A** | 2026-04-11 | 7 | 3 | Параллельный Alpha |
+| **7-B** | 2026-04-11 | 6 | 3 | Параллельный Beta |
+| **7-final** | 2026-04-11 | 2 | 0 | Финальные исправления |
+| **ИТОГО** | | **35** | **15** | |
