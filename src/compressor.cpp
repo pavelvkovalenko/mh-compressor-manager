@@ -477,10 +477,19 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     }
     
     close(fd_path);
-    
+
     // Подсказка ОС о последовательном чтении и предзагрузке (оптимизация для SSD/NVMe)
     PerformanceOptimizer::advise_file_access(fd_in, true, true, false);
-    
+
+    // Получаем метаданные ДО fdopen (после fd_in принадлежит FILE*)
+    struct stat input_st;
+    if (fstat(fd_in, &input_st) != 0) {
+        int saved_errno = errno;
+        close(fd_in);
+        Logger::error(std::format("Failed to fstat input file {}: {}", input.string(), strerror(saved_errno)));
+        return false;
+    }
+
     // Шаг 5: Используем fdopen() для работы с FILE* из уже открытого fd
     FILE* file_in = fdopen(fd_in, "rb");
     if (!file_in) {
@@ -492,12 +501,6 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
     // fdopen забирает владение дескриптором
 
     // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
-    struct stat input_st;
-    if (fstat(fd_in, &input_st) != 0) {
-        fclose(file_in);
-        Logger::error(std::format("Failed to fstat input file {}: {}", input.string(), strerror(errno)));
-        return false;
-    }
 
     // Если выходной файл уже существует и устарел — удаляем
     struct stat out_st;

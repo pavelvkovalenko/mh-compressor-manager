@@ -600,7 +600,7 @@ void compress_task(const fs::path& path) {
 
                 if (stream_error) break;
 
-                offset += this_chunk;
+                offset += bytes_read;
                 bool is_last = (offset >= file_size);
 
                 // Оба алгоритма обрабатывают один чанк — данные в L3 кэше

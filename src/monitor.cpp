@@ -367,8 +367,9 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
     }
 
     try {
-        // skip_symlinks предотвращает следование за symlink при обходе
-        for (const auto& entry : fs::recursive_directory_iterator(base_path,
+        // Используем directory_iterator (не recursive) — рекурсия обеспечивается
+        // вызовом add_watch_recursive_impl для каждой поддиректории
+        for (const auto& entry : fs::directory_iterator(base_path,
                 fs::directory_options::skip_permission_denied)) {
             if (entry.is_directory()) {
                 // Дополнительная проверка через lstat для каждой директории
@@ -387,7 +388,6 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
                         } else if (err == EPERM) {
                             Logger::warning(std::format("Operation not permitted for: {} (check seccomp or container security)", entry.path().string()));
                         }
-                        // Пропускаем рекурсию — если нет прав на watch, не будет и на дочерние
                         continue;
                     }
                     // Рекурсивный вызов с увеличением глубины
