@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cstring>
+#include <cerrno>
 #if __has_include(<format>)
 #include <format>
 #else
@@ -199,7 +201,31 @@ bool Compressor::compress_gzip(const fs::path& input, const fs::path& output, in
     // fd_in уже открыт с O_RDONLY | O_NOATIME
 
     // Шаг 6: Открываем выходной файл безопасно с проверкой на symlink атаки
-    // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
+    // Если файл уже существует и устарел (старше источника) — удаляем и создаём заново
+    struct stat out_st;
+    if (lstat(output.c_str(), &out_st) == 0) {
+        // Файл существует — проверяем не является ли symlink атакой
+        if (S_ISLNK(out_st.st_mode)) {
+            Logger::error(std::format("SECURITY: Output path is a symlink (attack): {}", output.string()));
+            close(fd_in);
+            return false;
+        }
+        // Проверяем время модификации: если выходной файл старше источника — он устарел
+        try {
+            auto src_mtime = fs::last_write_time(input);
+            auto out_mtime = fs::last_write_time(output);
+            if (out_mtime < src_mtime) {
+                Logger::info(std::format("Removing stale compressed file: {}", output.string()));
+                if (unlink(output.c_str()) != 0) {
+                    Logger::warning(std::format("Failed to remove stale compressed file: {} - {}",
+                                                output.string(), strerror(errno)));
+                }
+            }
+        } catch (const std::exception& e) {
+            Logger::warning(std::format("Error checking mtime for {}: {}", output.string(), e.what()));
+        }
+    }
+
     int flags_out = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW;
     int fd_out = open(output.c_str(), flags_out, st.st_mode & 0666);
     if (fd_out < 0) {
@@ -455,8 +481,30 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         Logger::error(std::format("Failed to fstat input file {}: {}", input.string(), strerror(errno)));
         return false;
     }
-    
-    // Используем O_CREAT | O_EXCL для предотвращения перезаписи существующих файлов
+
+    // Если выходной файл уже существует и устарел — удаляем
+    struct stat out_st;
+    if (lstat(output.c_str(), &out_st) == 0) {
+        if (S_ISLNK(out_st.st_mode)) {
+            Logger::error(std::format("SECURITY: Output path is a symlink (attack): {}", output.string()));
+            fclose(file_in);
+            return false;
+        }
+        try {
+            auto src_mtime = fs::last_write_time(input);
+            auto out_mtime = fs::last_write_time(output);
+            if (out_mtime < src_mtime) {
+                Logger::info(std::format("Removing stale compressed file: {}", output.string()));
+                if (unlink(output.c_str()) != 0) {
+                    Logger::warning(std::format("Failed to remove stale compressed file: {} - {}",
+                                                output.string(), strerror(errno)));
+                }
+            }
+        } catch (const std::exception& e) {
+            Logger::warning(std::format("Error checking mtime for {}: {}", output.string(), e.what()));
+        }
+    }
+
     int fd_out = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, input_st.st_mode & 0666);
     if (fd_out < 0) {
         int saved_errno = errno;
@@ -691,7 +739,18 @@ bool Compressor::compress_dual(const fs::path& input,
     // Подсказка ОС о последовательном чтении и предзагрузке (оптимизация для SSD/NVMe)
     PerformanceOptimizer::advise_file_access(fd_in, true, true, false);
     
-    // === Открываем выходные файлы ===
+    // === Открываем выходные файлы (с проверкой на устаревшие файлы) ===
+    // Удаление устаревших сжатых файлов перед созданием новых
+    struct stat out_st_tmp;
+    if (lstat(gzip_output.c_str(), &out_st_tmp) == 0 && S_ISREG(out_st_tmp.st_mode)) {
+        try {
+            if (fs::last_write_time(gzip_output) < fs::last_write_time(input)) {
+                Logger::info(std::format("Removing stale compressed file: {}", gzip_output.string()));
+                unlink(gzip_output.c_str());
+            }
+        } catch (...) {}
+    }
+
     int fd_gzip = open(gzip_output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
     if (fd_gzip < 0) {
         int saved_errno = errno;
@@ -709,7 +768,17 @@ bool Compressor::compress_dual(const fs::path& input,
     // Предварительное выделение места для gzip файла
     PerformanceOptimizer::preallocate_file(fd_gzip, st.st_size);
     PerformanceOptimizer::advise_file_access(fd_gzip, false, false, true);
-    
+
+    // Удаление устаревших brotli файлов
+    if (lstat(brotli_output.c_str(), &out_st_tmp) == 0 && S_ISREG(out_st_tmp.st_mode)) {
+        try {
+            if (fs::last_write_time(brotli_output) < fs::last_write_time(input)) {
+                Logger::info(std::format("Removing stale compressed file: {}", brotli_output.string()));
+                unlink(brotli_output.c_str());
+            }
+        } catch (...) {}
+    }
+
     int fd_brotli = open(brotli_output.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0666);
     if (fd_brotli < 0) {
         int saved_errno = errno;
