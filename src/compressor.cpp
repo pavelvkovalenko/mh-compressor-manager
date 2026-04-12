@@ -6,7 +6,6 @@
 #ifdef HAVE_LIBDEFLATE
 #include <libdeflate.h>
 #endif
-#include <fstream>
 #include <vector>
 #include <zlib.h>
 #include <brotli/encode.h>
@@ -29,14 +28,10 @@ namespace std {
 #include <pwd.h>        // Для getpwuid()
 #include <grp.h>        // Для getgrgid()
 #include <climits>      // Для PATH_MAX
-#include <set>          // Для кэша валидации путей
 #include <atomic>       // Для потокобезопасности
 #ifdef HAVE_SELINUX
 #include <selinux/selinux.h>
 #endif
-#include <thread>       // Для std::thread в compress_dual
-#include <future>       // Для std::async в compress_dual
-#include <system_error> // Для std::error_code
 
 // Базовый размер буфера для потоковой обработки (1MB - оптимизировано для производительности)
 constexpr size_t BASE_BUFFER_SIZE = 1048576;

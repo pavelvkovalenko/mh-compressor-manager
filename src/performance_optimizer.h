@@ -58,21 +58,6 @@ public:
     static void free_aligned_memory(const AllocatedMemory& mem);
 
     /**
-     * Выделение выровненной памяти (устаревший API)
-     * @param size Размер в байтах
-     * @param use_huge_page Использовать Huge Pages
-     * @return Указатель на выделенную память или nullptr
-     */
-    static void* allocate_aligned_memory_old(size_t size, bool use_huge_page);
-
-    /**
-     * Освобождение выровненной памяти (устаревший API)
-     * @param ptr Указатель на память
-     * @param size Размер выделенной памяти
-     */
-    static void free_aligned_memory_old(void* ptr, size_t size);
-    
-    /**
      * Предварительное выделение места на диске
      * @param fd Дескриптор файла
      * @param size Размер в байтах
@@ -97,42 +82,12 @@ public:
      * @return Количество ядер
      */
     static int get_cpu_count();
-    
-    /**
-     * Получение оптимального количества I/O потоков
-     * @return Количество потоков
-     */
-    static int get_optimal_io_threads();
-    
-    /**
-     * Получение оптимального количества CPU потоков
-     * @return Количество потоков
-     */
-    static int get_optimal_cpu_threads();
-    
+
     /**
      * Проверка поддержки Huge Pages в системе
      * @return true если доступны
      */
     static bool is_huge_pages_available();
-    
-    /**
-     * Проверка поддержки io_uring
-     * @return true если доступен
-     */
-    static bool is_io_uring_available();
-    
-    /**
-     * Получение размера страницы памяти
-     * @return Размер страницы в байтах
-     */
-    static size_t get_page_size();
-    
-    /**
-     * Получение размера Huge Page
-     * @return Размер Huge Page в байтах (обычно 2MB)
-     */
-    static size_t get_huge_page_size();
 
 private:
     static bool huge_pages_initialized_;
