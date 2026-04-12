@@ -1,20 +1,23 @@
 #pragma once
 #include <cstdlib>
+#include <string>
 #include <string_view>
+#include <format>
 
 /**
  * @brief Локализация приложения (i18n).
  * Один файл для всего проекта. Язык определяется по env LANG при первом вызове.
  * По умолчанию — английский. При LANG=ru_* — русский.
  *
- * Использование:
+ * Простые строки:
  *   Logger::info(_("File compressed", "Файл сжат"));
- *   Logger::error(_("Failed to open: %s", "Не удалось открыть: %s"), path.c_str());
+ *
+ * Строки с форматированием:
+ *   Logger::info(tr_fmt("File: {} bytes", "Файл: {} байт", size));
  */
 namespace i18n {
 
 inline bool is_russian() {
-    // Определяется один раз, кэшируется
     static const bool ru = []() {
         const char* lang = std::getenv("LANG");
         if (!lang) lang = std::getenv("LC_ALL");
@@ -30,7 +33,18 @@ inline const char* tr(const char* en, const char* ru) {
     return is_russian() ? ru : en;
 }
 
+/**
+ * @brief Перевод + форматирование строки (runtime).
+ * Использует std::vformat вместо std::format для поддержки runtime строк.
+ */
+template<typename... Args>
+std::string tr_fmt(const char* en, const char* ru, Args&&... args) {
+    return std::vformat(is_russian() ? ru : en,
+                        std::make_format_args(std::forward<Args>(args)...));
+}
+
 } // namespace i18n
 
-// Короткий макрос для перевода
+// Короткие макросы
 #define _(en, ru) i18n::tr(en, ru)
+#define _fmt(en, ru, ...) i18n::tr_fmt(en, ru, __VA_ARGS__)

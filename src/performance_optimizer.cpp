@@ -39,7 +39,7 @@ void PerformanceOptimizer::init(bool use_huge_pages, int io_threads, int cpu_thr
     // Проверяем поддержку Huge Pages
     if (use_huge_pages && is_huge_pages_available()) {
         huge_pages_initialized_ = true;
-        Logger::info(std::format(_("Huge Pages enabled ({} MB pages)", "Huge Pages включены (страницы {} МБ)"), huge_page_size_ / (1024 * 1024)));
+        Logger::info(_fmt("Huge Pages enabled ({} MB pages)", "Huge Pages включены (страницы {} МБ)", huge_page_size_ / (1024 * 1024)));
     } else if (use_huge_pages) {
         Logger::warning(_("Huge Pages requested but not available, falling back to regular pages", "Запрошены Huge Pages, но недоступны, переход на обычные страницы"));
         huge_pages_initialized_ = false;
@@ -62,8 +62,7 @@ void PerformanceOptimizer::init(bool use_huge_pages, int io_threads, int cpu_thr
         cpu_thread_count_ = std::max(1, cpu_count - 1);
     }
     
-    Logger::info(std::format(_("Performance optimizer initialized: {} I/O threads, {} CPU threads", "Оптимизатор производительности инициализирован: {} I/O потоков, {} CPU потоков"),
-                             io_thread_count_, cpu_thread_count_));
+    Logger::info(_fmt("Performance optimizer initialized: {} I/O threads, {} CPU threads", "Оптимизатор производительности инициализирован: {} I/O потоков, {} CPU потоков", io_thread_count_, cpu_thread_count_));
 }
 
 bool PerformanceOptimizer::set_cpu_affinity(int core_id) {
@@ -71,19 +70,18 @@ bool PerformanceOptimizer::set_cpu_affinity(int core_id) {
     CPU_ZERO(&cpuset);
     
     if (core_id < 0 || core_id >= get_cpu_count()) {
-        Logger::warning(std::format(_("Invalid CPU core ID: {}", "Неверный ID ядра CPU: {}"), core_id));
+        Logger::warning(_fmt("Invalid CPU core ID: {}", "Неверный ID ядра CPU: {}", core_id));
         return false;
     }
     
     CPU_SET(core_id, &cpuset);
     
     if (sched_setaffinity(0, sizeof(cpuset), &cpuset) != 0) {
-        Logger::error(std::format(_("Failed to set CPU affinity to core {}: {}", "Не удалось установить привязку CPU к ядру {}: {}"),
-                                  core_id, strerror(errno)));
+        Logger::error(_fmt("Failed to set CPU affinity to core {}: {}", "Не удалось установить привязку CPU к ядру {}: {}", core_id, strerror(errno)));
         return false;
     }
     
-    Logger::debug(std::format(_("CPU affinity set to core {}", "Привязка CPU установлена к ядру {}"), core_id));
+    Logger::debug(_fmt("CPU affinity set to core {}", "Привязка CPU установлена к ядру {}", core_id));
     return true;
 }
 
@@ -92,7 +90,7 @@ bool PerformanceOptimizer::set_thread_cpu_affinity(std::thread& thread, int core
     CPU_ZERO(&cpuset);
     
     if (core_id < 0 || core_id >= get_cpu_count()) {
-        Logger::warning(std::format(_("Invalid CPU core ID for thread: {}", "Неверный ID ядра CPU для потока: {}"), core_id));
+        Logger::warning(_fmt("Invalid CPU core ID for thread: {}", "Неверный ID ядра CPU для потока: {}", core_id));
         return false;
     }
     
@@ -100,12 +98,11 @@ bool PerformanceOptimizer::set_thread_cpu_affinity(std::thread& thread, int core
     
     pthread_t native_handle = thread.native_handle();
     if (pthread_setaffinity_np(native_handle, sizeof(cpuset), &cpuset) != 0) {
-        Logger::error(std::format(_("Failed to set thread CPU affinity to core {}: {}", "Не удалось установить привязку потока CPU к ядру {}: {}"),
-                                  core_id, strerror(errno)));
+        Logger::error(_fmt("Failed to set thread CPU affinity to core {}: {}", "Не удалось установить привязку потока CPU к ядру {}: {}", core_id, strerror(errno)));
         return false;
     }
     
-    Logger::debug(std::format(_("Thread CPU affinity set to core {}", "Привязка потока CPU установлена к ядру {}"), core_id));
+    Logger::debug(_fmt("Thread CPU affinity set to core {}", "Привязка потока CPU установлена к ядру {}", core_id));
     return true;
 }
 
@@ -123,11 +120,10 @@ PerformanceOptimizer::AllocatedMemory PerformanceOptimizer::allocate_aligned_mem
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
 
         if (ptr == MAP_FAILED) {
-            Logger::warning(std::format(_("Huge Pages allocation failed: {}, falling back to regular pages", "Выделение Huge Pages не удалось: {}, переход на обычные страницы"),
-                                        strerror(errno)));
+            Logger::warning(_fmt("Huge Pages allocation failed: {}, falling back to regular pages", "Выделение Huge Pages не удалось: {}, переход на обычные страницы", strerror(errno)));
             ptr = nullptr;
         } else {
-            Logger::debug(std::format(_("Allocated {} bytes with Huge Pages", "Выделено {} байт с Huge Pages"), aligned_size));
+            Logger::debug(_fmt("Allocated {} bytes with Huge Pages", "Выделено {} байт с Huge Pages", aligned_size));
             method = 1;
             return {ptr, method, aligned_size};
         }
@@ -137,10 +133,10 @@ PerformanceOptimizer::AllocatedMemory PerformanceOptimizer::allocate_aligned_mem
     // Fallback: выделение обычной памяти с выравниванием
     if (ptr == nullptr) {
         if (posix_memalign(&ptr, page_size_, aligned_size) != 0) {
-            Logger::error(std::format(_("Failed to allocate aligned memory: {}", "Не удалось выделить выровненную память: {}"), strerror(errno)));
+            Logger::error(_fmt("Failed to allocate aligned memory: {}", "Не удалось выделить выровненную память: {}", strerror(errno)));
             return {nullptr, 0, 0};
         }
-        Logger::debug(std::format(_("Allocated {} bytes with regular pages", "Выделено {} байт обычными страницами"), aligned_size));
+        Logger::debug(_fmt("Allocated {} bytes with regular pages", "Выделено {} байт обычными страницами", aligned_size));
         method = 0;
     }
 
@@ -173,12 +169,12 @@ bool PerformanceOptimizer::preallocate_file(int fd, uint64_t size) {
     if (fallocate(fd, 0, 0, size) != 0) {
         // Fallback: ftruncate (менее эффективно, но работает на всех ФС)
         if (ftruncate(fd, size) != 0) {
-            Logger::warning(std::format(_("Failed to preallocate file: {}", "Не удалось предварительно выделить файл: {}"), strerror(errno)));
+            Logger::warning(_fmt("Failed to preallocate file: {}", "Не удалось предварительно выделить файл: {}", strerror(errno)));
             return false;
         }
     }
     
-    Logger::debug(std::format(_("Preallocated {} bytes on FD {}", "Предварительно выделено {} байт на FD {}"), size, fd));
+    Logger::debug(_fmt("Preallocated {} bytes on FD {}", "Предварительно выделено {} байт на FD {}", size, fd));
     return true;
 }
 
@@ -209,12 +205,11 @@ bool PerformanceOptimizer::advise_file_access(int fd, bool sequential, bool no_r
     
     if (posix_fadvise(fd, 0, 0, advice) != 0) {
         // Это не ошибка — просто подсказка ОС, которую можно игнорировать
-        Logger::debug(std::format(_("posix_fadvise failed (non-critical): {}", "posix_fadvise завершилась неудачно (не критично): {}"), strerror(errno)));
+        Logger::debug(_fmt("posix_fadvise failed (non-critical): {}", "posix_fadvise завершилась неудачно (не критично): {}", strerror(errno)));
         return false;
     }
     
-    Logger::debug(std::format(_("File access advice set: sequential={}, no_reuse={}, write_once={}", "Установлена рекомендация доступа: последовательно={}, не переиспользовать={}, однократная запись={}"),
-                              sequential, no_reuse, write_once));
+    Logger::debug(_fmt("File access advice set: sequential={}, no_reuse={}, write_once={}", "Установлена рекомендация доступа: последовательно={}, не переиспользовать={}, однократная запись={}", sequential, no_reuse, write_once));
     return true;
 }
 

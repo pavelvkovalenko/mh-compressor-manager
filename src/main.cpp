@@ -77,20 +77,20 @@ struct PerformanceMetrics {
         auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
 
         Logger::info(_("=== Performance Summary ===", "=== Сводка производительности ==="));
-        Logger::info(std::format(_("Total tasks: {}", "Всего задач: {}"), total_tasks.load()));
-        Logger::info(std::format(_("Completed: {}", "Завершено: {}"), completed_tasks.load()));
-        Logger::info(std::format(_("Failed: {}", "Ошибок: {}"), failed_tasks.load()));
-        Logger::info(std::format(_("Skipped (too small): {}", "Пропущено (слишком маленькие): {}"), files_skipped_small.load()));
-        Logger::info(std::format(_("Bytes skipped (small): {}", "Байт пропущено (маленькие): {}"), bytes_skipped_small.load()));
-        Logger::info(std::format(_("Bytes processed: {}", "Байт обработано: {}"), bytes_processed.load()));
-        Logger::info(std::format(_("Bytes compressed: {}", "Байт сжато: {}"), bytes_compressed.load()));
+        Logger::info(_fmt("Total tasks: {}", "Всего задач: {}", total_tasks.load()));
+        Logger::info(_fmt("Completed: {}", "Завершено: {}", completed_tasks.load()));
+        Logger::info(_fmt("Failed: {}", "Ошибок: {}", failed_tasks.load()));
+        Logger::info(_fmt("Skipped (too small): {}", "Пропущено (слишком маленькие): {}", files_skipped_small.load()));
+        Logger::info(_fmt("Bytes skipped (small): {}", "Байт пропущено (маленькие): {}", bytes_skipped_small.load()));
+        Logger::info(_fmt("Bytes processed: {}", "Байт обработано: {}", bytes_processed.load()));
+        Logger::info(_fmt("Bytes compressed: {}", "Байт сжато: {}", bytes_compressed.load()));
         if (bytes_processed.load() > 0) {
             double ratio = (1.0 - (double)bytes_compressed.load() / bytes_processed.load()) * 100;
-            Logger::info(std::format(_("Compression ratio: {:.1f}%", "Коэффициент сжатия: {:.1f}%"), ratio));
+            Logger::info(_fmt("Compression ratio: {:.1f}%", "Коэффициент сжатия: {:.1f}%", ratio));
         }
-        Logger::info(std::format(_("Duration: {} seconds", "Длительность: {} секунд"), duration));
+        Logger::info(_fmt("Duration: {} seconds", "Длительность: {} секунд", duration));
         if (duration > 0) {
-            Logger::info(std::format(_("Tasks/sec: {:.2f}", "Задач/сек: {:.2f}"), (double)completed_tasks.load() / duration));
+            Logger::info(_fmt("Tasks/sec: {:.2f}", "Задач/сек: {:.2f}", (double)completed_tasks.load() / duration));
         }
     }
 };
@@ -131,7 +131,7 @@ bool init_signal_fd() {
 
     g_signal_fd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
     if (g_signal_fd == -1) {
-        Logger::error(std::format(_("Failed to create signalfd: {}", "Не удалось создать signalfd: {}"), strerror(errno)));
+        Logger::error(_fmt("Failed to create signalfd: {}", "Не удалось создать signalfd: {}", strerror(errno)));
         return false;
     }
 
@@ -150,7 +150,7 @@ void handle_signals() {
     switch (fdsi.ssi_signo) {
         case SIGTERM:
         case SIGINT:
-            Logger::info(std::format(_("Received signal {} ({}), initiating graceful shutdown",
+            Logger::info(_fmt("Received signal {} ({}), initiating graceful shutdown",
                                        "Получен сигнал {} ({}), инициируется корректное завершение"),
                                      fdsi.ssi_signo, strsignal(fdsi.ssi_signo)));
             g_running = false;
@@ -161,7 +161,7 @@ void handle_signals() {
             g_reload_config = true;
             break;
         default:
-            Logger::warning(std::format(_("Received unexpected signal: {}", "Получен неожиданный сигнал: {}"), fdsi.ssi_signo));
+            Logger::warning(_fmt("Received unexpected signal: {}", "Получен неожиданный сигнал: {}", fdsi.ssi_signo));
             break;
     }
 }
@@ -188,14 +188,14 @@ void graceful_shutdown_with_timeout() {
     }
 
     // Шаг 2: Ждем завершения активных задач с таймаутом
-    Logger::info(std::format(_("Waiting for active tasks to complete (timeout: {} seconds)...",
+    Logger::info(_fmt("Waiting for active tasks to complete (timeout: {} seconds)...",
                                "Ожидание завершения активных задач (таймаут: {} сек)..."),
                              SHUTDOWN_TIMEOUT.count()));
 
     while (g_pool && g_pool->active_count() > 0) {
         auto elapsed = std::chrono::steady_clock::now() - shutdown_start;
         if (elapsed >= SHUTDOWN_TIMEOUT) {
-            Logger::warning(std::format(_("Graceful shutdown timeout reached ({} seconds). "
+            Logger::warning(_fmt("Graceful shutdown timeout reached ({} seconds). "
                                          "Active tasks: {}. Forcing termination.",
                                          "Таймаут корректного завершения ({} сек). "
                                          "Активных задач: {}. Принудительное завершение."),
@@ -208,7 +208,7 @@ void graceful_shutdown_with_timeout() {
         size_t queued = g_pool->queue_size();
 
         if (active > 0 || queued > 0) {
-            Logger::debug(std::format(_("Waiting for tasks: {} active, {} queued",
+            Logger::debug(_fmt("Waiting for tasks: {} active, {} queued",
                                         "Ожидание задач: {} активных, {} в очереди"), active, queued));
         }
 
@@ -225,7 +225,7 @@ void graceful_shutdown_with_timeout() {
     auto shutdown_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         shutdown_end - shutdown_start).count();
 
-    Logger::info(std::format(_("Graceful shutdown completed in {} ms",
+    Logger::info(_fmt("Graceful shutdown completed in {} ms",
                                "Корректное завершение выполнено за {} мс"), shutdown_duration));
 }
 
@@ -236,7 +236,7 @@ void reload_config() {
         auto new_cfg = std::make_unique<Config>(load_config(0, nullptr));
 
         Logger::info(_("Configuration reloaded successfully", "Конфигурация успешно перезагружена"));
-        Logger::info(std::format(_("New target paths: {}", "Новых целевых путей: {}"), new_cfg->target_paths.size()));
+        Logger::info(_fmt("New target paths: {}", "Новых целевых путей: {}", new_cfg->target_paths.size()));
 
         // Атомарно заменяем конфигурацию под блокировкой
         {
@@ -256,7 +256,7 @@ void reload_config() {
         Logger::info(_("Configuration reload completed successfully",
                        "Перезагрузка конфигурации успешно завершена"));
     } catch (const std::exception& e) {
-        Logger::error(std::format(_("Failed to reload configuration: {}", "Не удалось перезагрузить конфигурацию: {}"), e.what()));
+        Logger::error(_fmt("Failed to reload configuration: {}", "Не удалось перезагрузить конфигурацию: {}", e.what()));
         Logger::warning(_("Keeping old configuration", "Сохраняется старая конфигурация"));
     }
 }
@@ -265,17 +265,17 @@ void reload_config() {
 bool should_compress(const fs::path& path, const Config& cfg) {
     struct stat st;
     if (lstat(path.c_str(), &st) != 0) {
-        Logger::debug(std::format(_("File does not exist or inaccessible: {}", "Файл не существует или недоступен: {}"), path.string()));
+        Logger::debug(_fmt("File does not exist or inaccessible: {}", "Файл не существует или недоступен: {}", path.string()));
         return false;
     }
 
     if (S_ISLNK(st.st_mode)) {
-        Logger::error(std::format(_("SECURITY: Path is a symlink (potential attack): {}", "БЕЗОПАСНОСТЬ: Путь — symlink (возможная атака): {}"), path.string()));
+        Logger::error(_fmt("SECURITY: Path is a symlink (potential attack): {}", "БЕЗОПАСНОСТЬ: Путь — symlink (возможная атака): {}", path.string()));
         return false;
     }
 
     if (!S_ISREG(st.st_mode)) {
-        Logger::debug(std::format(_("Path is not a regular file: {}", "Путь не является обычным файлом: {}"), path.string()));
+        Logger::debug(_fmt("Path is not a regular file: {}", "Путь не является обычным файлом: {}", path.string()));
         return false;
     }
 
@@ -302,7 +302,7 @@ bool should_compress(const fs::path& path, const Config& cfg) {
     }
     
     if (!ext_match) {
-        Logger::debug(std::format(_("Extension not in list: {}.{}", "Расширение не в списке: {}.{}"), path.string(), ext));
+        Logger::debug(_fmt("Extension not in list: {}.{}", "Расширение не в списке: {}.{}", path.string(), ext));
         return false;
     }
 
@@ -326,11 +326,11 @@ bool should_compress(const fs::path& path, const Config& cfg) {
         }
         
         if (gz_ok && br_ok) {
-            Logger::debug(std::format(_("File already compressed and up-to-date: {}", "Файл уже сжат и актуален: {}"), path.string()));
+            Logger::debug(_fmt("File already compressed and up-to-date: {}", "Файл уже сжат и актуален: {}", path.string()));
             return false;
         }
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format(_("Error checking file times: {}", "Ошибка проверки времени файлов: {}"), e.what()));
+        Logger::warning(_fmt("Error checking file times: {}", "Ошибка проверки времени файлов: {}", e.what()));
         return true;
     }
 
@@ -351,12 +351,12 @@ TaskPriority determine_priority(const fs::path& path, uint64_t& out_size) {
             return TaskPriority::LOW;
         }
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format(_("Filesystem error getting file size: {} - {}",
+        Logger::warning(_fmt("Filesystem error getting file size: {} - {}",
                                       "Ошибка ФС при получении размера файла: {} - {}"), path.string(), e.what()));
         out_size = 0;
         return TaskPriority::NORMAL;
     } catch (const std::exception& e) {
-        Logger::warning(std::format(_("Error getting file size: {} - {}",
+        Logger::warning(_fmt("Error getting file size: {} - {}",
                                       "Ошибка получения размера файла: {} - {}"), path.string(), e.what()));
         out_size = 0;
         return TaskPriority::NORMAL;
@@ -389,10 +389,10 @@ void compress_task(const fs::path& path) {
     g_metrics.total_tasks++;
     auto start = std::chrono::steady_clock::now();
 
-    Logger::info(std::format(_("Processing task for: {}", "Обработка задачи для: {}"), path.string()));
+    Logger::info(_fmt("Processing task for: {}", "Обработка задачи для: {}", path.string()));
 
     if (!should_compress(path, *cfg)) {
-        Logger::debug(std::format(_("Skipping compression (up-to-date or invalid): {}",
+        Logger::debug(_fmt("Skipping compression (up-to-date or invalid): {}",
                                     "Пропуск сжатия (актуален или некорректен): {}"), path.string()));
         g_metrics.completed_tasks++;
         return;
@@ -404,16 +404,16 @@ void compress_task(const fs::path& path) {
     try {
         original_size = fs::file_size(path);
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format(_("Cannot get file size: {} - {}", "Не удалось получить размер файла: {} - {}"), path.string(), e.what()));
+        Logger::warning(_fmt("Cannot get file size: {} - {}", "Не удалось получить размер файла: {} - {}", path.string(), e.what()));
     } catch (const std::exception& e) {
-        Logger::warning(std::format(_("Error getting file size: {} - {}", "Ошибка получения размера файла: {} - {}"), path.string(), e.what()));
+        Logger::warning(_fmt("Error getting file size: {} - {}", "Ошибка получения размера файла: {} - {}", path.string(), e.what()));
     }
 
     // Проверка минимального размера файла (ТЗ §4)
     // Фактический порог = max(захаркоженный минимум, настраиваемый порог)
     const size_t effective_min = std::max(Config::MIN_COMPRESS_SIZE, cfg->optimal_min_compress_size);
     if (original_size > 0 && original_size < effective_min) {
-        Logger::debug(std::format(_("Skipping file {}: size {} bytes < minimum threshold ({} bytes)",
+        Logger::debug(_fmt("Skipping file {}: size {} bytes < minimum threshold ({} bytes)",
                                     "Пропуск файла {}: размер {} байт < минимального порога ({} байт)"),
                                   path.string(), original_size, effective_min));
         g_metrics.files_skipped_small++;
@@ -424,7 +424,7 @@ void compress_task(const fs::path& path) {
     }
 
     if (!cfg->dry_run) {
-        Logger::info(std::format(_("Compressing: {}", "Сжатие: {}"), path.string()));
+        Logger::info(_fmt("Compressing: {}", "Сжатие: {}", path.string()));
 
         bool gzip_success = false;
         bool brotli_success = false;
@@ -441,7 +441,7 @@ void compress_task(const fs::path& path) {
         // Открываем файл один раз, читаем в буфер, сжимаем из буфера оба формата
         int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
         if (fd < 0) {
-            Logger::error(std::format(_("Failed to open file for reading: {} - {}",
+            Logger::error(_fmt("Failed to open file for reading: {} - {}",
                                         "Не удалось открыть файл для чтения: {} - {}"), path.string(), strerror(errno)));
             g_metrics.failed_tasks++;
             return;
@@ -450,7 +450,7 @@ void compress_task(const fs::path& path) {
         struct stat st;
         if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
             close(fd);
-            Logger::error(std::format(_("Not a regular file: {}", "Не является обычным файлом: {}"), path.string()));
+            Logger::error(_fmt("Not a regular file: {}", "Не является обычным файлом: {}", path.string()));
             g_metrics.failed_tasks++;
             return;
         }
@@ -474,7 +474,7 @@ void compress_task(const fs::path& path) {
             uint8_t* buffer = buffer_pool().allocate_raw();
             if (!buffer) {
                 close(fd);
-                Logger::error(std::format(_("Failed to allocate buffer for reading: {}",
+                Logger::error(_fmt("Failed to allocate buffer for reading: {}",
                                             "Не удалось выделить буфер для чтения: {}"), path.string()));
                 g_metrics.failed_tasks++;
                 return;
@@ -488,7 +488,7 @@ void compress_task(const fs::path& path) {
                 ssize_t n = read(fd, ptr, remaining);
                 if (n < 0) {
                     if (errno == EINTR) continue;
-                    Logger::error(std::format(_("Failed to read file {}: {} - {}",
+                    Logger::error(_fmt("Failed to read file {}: {} - {}",
                                                 "Ошибка чтения файла {}: {} - {}"), path.string(), remaining, strerror(errno)));
                     break;
                 }
@@ -500,7 +500,7 @@ void compress_task(const fs::path& path) {
             close(fd);
 
             if (static_cast<size_t>(total_read) != file_size) {
-                Logger::warning(std::format(_("Partial read: expected {} bytes, got {} bytes for {}",
+                Logger::warning(_fmt("Partial read: expected {} bytes, got {} bytes for {}",
                                               "Частичное чтение: ожидалось {} байт, получено {} байт для {}"), file_size, total_read, path.string()));
             }
 
@@ -509,21 +509,21 @@ void compress_task(const fs::path& path) {
             {
                 struct stat post_stat;
                 if (lstat(path.c_str(), &post_stat) != 0) {
-                    Logger::warning(std::format(_("Race condition: file {} deleted during read, compression cancelled",
+                    Logger::warning(_fmt("Race condition: file {} deleted during read, compression cancelled",
                                                   "Race condition: файл {} удалён во время чтения, сжатие отменено"), path.string()));
                     buffer_pool().release_raw(buffer);
                     g_metrics.failed_tasks++;
                     return;
                 }
                 if (post_stat.st_mtime != st.st_mtime) {
-                    Logger::debug(std::format(_("Race condition: file {} modified during read (mtime changed), compression cancelled",
+                    Logger::debug(_fmt("Race condition: file {} modified during read (mtime changed), compression cancelled",
                                                 "Race condition: файл {} изменён во время чтения (mtime изменён), сжатие отменено"), path.string()));
                     buffer_pool().release_raw(buffer);
                     g_metrics.failed_tasks++;
                     return;
                 }
                 if (post_stat.st_ino != st.st_ino) {
-                    Logger::debug(std::format(_("Race condition: file {} inode changed during read, compression cancelled",
+                    Logger::debug(_fmt("Race condition: file {} inode changed during read, compression cancelled",
                                                 "Race condition: inode файла {} изменён во время чтения, сжатие отменено"), path.string()));
                     buffer_pool().release_raw(buffer);
                     g_metrics.failed_tasks++;
@@ -531,7 +531,7 @@ void compress_task(const fs::path& path) {
                 }
                 size_t post_size = static_cast<size_t>(post_stat.st_size);
                 if (post_size < effective_min) {
-                    Logger::debug(std::format(_("Race condition: file {} size dropped below threshold ({} < {}) during read, compression cancelled",
+                    Logger::debug(_fmt("Race condition: file {} size dropped below threshold ({} < {}) during read, compression cancelled",
                                                 "Race condition: размер файла {} упал ниже порога ({} < {}) во время чтения, сжатие отменено"),
                                                path.string(), post_size, effective_min));
                     buffer_pool().release_raw(buffer);
@@ -580,7 +580,7 @@ void compress_task(const fs::path& path) {
             buffer_pool().release_raw(buffer);
         } else {
             // === STREAMING: чанковое сжатие для больших файлов (ТЗ §21.3-Задача 2.3) ===
-            Logger::debug(std::format(_("Using streaming compression for {} ({} bytes, chunk = {} bytes)",
+            Logger::debug(_fmt("Using streaming compression for {} ({} bytes, chunk = {} bytes)",
                                         "Используется потоковое сжатие для {} ({} байт, чанк = {} байт)"),
                                        path.string(), file_size, effective_chunk));
 
@@ -603,7 +603,7 @@ void compress_task(const fs::path& path) {
 
             if (!brotli_started && !gzip_started) {
                 close(fd);
-                Logger::error(std::format(_("No compression algorithms enabled for {}",
+                Logger::error(_fmt("No compression algorithms enabled for {}",
                                             "Алгоритмы сжатия не включены для {}"), path.string()));
                 g_metrics.failed_tasks++;
                 return;
@@ -613,7 +613,7 @@ void compress_task(const fs::path& path) {
             uint8_t* buffer = buffer_pool().allocate_raw();
             if (!buffer) {
                 close(fd);
-                Logger::error(std::format(_("Failed to allocate streaming buffer: {}",
+                Logger::error(_fmt("Failed to allocate streaming buffer: {}",
                                             "Не удалось выделить буфер потокового сжатия: {}"), path.string()));
                 g_metrics.failed_tasks++;
                 return;
@@ -633,7 +633,7 @@ void compress_task(const fs::path& path) {
                     ssize_t n = read(fd, ptr, remaining_read);
                     if (n < 0) {
                         if (errno == EINTR) continue;
-                        Logger::error(std::format(_("Streaming read error at offset {}: {}",
+                        Logger::error(_fmt("Streaming read error at offset {}: {}",
                                                     "Ошибка потокового чтения по смещению {}: {}"), offset, strerror(errno)));
                         stream_error = true;
                         break;
@@ -649,7 +649,7 @@ void compress_task(const fs::path& path) {
                 // Если read вернул 0 до того как мы прочитали весь файл — ошибка
                 if (bytes_read == 0) {
                     if (offset < file_size) {
-                        Logger::error(std::format(_("Premature EOF for {}: read {} of {} bytes",
+                        Logger::error(_fmt("Premature EOF for {}: read {} of {} bytes",
                                                     "Преждевременный EOF для {}: прочитано {} из {} байт"), path.string(), offset, file_size));
                         stream_error = true;
                     }
@@ -662,14 +662,14 @@ void compress_task(const fs::path& path) {
                 // Оба алгоритма обрабатывают один чанк — данные в L3 кэше
                 if (brotli_started && !br_state.has_error) {
                     if (!Compressor::brotli_stream_process(br_state, buffer, bytes_read, is_last)) {
-                        Logger::error(std::format(_("Brotli streaming error for {}",
+                        Logger::error(_fmt("Brotli streaming error for {}",
                                                     "Ошибка потокового сжатия Brotli для {}"), path.string()));
                     }
                 }
 
                 if (gzip_started && !gz_state.has_error) {
                     if (!Compressor::gzip_stream_process(gz_state, buffer, bytes_read, is_last)) {
-                        Logger::error(std::format(_("Gzip streaming error for {}",
+                        Logger::error(_fmt("Gzip streaming error for {}",
                                                     "Ошибка потокового сжатия Gzip для {}"), path.string()));
                     }
                 }
@@ -683,7 +683,7 @@ void compress_task(const fs::path& path) {
             {
                 struct stat post_stat;
                 if (lstat(path.c_str(), &post_stat) != 0) {
-                    Logger::warning(std::format(_("Race condition: streaming file {} deleted during compression, discarding results",
+                    Logger::warning(_fmt("Race condition: streaming file {} deleted during compression, discarding results",
                                                   "Race condition: потоковый файл {} удалён во время сжатия, результаты отменены"), path.string()));
                     Compressor::safe_remove_compressed(path);
                     gzip_success = false;
@@ -692,7 +692,7 @@ void compress_task(const fs::path& path) {
                     return;
                 }
                 if (post_stat.st_mtime != st.st_mtime) {
-                    Logger::debug(std::format(_("Race condition: streaming file {} modified during compression (mtime changed), discarding results",
+                    Logger::debug(_fmt("Race condition: streaming file {} modified during compression (mtime changed), discarding results",
                                                 "Race condition: потоковый файл {} изменён во время сжатия (mtime изменён), результаты отменены"), path.string()));
                     Compressor::safe_remove_compressed(path);
                     gzip_success = false;
@@ -701,7 +701,7 @@ void compress_task(const fs::path& path) {
                     return;
                 }
                 if (post_stat.st_ino != st.st_ino) {
-                    Logger::debug(std::format(_("Race condition: streaming file {} inode changed during compression, discarding results",
+                    Logger::debug(_fmt("Race condition: streaming file {} inode changed during compression, discarding results",
                                                 "Race condition: inode потокового файла {} изменён во время сжатия, результаты отменены"), path.string()));
                     Compressor::safe_remove_compressed(path);
                     gzip_success = false;
@@ -711,7 +711,7 @@ void compress_task(const fs::path& path) {
                 }
                 size_t post_size = static_cast<size_t>(post_stat.st_size);
                 if (post_size < effective_min) {
-                    Logger::debug(std::format(_("Race condition: streaming file {} size dropped below threshold ({} < {}) during compression, discarding results",
+                    Logger::debug(_fmt("Race condition: streaming file {} size dropped below threshold ({} < {}) during compression, discarding results",
                                                 "Race condition: размер потокового файла {} упал ниже порога ({} < {}) во время сжатия, результаты отменены"),
                                                path.string(), post_size, effective_min));
                     Compressor::safe_remove_compressed(path);
@@ -744,17 +744,17 @@ void compress_task(const fs::path& path) {
         }
 
         if (gzip_success || brotli_success) {
-            Logger::info(std::format(_("Compression completed: {}", "Сжатие завершено: {}"), path.string()));
+            Logger::info(_fmt("Compression completed: {}", "Сжатие завершено: {}", path.string()));
             g_metrics.completed_tasks++;
             g_metrics.bytes_processed += original_size;
             g_metrics.bytes_compressed += compressed_size;
         } else {
-            Logger::error(std::format(_("Compression failed: {}", "Сжатие не удалось: {}"), path.string()));
+            Logger::error(_fmt("Compression failed: {}", "Сжатие не удалось: {}", path.string()));
             g_metrics.failed_tasks++;
         }
     } else {
-        Logger::info(std::format(_("[DRY RUN] Would compress: {}", "[ПРОВЕРОЧНЫЙ] Будет сжат: {}"), path.string()));
-        Logger::info(std::format(_("[DRY RUN] Original size: {} bytes", "[ПРОВЕРОЧНЫЙ] Исходный размер: {} байт"), original_size));
+        Logger::info(_fmt("[DRY RUN] Would compress: {}", "[ПРОВЕРОЧНЫЙ] Будет сжат: {}", path.string()));
+        Logger::info(_fmt("[DRY RUN] Original size: {} bytes", "[ПРОВЕРОЧНЫЙ] Исходный размер: {} байт", original_size));
 
         // Оцениваем потенциальный размер после сжатия (эмпирические коэффициенты)
         // gzip обычно даёт 60-70% сжатия для текста, brotli 70-80%
@@ -762,27 +762,27 @@ void compress_task(const fs::path& path) {
         uint64_t estimated_brotli_size = original_size * 25 / 100; // ~75% экономия
 
         if (cfg->algorithms == "all") {
-            Logger::info(std::format(_("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)",
+            Logger::info(_fmt("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)",
                                        "[ПРОВЕРОЧНЫЙ] Оценочный размер gzip: {} байт (~{}% экономии)"),
                                      estimated_gzip_size, (100 - estimated_gzip_size * 100 / (original_size > 0 ? original_size : 1))));
-            Logger::info(std::format(_("[DRY RUN] Estimated brotli size: {} bytes (~{}% savings)",
+            Logger::info(_fmt("[DRY RUN] Estimated brotli size: {} bytes (~{}% savings)",
                                        "[ПРОВЕРОЧНЫЙ] Оценочный размер brotli: {} байт (~{}% экономии)"),
                                      estimated_brotli_size, (100 - estimated_brotli_size * 100 / (original_size > 0 ? original_size : 1))));
-            Logger::info(std::format(_("[DRY RUN] Total estimated savings: {} bytes (~{}%)",
+            Logger::info(_fmt("[DRY RUN] Total estimated savings: {} bytes (~{}%)",
                                        "[ПРОВЕРОЧНЫЙ] Итого экономия: {} байт (~{}%)"),
                                      original_size - (estimated_gzip_size + estimated_brotli_size),
                                      (100 - (estimated_gzip_size + estimated_brotli_size) * 100 / (original_size > 0 ? original_size : 1))));
         } else if (cfg->algorithms == "gzip") {
-            Logger::info(std::format(_("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)",
+            Logger::info(_fmt("[DRY RUN] Estimated gzip size: {} bytes (~{}% savings)",
                                        "[ПРОВЕРОЧНЫЙ] Оценочный размер gzip: {} байт (~{}% экономии)"),
                                      estimated_gzip_size, (100 - estimated_gzip_size * 100 / (original_size > 0 ? original_size : 1))));
-            Logger::info(std::format(_("[DRY RUN] Total estimated savings: {} bytes",
+            Logger::info(_fmt("[DRY RUN] Total estimated savings: {} bytes",
                                        "[ПРОВЕРОЧНЫЙ] Итого экономия: {} байт"), original_size - estimated_gzip_size));
         } else if (cfg->algorithms == "brotli") {
-            Logger::info(std::format(_("[DRY RUN] Estimated brotli size: {} bytes (~{}% savings)",
+            Logger::info(_fmt("[DRY RUN] Estimated brotli size: {} bytes (~{}% savings)",
                                        "[ПРОВЕРОЧНЫЙ] Оценочный размер brotli: {} байт (~{}% экономии)"),
                                      estimated_brotli_size, (100 - estimated_brotli_size * 100 / (original_size > 0 ? original_size : 1))));
-            Logger::info(std::format(_("[DRY RUN] Total estimated savings: {} bytes",
+            Logger::info(_fmt("[DRY RUN] Total estimated savings: {} bytes",
                                        "[ПРОВЕРОЧНЫЙ] Итого экономия: {} байт"), original_size - estimated_brotli_size));
         }
 
@@ -795,7 +795,7 @@ void compress_task(const fs::path& path) {
 
     auto end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    Logger::debug(std::format(_("Task completed in {} ms", "Задача выполнена за {} мс"), duration));
+    Logger::debug(_fmt("Task completed in {} ms", "Задача выполнена за {} мс", duration));
 }
 
 // Задача удаления сжатых копий
@@ -803,10 +803,10 @@ void delete_task(const fs::path& path) {
     auto cfg = get_config();
     if (!cfg) return;
     if (!cfg->dry_run) {
-        Logger::info(std::format(_("Removing compressed copies for: {}", "Удаление сжатых копий для: {}"), path.string()));
+        Logger::info(_fmt("Removing compressed copies for: {}", "Удаление сжатых копий для: {}", path.string()));
         Compressor::safe_remove_compressed(path);
     } else {
-        Logger::info(std::format(_("[DRY RUN] Would remove compressed copies for: {}",
+        Logger::info(_fmt("[DRY RUN] Would remove compressed copies for: {}",
                                    "[ПРОВЕРОЧНЫЙ] Будут удалены сжатые копии для: {}"), path.string()));
         
         // Проверяем какие файлы были бы удалены
@@ -816,15 +816,15 @@ void delete_task(const fs::path& path) {
         try {
             struct stat st;
             if (lstat(gz.c_str(), &st) == 0 && S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
-                Logger::info(std::format(_("[DRY RUN] Would remove: {} ({} bytes)",
+                Logger::info(_fmt("[DRY RUN] Would remove: {} ({} bytes)",
                                            "[ПРОВЕРОЧНЫЙ] Будет удалён: {} ({} байт)"), gz.string(), st.st_size));
             }
             if (lstat(br.c_str(), &st) == 0 && S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
-                Logger::info(std::format(_("[DRY RUN] Would remove: {} ({} bytes)",
+                Logger::info(_fmt("[DRY RUN] Would remove: {} ({} bytes)",
                                            "[ПРОВЕРОЧНЫЙ] Будет удалён: {} ({} байт)"), br.string(), st.st_size));
             }
         } catch (const std::exception& e) {
-            Logger::warning(std::format(_("[DRY RUN] Error checking files: {}",
+            Logger::warning(_fmt("[DRY RUN] Error checking files: {}",
                                           "[ПРОВЕРОЧНЫЙ] Ошибка проверки файлов: {}"), e.what()));
         }
     }
@@ -838,15 +838,15 @@ int main(int argc, char* argv[]) {
     for (const auto& path_str : g_cfg->target_paths) {
         struct stat st;
         if (lstat(path_str.c_str(), &st) != 0) {
-            fprintf(stderr, "Error: Directory does not exist: %s\n", path_str.c_str());
+            fprintf(stderr, "Error: Directory does not exist: %s\n",path_str.c_str());
             return 2;
         }
         if (!S_ISDIR(st.st_mode)) {
-            fprintf(stderr, "Error: Path is not a directory: %s\n", path_str.c_str());
+            fprintf(stderr, "Error: Path is not a directory: %s\n",path_str.c_str());
             return 2;
         }
         if (S_ISLNK(st.st_mode)) {
-            fprintf(stderr, "Error: Path is a symlink (potential attack): %s\n", path_str.c_str());
+            fprintf(stderr, "Error: Path is a symlink (potential attack): %s\n",path_str.c_str());
             return 2;
         }
     }
@@ -857,15 +857,15 @@ int main(int argc, char* argv[]) {
 
     // Определение параметров кэша CPU для оптимизации буферов (ТЗ §3.2.9)
     g_cache = CacheInfo::detect();
-    Logger::info(std::format(_("CPU cache: L3 = {} MB, threads = {}, buffer per thread = {} KB",
+    Logger::info(_fmt("CPU cache: L3 = {} MB, threads = {}, buffer per thread = {} KB",
                                "Кэш CPU: L3 = {} МБ, потоков = {}, буфер на поток = {} КБ"),
                               g_cache.l3_total / (1024 * 1024),
                               g_cache.thread_count,
                               g_cache.optimal_buffer_size() / 1024));
 
-    Logger::info(std::format(_("Target paths: {}", "Целевых путей: {}"), g_cfg->target_paths.size()));
+    Logger::info(_fmt("Target paths: {}", "Целевых путей: {}", g_cfg->target_paths.size()));
     for (const auto& p : g_cfg->target_paths) {
-        Logger::info(std::format(_("  - {}", "  - {}"), p));
+        Logger::info(_fmt("  - {}", "  - {}", p));
     }
 
     // Валидация конфигурации
@@ -909,7 +909,7 @@ int main(int argc, char* argv[]) {
     if (threads == 0) threads = 2;
     constexpr size_t MAX_QUEUE_SIZE = 1000;
     size_t max_ios = g_cfg->max_active_ios > 0 ? g_cfg->max_active_ios : 0;
-    Logger::info(std::format(_("Thread pool size: {}, max queue size: {}, max active I/O: {}",
+    Logger::info(_fmt("Thread pool size: {}, max queue size: {}, max active I/O: {}",
                                "Размер пула потоков: {}, макс. размер очереди: {}, макс. активный I/O: {}"),
                              threads, MAX_QUEUE_SIZE, max_ios > 0 ? max_ios : SIZE_MAX));
 
@@ -922,13 +922,13 @@ int main(int argc, char* argv[]) {
     g_monitor->set_task_handler([](const fs::path& p) {
         TaskPriority priority = determine_priority(p);
         if (!g_pool->enqueue([p]() { compress_task(p); }, priority)) {
-            Logger::warning(std::format(_("Task queue full, skipping: {}",
+            Logger::warning(_fmt("Task queue full, skipping: {}",
                                           "Очередь задач заполнена, пропуск: {}"), p.string()));
         }
     });
     g_monitor->set_delete_handler([](const fs::path& p) {
         if (!g_pool->enqueue([p]() { delete_task(p); }, TaskPriority::HIGH)) {
-            Logger::warning(std::format(_("Delete task queue full, skipping: {}",
+            Logger::warning(_fmt("Delete task queue full, skipping: {}",
                                           "Очередь задач удаления заполнена, пропуск: {}"), p.string()));
         }
     });
@@ -1009,7 +1009,7 @@ int main(int argc, char* argv[]) {
             epfd = -1;
         }
     } catch (const std::exception& e) {
-        Logger::error(std::format(_("Exception in main loop: {}", "Исключение в главном цикле: {}"), e.what()));
+        Logger::error(_fmt("Exception in main loop: {}", "Исключение в главном цикле: {}", e.what()));
         g_running = false;
         if (epfd >= 0) {
             close(epfd);

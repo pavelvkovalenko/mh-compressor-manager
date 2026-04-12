@@ -163,7 +163,7 @@ Config load_config(int argc, char* argv[]) {
             if (result.ec == std::errc() && result.ptr == argv[i] + std::strlen(argv[i]) && sz >= 256) {
                 cfg.cli_min_size = sz;
             } else {
-                Logger::warning(std::format(_("Invalid --min-size value '{}' (must be >= 256), ignoring", "Неверное значение --min-size '{}' (должно быть >= 256), игнорируется"), argv[i]));
+                Logger::warning(_fmt("Invalid --min-size value '{}' (must be >= 256), ignoring", "Неверное значение --min-size '{}' (должно быть >= 256), игнорируется", argv[i]));
             }
         }
         else if (arg == "--process-without-ext") cfg.process_files_without_extensions = true;
@@ -172,7 +172,7 @@ Config load_config(int argc, char* argv[]) {
     // Load INI
     std::ifstream file(cfg.config_path);
     if (!file.is_open()) {
-        Logger::warning(std::format(_("Config file {} not found, using defaults", "Файл конфигурации {} не найден, используются значения по умолчанию"), cfg.config_path));
+        Logger::warning(_fmt("Config file {} not found, using defaults", "Файл конфигурации {} не найден, используются значения по умолчанию", cfg.config_path));
     } else {
         std::string line;
         std::string current_section = "general";
@@ -193,7 +193,7 @@ Config load_config(int argc, char* argv[]) {
 
                     // Проверяем включены ли folder_overrides
                     if (!cfg.enable_folder_overrides) {
-                        Logger::debug(std::format(_("folder_overrides disabled, skipping section: {}", "folder_overrides отключены, пропуск секции: {}"), current_folder_path));
+                        Logger::debug(_fmt("folder_overrides disabled, skipping section: {}", "folder_overrides отключены, пропуск секции: {}", current_folder_path));
                         current_section = "";  // Сбрасываем — пропускаем все ключи в этой секции
                         current_folder_path.clear();
                         continue;
@@ -203,7 +203,7 @@ Config load_config(int argc, char* argv[]) {
 
                     // Валидация пути
                     if (!is_path_safe(current_folder_path)) {
-                        Logger::warning(std::format(_("Unsafe path in folder_override section: {}, skipping", "Небезопасный путь в секции folder_override: {}, пропуск"), current_folder_path));
+                        Logger::warning(_fmt("Unsafe path in folder_override section: {}, skipping", "Небезопасный путь в секции folder_override: {}, пропуск", current_folder_path));
                         current_folder_path.clear();
                         current_section = "";
                         continue;
@@ -254,7 +254,7 @@ Config load_config(int argc, char* argv[]) {
                     } else {
                         // Валидация диапазона количества потоков
                         if (threads < 0 || threads > 256) {
-                            Logger::warning(std::format(_("Invalid threads value {}, using auto-detect", "Неверное значение количества потоков {}, используется автоопределение"), threads));
+                            Logger::warning(_fmt("Invalid threads value {}, using auto-detect", "Неверное значение количества потоков {}, используется автоопределение", threads));
                             cfg.threads = 0;
                         } else {
                             cfg.threads = threads;
@@ -273,7 +273,7 @@ Config load_config(int argc, char* argv[]) {
                         Logger::warning(_("Invalid gzip_level format, using default 6", "Неверный формат gzip_level, используется 6"));
                         level = 6;
                     } else if (level < 1 || level > 9) {
-                        Logger::warning(std::format(_("Invalid gzip_level {}, using default 6", "Неверный gzip_level {}, используется 6"), level));
+                        Logger::warning(_fmt("Invalid gzip_level {}, using default 6", "Неверный gzip_level {}, используется 6", level));
                         level = 6;
                     }
                     cfg.gzip_level = level;
@@ -285,7 +285,7 @@ Config load_config(int argc, char* argv[]) {
                         Logger::warning(_("Invalid brotli_level format, using default 4", "Неверный формат brotli_level, используется 4"));
                         level = 4;
                     } else if (level < 1 || level > 11) {
-                        Logger::warning(std::format(_("Invalid brotli_level {}, using default 4", "Неверный brotli_level {}, используется 4"), level));
+                        Logger::warning(_fmt("Invalid brotli_level {}, using default 4", "Неверный brotli_level {}, используется 4", level));
                         level = 4;
                     }
                     cfg.brotli_level = level;
@@ -297,7 +297,7 @@ Config load_config(int argc, char* argv[]) {
                         Logger::warning(_("Invalid debounce_delay format, using default 2", "Неверный формат debounce_delay, используется 2"));
                         delay = 2;
                     } else if (delay < 0 || delay > 60) {
-                        Logger::warning(std::format(_("Invalid debounce_delay {}, using default 2", "Неверный debounce_delay {}, используется 2"), delay));
+                        Logger::warning(_fmt("Invalid debounce_delay {}, using default 2", "Неверный debounce_delay {}, используется 2", delay));
                         delay = 2;
                     }
                     cfg.debounce_delay = delay;
@@ -309,7 +309,7 @@ Config load_config(int argc, char* argv[]) {
                         Logger::warning(_("Invalid min_compress_size format, using default 1024", "Неверный формат min_compress_size, используется 1024"));
                         sz = 1024;
                     } else if (sz < Config::MIN_COMPRESS_SIZE) {
-                        Logger::warning(std::format(_("min_compress_size {} below minimum ({} bytes), using {}", "min_compress_size {} ниже минимума ({} байт), используется {}"), sz, Config::MIN_COMPRESS_SIZE, Config::MIN_COMPRESS_SIZE));
+                        Logger::warning(_fmt("min_compress_size {} below minimum ({} bytes), using {}", "min_compress_size {} ниже минимума ({} байт), используется {}", sz, Config::MIN_COMPRESS_SIZE, Config::MIN_COMPRESS_SIZE));
                         sz = Config::MIN_COMPRESS_SIZE;
                     }
                     cfg.optimal_min_compress_size = sz;
@@ -321,7 +321,7 @@ Config load_config(int argc, char* argv[]) {
                         Logger::warning(_("Invalid io_delay_us format, using default 0", "Неверный формат io_delay_us, используется 0"));
                         delay = 0;
                     } else if (delay < 0 || delay > 1000000) {
-                        Logger::warning(std::format(_("Invalid io_delay_us {}, using default 0", "Неверный io_delay_us {}, используется 0"), delay));
+                        Logger::warning(_fmt("Invalid io_delay_us {}, using default 0", "Неверный io_delay_us {}, используется 0", delay));
                         delay = 0;
                     }
                     cfg.io_delay_us = delay;
@@ -335,7 +335,7 @@ Config load_config(int argc, char* argv[]) {
                     } else {
                         cfg.max_active_ios = value;
                         if (cfg.max_active_ios > 10000) {
-                            Logger::warning(std::format(_("max_active_ios {} too high, limiting to 10000", "max_active_ios {} слишком велико, ограничивается 10000"), cfg.max_active_ios));
+                            Logger::warning(_fmt("max_active_ios {} too high, limiting to 10000", "max_active_ios {} слишком велико, ограничивается 10000", cfg.max_active_ios));
                             cfg.max_active_ios = 10000;
                         }
                     }
@@ -360,7 +360,7 @@ Config load_config(int argc, char* argv[]) {
                         if (level >= 1 && level <= 9) {
                             override.compression_level_gzip = level;
                         } else {
-                            Logger::warning(std::format(_("Invalid gzip_level {} in folder_override, must be 1-9", "Неверный gzip_level {} в folder_override, должно быть 1-9"), level));
+                            Logger::warning(_fmt("Invalid gzip_level {} in folder_override, must be 1-9", "Неверный gzip_level {} в folder_override, должно быть 1-9", level));
                         }
                     } else {
                         Logger::warning(_("Invalid compression_level_gzip format in folder_override", "Неверный формат compression_level_gzip в folder_override"));
@@ -373,7 +373,7 @@ Config load_config(int argc, char* argv[]) {
                         if (level >= 1 && level <= 11) {
                             override.compression_level_brotli = level;
                         } else {
-                            Logger::warning(std::format(_("Invalid brotli_level {} in folder_override, must be 1-11", "Неверный brotli_level {} в folder_override, должно быть 1-11"), level));
+                            Logger::warning(_fmt("Invalid brotli_level {} in folder_override, must be 1-11", "Неверный brotli_level {} в folder_override, должно быть 1-11", level));
                         }
                     } else {
                         Logger::warning(_("Invalid compression_level_brotli format in folder_override", "Неверный формат compression_level_brotli в folder_override"));
@@ -412,7 +412,7 @@ Config load_config(int argc, char* argv[]) {
                         if (delay >= 0 && delay <= 1000000) {
                             override.io_delay_us = delay;
                         } else {
-                            Logger::warning(std::format(_("Invalid io_delay_us {} in folder_override", "Неверный io_delay_us {} в folder_override"), delay));
+                            Logger::warning(_fmt("Invalid io_delay_us {} in folder_override", "Неверный io_delay_us {} в folder_override", delay));
                         }
                     } else {
                         Logger::warning(_("Invalid io_delay_us format in folder_override", "Неверный формат io_delay_us в folder_override"));
@@ -425,7 +425,7 @@ Config load_config(int argc, char* argv[]) {
                         if (value <= 10000) {
                             override.max_active_ios = value;
                         } else {
-                            Logger::warning(std::format(_("max_active_ios {} too high in folder_override, limiting to 10000", "max_active_ios {} слишком велико в folder_override, ограничивается 10000"), value));
+                            Logger::warning(_fmt("max_active_ios {} too high in folder_override, limiting to 10000", "max_active_ios {} слишком велико в folder_override, ограничивается 10000", value));
                             override.max_active_ios = 10000;
                         }
                     } else {

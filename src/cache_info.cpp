@@ -47,7 +47,7 @@ size_t CacheInfo::parse_size_string(const std::string& str) {
         size_t value = std::stoull(num_str);
         return value * multiplier;
     } catch (const std::exception& e) {
-        Logger::warning(std::format(_("Failed to parse cache size string '{}': {}", "Не удалось разобрать строку размера кэша '{}': {}"), str, e.what()));
+        Logger::warning(_fmt("Failed to parse cache size string '{}': {}", "Не удалось разобрать строку размера кэша '{}': {}", str, e.what()));
         return 0;
     }
 }
@@ -116,7 +116,7 @@ size_t CacheInfo::detect_l3_cache_size() {
             }
         }
     } catch (const std::exception& e) {
-        Logger::warning(std::format(_("Error reading sysfs cache info: {}", "Ошибка чтения информации о кэше из sysfs: {}"), e.what()));
+        Logger::warning(_fmt("Error reading sysfs cache info: {}", "Ошибка чтения информации о кэше из sysfs: {}", e.what()));
     }
 
     if (max_l3 == 0) {
@@ -175,17 +175,14 @@ CacheInfo CacheInfo::detect() {
 
     // Логирование
     if (info.l1_dcache_per_core > 0) {
-        Logger::info(std::format(_("CPU cache: L1d = {} KB/core, L2 = {} KB/core, L3 = {} MB", "Кэш CPU: L1d = {} КБ/ядро, L2 = {} КБ/ядро, L3 = {} МБ"),
-                                  info.l1_dcache_per_core / 1024,
+        Logger::info(_fmt("CPU cache: L1d = {} KB/core, L2 = {} KB/core, L3 = {} MB", "Кэш CPU: L1d = {} КБ/ядро, L2 = {} КБ/ядро, L3 = {} МБ", info.l1_dcache_per_core / 1024,
                                   info.l2_per_core / 1024,
                                   info.l3_total / (1024 * 1024)));
     } else {
-        Logger::info(std::format(_("CPU cache: L3 = {} MB (L1/L2 undefined)", "Кэш CPU: L3 = {} МБ (L1/L2 не определены)"),
-                                  info.l3_total / (1024 * 1024)));
+        Logger::info(_fmt("CPU cache: L3 = {} MB (L1/L2 undefined)", "Кэш CPU: L3 = {} МБ (L1/L2 не определены)", info.l3_total / (1024 * 1024)));
     }
 
-    Logger::info(std::format(_("Optimal buffer per thread: {} KB (threads: {})", "Оптимальный буфер на поток: {} КБ (потоков: {})"),
-                              info.optimal_buffer_size() / 1024,
+    Logger::info(_fmt("Optimal buffer per thread: {} KB (threads: {})", "Оптимальный буфер на поток: {} КБ (потоков: {})", info.optimal_buffer_size() / 1024,
                               info.thread_count));
 
     return info;
