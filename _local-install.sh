@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-sudo systemctl stop mh-compressor-manager >/dev/null
+
+# Остановка сервиса (только если уже установлен — для обновлений)
+sudo systemctl stop mh-compressor-manager 2>/dev/null || true
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT/src"
 
