@@ -38,9 +38,9 @@ inline const char* tr(const char* en, const char* ru) {
  * Использует std::vformat вместо std::format для поддержки runtime строк.
  */
 template<typename... Args>
-std::string tr_fmt(const char* en, const char* ru, Args&&... args) {
+std::string tr_fmt(const char* en, const char* ru, const Args&... args) {
     return std::vformat(is_russian() ? ru : en,
-                        std::make_format_args(std::forward<Args>(args)...));
+                        std::make_format_args(args...));
 }
 
 } // namespace i18n
