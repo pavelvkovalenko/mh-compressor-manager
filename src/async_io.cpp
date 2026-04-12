@@ -88,8 +88,7 @@ bool AsyncIO::init_uring(size_t ring_size) {
             ret = io_uring_queue_init(ring_size, &g_ring, 0);
             if (ret != 0) {
                 Logger::warning(_fmt("io_uring initialization failed: {}, falling back to sync I/O",
-                                           "ошибка инициализации io_uring: {}, переход к синхронному вводу/выводу"),
-                                           strerror(-ret)));
+                                           "ошибка инициализации io_uring: {}, переход к синхронному вводу/выводу", strerror(-ret)));
                 init_result = false;
                 return;
             }
@@ -101,8 +100,7 @@ bool AsyncIO::init_uring(size_t ring_size) {
         g_uring_available.store(true);
 
         Logger::debug(_fmt("io_uring initialized with ring size {} (single issuer: {})",
-                                 "io_uring инициализирован с размером кольца {} (единый источник: {})"),
-                                 ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? _("yes", "да") : _("no", "нет")));
+                                 "io_uring инициализирован с размером кольца {} (единый источник: {})", ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? _("yes", "да") : _("no", "нет")));
         init_result = true;
     });
 
@@ -195,8 +193,7 @@ int AsyncIO::open_file_optimized(const fs::path& path, int flags, mode_t mode) {
     int fd = open(path.c_str(), optimized_flags, mode);
     if (fd < 0) {
         Logger::error(_fmt("Failed to open file {}: {}",
-                                   "Не удалось открыть файл {}: {}"),
-                                   path.string(), strerror(errno)));
+                                   "Не удалось открыть файл {}: {}", path.string(), strerror(errno)));
         return -1;
     }
     
@@ -476,8 +473,7 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
     bytes_written = static_cast<size_t>(cqe->res);
     if (bytes_written != size) {
         Logger::warning(_fmt("Partial write: {} of {} bytes written",
-                                     "Частичная запись: записано {} из {} байт"),
-                                     bytes_written, size));
+                                     "Частичная запись: записано {} из {} байт", bytes_written, size));
     }
     {
         std::lock_guard<std::mutex> lock(g_ring_mutex);
