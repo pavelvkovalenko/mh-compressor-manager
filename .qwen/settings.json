@@ -16,7 +16,8 @@
       "docs/development/RULES.md",
       "docs/development/DEPLOY.md",
       "docs/development/QWEN.md",
-      "tests/TEST_SCRIPTS.md"
+      "tests/TEST_SCRIPTS.md",
+      "RECOMMENDED_ACTIONS.md"
     ]
   },
   "hooks": {
