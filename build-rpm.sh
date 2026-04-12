@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # Скрипт сборки RPM-пакета для mh-compressor-manager
-# Использование: ./build-rpm.sh [version]
+# Использование: ./build-rpm.sh [version] [--clean]
 # =============================================================================
 
 set -e
@@ -13,9 +13,36 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VERSION=${1:-1.0.0}
+# Парсинг аргументов
+VERSION=""
+CLEAN_OLD=false
+for arg in "$@"; do
+    case "$arg" in
+        --clean|-c) CLEAN_OLD=true ;;
+        --help|-h)
+            echo "Использование: $0 [version] [--clean]"
+            echo "  version    Версия пакета (по умолчанию: из SPEC)"
+            echo "  --clean    Очистить старые артефакты сборки перед началом"
+            exit 0
+            ;;
+        -*)
+            echo -e "${RED}✗ Неизвестный параметр: ${arg}${NC}"
+            exit 2
+            ;;
+        *) VERSION="$arg" ;;
+    esac
+done
+
 PROJECT_NAME="mh-compressor-manager"
 SPEC_FILE="${PROJECT_NAME}.spec"
+
+# Получение версии из SPEC если не указана
+if [ -z "$VERSION" ]; then
+    if [ -f "$SPEC_FILE" ]; then
+        VERSION=$(grep '^Version:' "$SPEC_FILE" | awk '{print $2}')
+    fi
+    VERSION=${VERSION:-1.0.0}
+fi
 
 DISTRO=$(rpm -E %fedora 2>/dev/null || rpm -E %rhel 2>/dev/null || echo "unknown")
 echo -e "${GREEN}============================================${NC}"
@@ -25,9 +52,24 @@ echo -e "${GREEN}============================================${NC}"
 echo ""
 
 # =============================================================================
-# [1/6] Проверка зависимостей
+# [0/5] Очистка старых артефактов (опционально)
 # =============================================================================
-echo -e "${YELLOW}[1/6] Проверка зависимостей...${NC}"
+if [ "$CLEAN_OLD" = true ]; then
+    echo -e "${YELLOW}[0/5] Очистка старых артефактов...${NC}"
+    RPM_BUILD_ROOT=$(rpm --eval '%{_topdir}' 2>/dev/null || echo "$HOME/rpmbuild")
+    if [ -d "${RPM_BUILD_ROOT}" ]; then
+        rm -rf "${RPM_BUILD_ROOT}"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+        echo -e "${GREEN}✓ Старые артефакты удалены${NC}"
+    else
+        echo "  Директория ${RPM_BUILD_ROOT} не существует, очистка не требуется"
+    fi
+    echo ""
+fi
+
+# =============================================================================
+# [1/5] Проверка зависимостей
+# =============================================================================
+echo -e "${YELLOW}[1/5] Проверка зависимостей...${NC}"
 
 check_package() {
     local pkg_new=$1
@@ -74,9 +116,9 @@ echo -e "${GREEN}✓ Все зависимости установлены${NC}"
 echo ""
 
 # =============================================================================
-# [2/6] Создание структуры директорий RPM
+# [2/5] Создание структуры директорий RPM
 # =============================================================================
-echo -e "${YELLOW}[2/6] Создание структуры директорий...${NC}"
+echo -e "${YELLOW}[2/5] Создание структуры директорий...${NC}"
 
 RPM_BUILD_ROOT=$(rpm --eval '%{_topdir}')
 mkdir -p "${RPM_BUILD_ROOT}"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
@@ -85,9 +127,9 @@ echo -e "${GREEN}✓ Структура RPM создана в: ${RPM_BUILD_ROOT}
 echo ""
 
 # =============================================================================
-# [3/6] Подготовка исходных кодов (ИСПРАВЛЕНО - README в корне)
+# [3/5] Подготовка исходных кодов
 # =============================================================================
-echo -e "${YELLOW}[3/6] Подготовка исходных кодов...${NC}"
+echo -e "${YELLOW}[3/5] Подготовка исходных кодов...${NC}"
 
 SOURCE_TAR="${PROJECT_NAME}-${VERSION}.tar.gz"
 TEMP_DIR=$(mktemp -d)
@@ -101,20 +143,16 @@ if [ ! -d "src" ]; then
     exit 1
 fi
 
-# Простое копирование всех файлов из src/ в BUILD_DIR
+# Копирование исходных файлов из src/
 echo "  Копирование исходных файлов..."
 cp -r src/* "${BUILD_DIR}/"
 
-# Копирование файлов из корня проекта (README.md, README.html, LICENSE)
+# Копирование файлов из корня проекта
 echo "  Копирование файлов документации из корня..."
 cp "README.md" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.md не найден в корне"
-cp "README.html" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.html не найден в корне"
 cp "LICENSE" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/LICENSE"
 
-# Копирование SPEC-файла (для справки)
-cp "${SPEC_FILE}" "${BUILD_DIR}/" 2>/dev/null || true
-
-# Удаляем артефакты сборки, если они попали
+# Удаляем артефакты сборки
 rm -rf "${BUILD_DIR}/build"
 rm -f "${BUILD_DIR}/CMakeCache.txt"
 rm -rf "${BUILD_DIR}/CMakeFiles"
@@ -123,31 +161,32 @@ rm -f "${BUILD_DIR}"/*.o
 rm -f "${BUILD_DIR}"/*.cmake
 rm -f "${BUILD_DIR}/Makefile"
 
-# Копирование дополнительных файлов в корень сборки
+# Генерация compressor-manager.conf
 echo "  Копирование дополнительных файлов..."
-
-# compressor-manager.conf
-if [ -f "src/compressor-manager.conf" ]; then
-    cp "src/compressor-manager.conf" "${BUILD_DIR}/"
-else
-    cat > "${BUILD_DIR}/compressor-manager.conf" << 'CONF'
+_generate_config() {
+    cat << 'CONF'
 [general]
 target_path=/var/www/html
 debug=false
 threads=0
 list=txt js css svg json html htm map
 algorithms=all
-gzip_level=6
-brotli_level=4
+gzip_level=9
+brotli_level=11
 debounce_delay=2
+min_compress_size=256
 CONF
+}
+
+if [ -f "src/compressor-manager.conf" ]; then
+    cp "src/compressor-manager.conf" "${BUILD_DIR}/"
+else
+    _generate_config > "${BUILD_DIR}/compressor-manager.conf"
 fi
 
-# mh-compressor-manager.service
-if [ -f "src/mh-compressor-manager.service" ]; then
-    cp "src/mh-compressor-manager.service" "${BUILD_DIR}/"
-else
-    cat > "${BUILD_DIR}/mh-compressor-manager.service" << 'SVC'
+# Генерация mh-compressor-manager.service
+_generate_service() {
+    cat << 'SVC'
 [Unit]
 Description=MediaHive Compressor Manager
 After=network.target
@@ -162,6 +201,12 @@ Group=root
 [Install]
 WantedBy=multi-user.target
 SVC
+}
+
+if [ -f "src/mh-compressor-manager.service" ]; then
+    cp "src/mh-compressor-manager.service" "${BUILD_DIR}/"
+else
+    _generate_service > "${BUILD_DIR}/mh-compressor-manager.service"
 fi
 
 # Создание архива
@@ -169,19 +214,22 @@ echo "  Создание архива: ${SOURCE_TAR}"
 tar -czf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" \
     -C "${TEMP_DIR}" "${PROJECT_NAME}-${VERSION}"
 
-# Проверка
+# Проверка структуры архива
 echo "  Проверка структуры архива..."
-if ! tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" | grep -q "CMakeLists.txt"; then
-    echo -e "${RED}✗ Ошибка: CMakeLists.txt не найден в архиве!${NC}"
-    echo "Содержимое архива:"
-    tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}"
-    rm -rf "${TEMP_DIR}"
-    exit 1
-fi
+_REQUIRED_FILES=("CMakeLists.txt" "compressor-manager.conf" "mh-compressor-manager.service" "LICENSE")
 
-if ! tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" | grep -q "\.cpp"; then
-    echo -e "${RED}✗ Ошибка: Исходные файлы .cpp не найдены в архиве!${NC}"
-    echo "Содержимое архива:"
+for req in "${_REQUIRED_FILES[@]}"; do
+    if ! tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" | grep -q "${req}"; then
+        echo -e "${RED}✗ Ошибка: ${req} не найден в архиве!${NC}"
+        echo "Содержимое архива:"
+        tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}"
+        rm -rf "${TEMP_DIR}"
+        exit 1
+    fi
+done
+
+if ! tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" | grep -qE "\.(cpp|h)$"; then
+    echo -e "${RED}✗ Ошибка: Исходные файлы (.cpp/.h) не найдены в архиве!${NC}"
     tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}"
     rm -rf "${TEMP_DIR}"
     exit 1
@@ -194,48 +242,40 @@ echo "  ${BLUE}${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}${NC}"
 echo ""
 
 # =============================================================================
-# [4/6] Копирование дополнительных файлов в SOURCES
+# [4/5] Обновление и установка SPEC-файла
 # =============================================================================
-echo -e "${YELLOW}[4/6] Подготовка дополнительных файлов...${NC}"
+echo -e "${YELLOW}[4/5] Обновление SPEC-файла...${NC}"
 
-# Копируем из корня проекта
-cp "README.md" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "README.html" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "LICENSE" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "compressor-manager.conf" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-cp "mh-compressor-manager.service" "${RPM_BUILD_ROOT}/SOURCES/" 2>/dev/null || true
-
-echo -e "${GREEN}✓ Дополнительные файлы подготовлены${NC}"
-echo ""
-
-# =============================================================================
-# [5/6] Обновление и установка SPEC-файла
-# =============================================================================
-echo -e "${YELLOW}[5/6] Обновление SPEC-файла...${NC}"
-
-if [ -f "${SPEC_FILE}" ]; then
-    sed -i "s/^Version:.*/Version:        ${VERSION}/" "${SPEC_FILE}"
-    sed -i "s/^Release:.*/Release:        1%{?dist}/" "${SPEC_FILE}"
-else
+if [ ! -f "${SPEC_FILE}" ]; then
     echo -e "${RED}✗ Ошибка: Файл ${SPEC_FILE} не найден!${NC}"
     exit 1
 fi
 
+# Сохраняем оригинал SPEC для восстановления
+SPEC_BACKUP="${SPEC_FILE}.bak"
+cp "${SPEC_FILE}" "${SPEC_BACKUP}"
+trap 'mv "${SPEC_BACKUP}" "${SPEC_FILE}" 2>/dev/null || true' EXIT
+
+sed -i "s/^Version:.*/Version:        ${VERSION}/" "${SPEC_FILE}"
+sed -i "s/^Release:.*/Release:        1%{?dist}/" "${SPEC_FILE}"
+
 cp "${SPEC_FILE}" "${RPM_BUILD_ROOT}/SPECS/"
 
-echo -e "${GREEN}✓ SPEC-файл установлен:${NC}"
-echo "  ${BLUE}${RPM_BUILD_ROOT}/SPECS/${SPEC_FILE}${NC}"
+echo -e "${GREEN}✓ SPEC-файл обновлён (Version: ${VERSION}) и установлен${NC}"
 echo ""
 
 # =============================================================================
-# [6/6] Сборка RPM-пакета
+# [5/5] Сборка RPM-пакета
 # =============================================================================
-echo -e "${YELLOW}[6/6] Сборка RPM-пакета...${NC}"
+echo -e "${YELLOW}[5/5] Сборка RPM-пакета...${NC}"
 echo ""
 
 rpmbuild -bb "${RPM_BUILD_ROOT}/SPECS/${SPEC_FILE}" \
     --define "_topdir ${RPM_BUILD_ROOT}" \
     --define "dist .fc${DISTRO}"
+
+# Восстановление оригинала SPEC
+mv "${SPEC_BACKUP}" "${SPEC_FILE}"
 
 # =============================================================================
 # Результат
@@ -249,7 +289,7 @@ echo ""
 RPM_FILE=$(find "${RPM_BUILD_ROOT}/RPMS" -name "${PROJECT_NAME}-${VERSION}-1*.rpm" -type f 2>/dev/null | head -1)
 
 if [ -n "${RPM_FILE}" ]; then
-    echo -e "RPM-пакет:${NC}"
+    echo -e "${GREEN}RPM-пакет:${NC}"
     echo -e "  ${BLUE}${RPM_FILE}${NC}"
     echo ""
     echo -e "${YELLOW}Установка:${NC}"
