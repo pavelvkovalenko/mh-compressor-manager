@@ -6,7 +6,7 @@
 
 ## Локальная сборка
 ```bash
-./_build.sh
+./_local-build.sh
 ```
 
 ## Удалённая сборка
@@ -17,12 +17,12 @@ rsync -avz --exclude='.git' ./ www:/home/kane/Projects/mh-compressor-manager/
 
 Сборка на сервере:
 ```bash
-ssh www "cd /home/kane/Projects/mh-compressor-manager && bash _build.sh"
+ssh www "cd /home/kane/Projects/mh-compressor-manager && bash _local-build.sh"
 ```
 
 ## Установка
 ```bash
-ssh www "cd /home/kane/Projects/mh-compressor-manager && sudo bash _install.sh"
+ssh www "cd /home/kane/Projects/mh-compressor-manager && sudo bash _local-install.sh"
 ```
 
 ## Управление сервисом
@@ -43,8 +43,8 @@ ssh www "journalctl -u mh-compressor-manager --no-pager | grep -iE 'error|fail|p
 ## Порядок развёртывания
 1. Запушить изменения на GitHub
 2. Синхронизировать с сервером: `rsync`
-3. Собрать: `bash _build.sh`
-4. Установить: `sudo bash _install.sh`
+3. Собрать: `bash _local-build.sh`
+4. Установить: `sudo bash _local-install.sh`
 5. Перезапустить: `sudo systemctl restart mh-compressor-manager`
 6. Проверить статус и логи
 
@@ -58,7 +58,7 @@ sudo dnf install \
   pkgconf-pkg-config rpm-build
 ```
 
-> **Примечание:** `_build.sh` автоматически проверяет все зависимости. Для Fedora 38-42 замените `zlib-ng-compat-devel` на `zlib-devel`.
+> **Примечание:** `_local-build.sh` автоматически проверяет все зависимости. Для Fedora 38-42 замените `zlib-ng-compat-devel` на `zlib-devel`.
 
 ## Известные проблемы сборки
 - **GCC 15:** `fs::last_write_time()` несовместим с `__file_clock`. Использовать `utimensat()`.

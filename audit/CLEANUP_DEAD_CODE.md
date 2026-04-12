@@ -124,7 +124,7 @@ ssh www "sudo mh-compressor-manager --version"
 
 Чтобы мёртвый код не возвращался, AI предлагает добавить флаги в CI/Build скрипт:
 ```cmake
-# В CMakeLists.txt или _build.sh
+# В CMakeLists.txt или _local-build.sh
 target_compile_options(mh-compressor-manager PRIVATE
     -Wall -Wextra -Wpedantic
     -Werror=unused-function   # Превращает warning в ошибку

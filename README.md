@@ -107,7 +107,7 @@
 sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel pkgconf-pkg-config cmake gcc-c++ rpm-build
 
 # 2. Сборка RPM-пакета
-./build-rpm.sh 1.0.0
+./_rpm-build.sh 1.0.0
 
 # 3. Установка пакета
 sudo dnf install ~/rpmbuild/RPMS/x86_64/mh-compressor-manager-1.0.0-1.fc43.x86_64.rpm
@@ -429,8 +429,9 @@ mh-compressor-manager/
 ├── LICENSE                            ← Лицензия MIT
 ├── CONTRIBUTING.md                    ← Правила Pull Request
 ├── .gitignore
-├── _build.sh / _install.sh            ← Скрипты сборки
-├── build-rpm.sh                       ← Сборка RPM
+├── _local-build.sh / _local-install.sh  ← Скрипты локальной сборки
+├── _rpm-build.sh                        ← Сборка RPM
+├── _rpm-install.sh                      ← Установка RPM-пакета
 ├── mh-compressor-manager.spec         ← SPEC файл
 │
 ├── docs/                              ← Документация
