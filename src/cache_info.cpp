@@ -1,5 +1,6 @@
 #include "cache_info.h"
 #include "logger.h"
+#include "i18n.h"
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -46,7 +47,7 @@ size_t CacheInfo::parse_size_string(const std::string& str) {
         size_t value = std::stoull(num_str);
         return value * multiplier;
     } catch (const std::exception& e) {
-        Logger::warning(std::format("Failed to parse cache size string '{}': {}", str, e.what()));
+        Logger::warning(std::format(_("Failed to parse cache size string '{}': {}", "Не удалось разобрать строку размера кэша '{}': {}"), str, e.what()));
         return 0;
     }
 }
@@ -70,7 +71,7 @@ size_t CacheInfo::detect_l3_cache_size() {
     const std::string cpu_base = "/sys/devices/system/cpu/cpu0/cache/";
 
     if (!fs::exists(cpu_base)) {
-        Logger::warning("sysfs cache info not available, using fallback L3 = 2 МБ");
+        Logger::warning(_("sysfs cache info not available, using fallback L3 = 2 MB", "Информация sysfs о кэше недоступна, используется fallback L3 = 2 МБ"));
         return FALLBACK_L3;
     }
 
@@ -115,11 +116,11 @@ size_t CacheInfo::detect_l3_cache_size() {
             }
         }
     } catch (const std::exception& e) {
-        Logger::warning(std::format("Error reading sysfs cache info: {}", e.what()));
+        Logger::warning(std::format(_("Error reading sysfs cache info: {}", "Ошибка чтения информации о кэше из sysfs: {}"), e.what()));
     }
 
     if (max_l3 == 0) {
-        Logger::warning("Не удалось определить размер кэша CPU (sysfs недоступен), используется fallback: L3 = 2 МБ");
+        Logger::warning(_("Failed to determine CPU cache size (sysfs unavailable), using fallback: L3 = 2 MB", "Не удалось определить размер кэша CPU (sysfs недоступен), используется fallback: L3 = 2 МБ"));
         return FALLBACK_L3;
     }
 
@@ -174,16 +175,16 @@ CacheInfo CacheInfo::detect() {
 
     // Логирование
     if (info.l1_dcache_per_core > 0) {
-        Logger::info(std::format("CPU cache: L1d = {} КБ/ядро, L2 = {} КБ/ядро, L3 = {} МБ",
+        Logger::info(std::format(_("CPU cache: L1d = {} KB/core, L2 = {} KB/core, L3 = {} MB", "Кэш CPU: L1d = {} КБ/ядро, L2 = {} КБ/ядро, L3 = {} МБ"),
                                   info.l1_dcache_per_core / 1024,
                                   info.l2_per_core / 1024,
                                   info.l3_total / (1024 * 1024)));
     } else {
-        Logger::info(std::format("CPU cache: L3 = {} МБ (L1/L2 не определены)",
+        Logger::info(std::format(_("CPU cache: L3 = {} MB (L1/L2 undefined)", "Кэш CPU: L3 = {} МБ (L1/L2 не определены)"),
                                   info.l3_total / (1024 * 1024)));
     }
 
-    Logger::info(std::format("Оптимальный буфер на поток: {} КБ (потоков: {})",
+    Logger::info(std::format(_("Optimal buffer per thread: {} KB (threads: {})", "Оптимальный буфер на поток: {} КБ (потоков: {})"),
                               info.optimal_buffer_size() / 1024,
                               info.thread_count));
 
