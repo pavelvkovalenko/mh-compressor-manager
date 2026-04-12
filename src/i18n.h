@@ -48,4 +48,4 @@ std::string tr_fmt(const char* en, const char* ru, Args&&... args) {
 
 // Короткие макросы
 #define _(en, ru) i18n::tr(en, ru)
-#define _fmt(en, ru, ...) i18n::tr_fmt(en, ru, __VA_ARGS__)
+#define _fmt(en, ru, ...) i18n::tr_fmt(en, ru, ##__VA_ARGS__)
