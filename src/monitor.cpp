@@ -215,6 +215,14 @@ void Monitor::stop() {
     if (m_thread.joinable()) m_thread.join();
     // Ждём завершения обхода директорий — предотвращаем use-after-free
     if (m_watch_thread.joinable()) m_watch_thread.join();
+    // Ждём завершения всех rescan-потоков — предотвращаем use-after-free
+    {
+        std::lock_guard<std::mutex> lock(m_rescan_threads_mutex);
+        for (auto& t : m_rescan_threads) {
+            if (t.joinable()) t.join();
+        }
+        m_rescan_threads.clear();
+    }
     // m_inotify_fd закроется автоматически в деструкторе RAII
     Logger::info("Monitor stopped");
 }
@@ -576,33 +584,54 @@ void Monitor::run() {
                     // чтобы не блокировать основной цикл мониторинга
                     if (overflow_detected && m_on_compress) {
                         Logger::info("Rescanning directories after inotify overflow (background)...");
-                        std::thread rescan_thread([this]() {
-                            try {
-                                std::vector<std::string> target_paths;
-                                {
-                                    std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
-                                    target_paths = m_cfg.target_paths;
-                                }
-                                for (const auto& path_str : target_paths) {
-                                    fs::path base_path(path_str);
-                                    struct stat st;
-                                    if (lstat(base_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
-                                        for (const auto& entry : fs::recursive_directory_iterator(base_path,
-                                                fs::directory_options::skip_permission_denied)) {
-                                            if (entry.is_regular_file() && is_target_extension(entry.path().string())) {
-                                                if (m_on_compress) {
-                                                    m_on_compress(entry.path());
+
+                        // Очистка завершённых rescan-потоков
+                        {
+                            std::lock_guard<std::mutex> lock(m_rescan_threads_mutex);
+                            m_rescan_threads.erase(
+                                std::remove_if(m_rescan_threads.begin(), m_rescan_threads.end(),
+                                    [](std::thread& t) {
+                                        if (t.joinable()) { t.join(); return true; }
+                                        return false;
+                                    }),
+                                m_rescan_threads.end()
+                            );
+                        }
+
+                        // Лимит: не более 3 одновременных rescan-потоков
+                        {
+                            std::lock_guard<std::mutex> lock(m_rescan_threads_mutex);
+                            if (m_rescan_threads.size() >= 3) {
+                                Logger::warning("Too many concurrent rescan threads, skipping");
+                            } else {
+                                m_rescan_threads.emplace_back([this]() {
+                                    try {
+                                        std::vector<std::string> target_paths;
+                                        {
+                                            std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
+                                            target_paths = m_cfg.target_paths;
+                                        }
+                                        for (const auto& path_str : target_paths) {
+                                            fs::path base_path(path_str);
+                                            struct stat st;
+                                            if (lstat(base_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                                                for (const auto& entry : fs::recursive_directory_iterator(base_path,
+                                                        fs::directory_options::skip_permission_denied)) {
+                                                    if (entry.is_regular_file() && is_target_extension(entry.path().string())) {
+                                                        if (m_on_compress) {
+                                                            m_on_compress(entry.path());
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
+                                        Logger::info("Rescan completed after inotify overflow");
+                                    } catch (const std::exception& e) {
+                                        Logger::error(std::format("Rescan after inotify overflow failed: {}", e.what()));
                                     }
-                                }
-                                Logger::info("Rescan completed after inotify overflow");
-                            } catch (const std::exception& e) {
-                                Logger::error(std::format("Rescan after inotify overflow failed: {}", e.what()));
+                                });
                             }
-                        });
-                        rescan_thread.detach();  // Фоновый поток, не ждём завершения
+                        }
                     }
                     
                     // Очищаем старые cookie перемещения (таймаут)

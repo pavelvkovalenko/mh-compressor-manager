@@ -1135,7 +1135,11 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
 
             if (ret == Z_STREAM_END) break;
         }
-        // Переименовываем временный файл в целевой (атомарно)
+    }
+
+    // Финализация: fsync, close, rename — выполняется при flush независимо от того,
+    // завершил ли deflate в первом или втором цикле
+    if (flush) {
         if (fsync(state.fd_out) != 0) {
             Logger::error(std::format("gzip_stream_process: fsync failed: {}", strerror(errno)));
             state.has_error = true;

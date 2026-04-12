@@ -76,6 +76,8 @@ private:
     std::map<int, std::string> m_wd_path_map;
     mutable std::shared_mutex m_wd_path_map_mutex;  // Защита от гонок при добавлении/чтении watch
     std::thread m_watch_thread;  // Поток обхода директорий (ранее detached)
+    std::vector<std::thread> m_rescan_threads;  // Фоновые потоки rescanning после overflow
+    std::mutex m_rescan_threads_mutex;  // Защита m_rescan_threads
     std::unordered_set<std::string> m_extensions_cache;  // Кэш расширений для быстрого поиска
     std::unordered_set<std::string> m_compressed_extensions;  // Расширения сжатых файлов (.gz, .br)
     
