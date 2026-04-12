@@ -301,7 +301,7 @@ Config load_config(int argc, char* argv[]) {
                     }
                     cfg.debounce_delay = delay;
                 }
-                else if (key == "min_compress_size" || key == "optimal_min_compress_size" || key == "optimal_compress_size") {
+                else if (key == "min_compress_size") {
                     size_t sz = 1024;
                     auto result = std::from_chars(val.data(), val.data() + val.size(), sz);
                     if (result.ec != std::errc() || result.ptr != val.data() + val.size()) {
