@@ -1,6 +1,5 @@
 #include "async_io.h"
 #include "logger.h"
-#include "i18n.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -87,8 +86,8 @@ bool AsyncIO::init_uring(size_t ring_size) {
             // Пробуем без флагов для обратной совместимости
             ret = io_uring_queue_init(ring_size, &g_ring, 0);
             if (ret != 0) {
-                Logger::warning(_fmt("io_uring initialization failed: {}, falling back to sync I/O",
-                                           "ошибка инициализации io_uring: {}, переход к синхронному вводу/выводу", strerror(-ret)));
+                Logger::warning(std::format("io_uring initialization failed: {}, falling back to sync I/O",
+                                           strerror(-ret)));
                 init_result = false;
                 return;
             }
@@ -99,15 +98,14 @@ bool AsyncIO::init_uring(size_t ring_size) {
         uring_state_.ring_size = ring_size;
         g_uring_available.store(true);
 
-        Logger::debug(_fmt("io_uring initialized with ring size {} (single issuer: {})",
-                                 "io_uring инициализирован с размером кольца {} (единый источник: {})", ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? _("yes", "да") : _("no", "нет")));
+        Logger::debug(std::format("io_uring initialized with ring size {} (single issuer: {})",
+                                 ring_size, (params.flags & IORING_SETUP_SINGLE_ISSUER) ? "yes" : "no"));
         init_result = true;
     });
 
     return init_result;
 #else
-    Logger::debug(_("io_uring not available (liburing not installed), using sync I/O",
-                   "io_uring недоступен (liburing не установлен), используется синхронный ввод/вывод"));
+    Logger::debug("io_uring not available (liburing not installed), using sync I/O");
     return false;
 #endif
 }
@@ -120,7 +118,7 @@ void AsyncIO::cleanup_uring() {
         uring_state_.initialized = false;
         uring_state_.ring = nullptr;
         g_uring_available.store(false);
-        Logger::debug(_("io_uring cleaned up", "io_uring очищен"));
+        Logger::debug("io_uring cleaned up");
     }
 #endif
 }
@@ -192,8 +190,7 @@ int AsyncIO::open_file_optimized(const fs::path& path, int flags, mode_t mode) {
     
     int fd = open(path.c_str(), optimized_flags, mode);
     if (fd < 0) {
-        Logger::error(_fmt("Failed to open file {}: {}",
-                                   "Не удалось открыть файл {}: {}", path.string(), strerror(errno)));
+        Logger::error(std::format("Failed to open file {}: {}", path.string(), strerror(errno)));
         return -1;
     }
     
@@ -207,7 +204,7 @@ bool AsyncIO::close_file_sync(int fd, bool sync_data) {
     
     if (sync_data) {
         if (fsync(fd) != 0) {
-            Logger::warning(_fmt("fsync failed: {}", "ошибка fsync: {}", strerror(errno)));
+            Logger::warning(std::format("fsync failed: {}", strerror(errno)));
             // Не считаем это фатальной ошибкой
         }
     }
@@ -268,7 +265,7 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
             sqe = io_uring_get_sqe(&g_ring);
             if (!sqe) {
                 close(fd);
-                Logger::error(_("io_uring SQE queue full", "очередь SQE io_uring заполнена"));
+                Logger::error("io_uring SQE queue full");
                 return false;
             }
         }
@@ -281,11 +278,11 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
         int ret = io_uring_submit(&g_ring);
         if (ret < 0) {
             close(fd);
-            Logger::error(_fmt("io_uring submit failed: {}", "ошибка отправки io_uring: {}", strerror(-ret)));
+            Logger::error(std::format("io_uring submit failed: {}", strerror(-ret)));
             return false;
         }
     }
-
+    
     // Ждем завершения операции с таймаутом 30 секунд
     io_uring_cqe* cqe = nullptr;
     struct __kernel_timespec timeout;
@@ -299,17 +296,16 @@ bool AsyncIO::async_read_file(const fs::path& path, uint8_t* buffer,
     }
     if (ret < 0) {
         if (ret == -ETIME) {
-            Logger::error(_("io_uring operation timed out after 30 seconds",
-                           "операция io_uring завершилась по таймауту через 30 секунд"));
+            Logger::error("io_uring operation timed out after 30 seconds");
         } else {
-            Logger::error(_fmt("io_uring wait_cqe failed: {}", "ошибка ожидания wait_cqe io_uring: {}", strerror(-ret)));
+            Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
         }
         close(fd);
         return false;
     }
 
     if (cqe && cqe->res < 0) {
-        Logger::error(_fmt("async read failed: {}", "ошибка асинхронного чтения: {}", strerror(-cqe->res)));
+        Logger::error(std::format("async read failed: {}", strerror(-cqe->res)));
         {
             std::lock_guard<std::mutex> lock(g_ring_mutex);
             io_uring_cqe_seen(&g_ring, cqe);
@@ -421,7 +417,7 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
             sqe = io_uring_get_sqe(&g_ring);
             if (!sqe) {
                 close(fd);
-                Logger::error(_("io_uring SQE queue full", "очередь SQE io_uring заполнена"));
+                Logger::error("io_uring SQE queue full");
                 return false;
             }
         }
@@ -432,11 +428,11 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
         int ret = io_uring_submit(&g_ring);
         if (ret < 0) {
             close(fd);
-            Logger::error(_fmt("io_uring submit failed: {}", "ошибка отправки io_uring: {}", strerror(-ret)));
+            Logger::error(std::format("io_uring submit failed: {}", strerror(-ret)));
             return false;
         }
     }
-
+    
     // Ждем завершения операции с таймаутом 30 секунд
     io_uring_cqe* cqe = nullptr;
     struct __kernel_timespec timeout;
@@ -450,17 +446,16 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
     }
     if (ret < 0) {
         if (ret == -ETIME) {
-            Logger::error(_("io_uring write operation timed out after 30 seconds",
-                           "операция записи io_uring завершилась по таймауту через 30 секунд"));
+            Logger::error("io_uring write operation timed out after 30 seconds");
         } else {
-            Logger::error(_fmt("io_uring wait_cqe failed: {}", "ошибка ожидания wait_cqe io_uring: {}", strerror(-ret)));
+            Logger::error(std::format("io_uring wait_cqe failed: {}", strerror(-ret)));
         }
         close(fd);
         return false;
     }
 
     if (cqe && cqe->res < 0) {
-        Logger::error(_fmt("async write failed: {}", "ошибка асинхронной записи: {}", strerror(-cqe->res)));
+        Logger::error(std::format("async write failed: {}", strerror(-cqe->res)));
         {
             std::lock_guard<std::mutex> lock(g_ring_mutex);
             io_uring_cqe_seen(&g_ring, cqe);
@@ -472,8 +467,7 @@ bool AsyncIO::async_write_file(const fs::path& path, const uint8_t* buffer,
     // Проверяем что все данные были записаны
     bytes_written = static_cast<size_t>(cqe->res);
     if (bytes_written != size) {
-        Logger::warning(_fmt("Partial write: {} of {} bytes written",
-                                     "Частичная запись: записано {} из {} байт", bytes_written, size));
+        Logger::warning(std::format("Partial write: {} of {} bytes written", bytes_written, size));
     }
     {
         std::lock_guard<std::mutex> lock(g_ring_mutex);

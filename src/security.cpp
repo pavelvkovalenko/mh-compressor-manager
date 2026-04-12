@@ -1,6 +1,5 @@
 #include "security.h"
 #include "logger.h"
-#include "i18n.h"
 
 #include <sys/prctl.h>
 #include <sys/types.h>
@@ -131,20 +130,18 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
     if (!username.empty()) {
         struct passwd* pw = getpwnam(username.c_str());
         if (!pw) {
-            Logger::error(_("User not found: %s: %s", "Пользователь не найден: %s: %s"),
-                         username.c_str(), (errno ? strerror(errno) : "unknown error"));
+            Logger::error(std::string("User not found: ") + username + 
+                         ": " + (errno ? strerror(errno) : "unknown error"));
             return false;
         }
         target_uid = pw->pw_uid;
         target_gid = pw->pw_gid;
-        Logger::info(_("Dropping privileges to user: %s (UID=%lu, GID=%lu)",
-                    "Сброс привилегий до пользователя: %s (UID=%lu, GID=%lu)"),
-                    username.c_str(), static_cast<unsigned long>(target_uid), static_cast<unsigned long>(target_gid));
+        Logger::info(std::string("Dropping privileges to user: ") + username + 
+                    " (UID=" + std::to_string(target_uid) + ", GID=" + std::to_string(target_gid) + ")");
     } else {
         // Автоматическое определение владельца по целевым директориям
         if (target_paths.empty()) {
-            Logger::error(_("No target paths specified for automatic privilege drop",
-                         "Не указаны целевые пути для автоматического сброса привилегий"));
+            Logger::error("No target paths specified for automatic privilege drop");
             return false;
         }
         
@@ -156,16 +153,13 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         for (const auto& path : target_paths) {
             struct stat st;
             if (lstat(path.c_str(), &st) != 0) {
-                Logger::error(_("Cannot lstat path for ownership check: %s",
-                             "Не удалось получить lstat для пути: %s"), path.c_str());
+                Logger::error(std::string("Cannot lstat path for ownership check: ") + path);
                 return false;
             }
             
             // Проверяем что это не symlink (защита от symlink-атак)
             if (S_ISLNK(st.st_mode)) {
-                Logger::error(_("Path is a symlink, refusing to use for privilege drop: %s",
-                             "Путь является символической ссылкой, отказ от использования для сброса привилегий: %s"),
-                             path.c_str());
+                Logger::error(std::string("Path is a symlink, refusing to use for privilege drop: ") + path);
                 return false;
             }
             
@@ -175,11 +169,10 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
                 first = false;
             } else {
                 if (st.st_uid != first_uid || st.st_gid != first_gid) {
-                    Logger::warning(_("Target paths have different owners. Path '%s' owner differs from first path. Please specify 'run_as_user' in config explicitly.",
-                                   "Целевые пути имеют разных владельцы. Владелец пути '%s' отличается от первого пути. Укажите 'run_as_user' в конфигурации явно."),
-                                   path.c_str());
-                    Logger::error(_("Automatic privilege drop failed due to conflicting path owners",
-                                 "Автоматический сброс привилегий не выполнен из-за конфликтующих владельцев путей"));
+                    Logger::warning(std::string("Target paths have different owners. ") +
+                                   "Path '" + path + "' owner differs from first path. " +
+                                   "Please specify 'run_as_user' in config explicitly.");
+                    Logger::error("Automatic privilege drop failed due to conflicting path owners");
                     return false;
                 }
             }
@@ -191,27 +184,24 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         // Получаем имя пользователя для логирования
         struct passwd* pw = getpwuid(target_uid);
         if (!pw) {
-            Logger::error(_("Failed to get username for UID %lu: %s",
-                         "Не удалось получить имя пользователя для UID %lu: %s"),
-                         static_cast<unsigned long>(target_uid), strerror(errno));
+            Logger::error(std::string("Failed to get username for UID ") + std::to_string(target_uid) + 
+                         ": " + strerror(errno));
             return false;
         }
         std::string user_info = pw->pw_name;
-        Logger::info(_("Auto-detected owner: %s (UID=%lu, GID=%lu)",
-                    "Автоматически определённый владелец: %s (UID=%lu, GID=%lu)"),
-                    user_info.c_str(), static_cast<unsigned long>(target_uid), static_cast<unsigned long>(target_gid));
+        Logger::info(std::string("Auto-detected owner: ") + user_info + 
+                    " (UID=" + std::to_string(target_uid) + ", GID=" + std::to_string(target_gid) + ")");
     }
     
     // Сбрасываем дополнительные группы
     if (setgroups(0, NULL) != 0) {
-        Logger::error(_("Failed to clear supplementary groups: %s",
-                     "Не удалось очистить дополнительные группы: %s"), strerror(errno));
+        Logger::error(std::string("Failed to clear supplementary groups: ") + strerror(errno));
         return false;
     }
 
     // Устанавливаем GID
     if (setgid(target_gid) != 0) {
-        Logger::error(_("Failed to set GID: %s", "Не удалось установить GID: %s"), strerror(errno));
+        Logger::error(std::string("Failed to set GID: ") + strerror(errno));
         return false;
     }
 
@@ -221,23 +211,18 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
 #if HAVE_LIBCAP
     cap_t caps = cap_init();  // Создаем пустую структуру capabilities
     if (caps == NULL) {
-        Logger::warning(_("Failed to initialize capabilities structure: %s",
-                       "Не удалось инициализировать структуру capabilities: %s"), strerror(errno));
+        Logger::warning(std::string("Failed to initialize capabilities structure: ") + strerror(errno));
     } else {
         // Добавляем необходимые capabilities для чтения файлов независимо от Unix-прав
         cap_value_t cap_list[] = {CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH};
         if (cap_set_flag(caps, CAP_EFFECTIVE, 2, cap_list, CAP_SET) != 0) {
-            Logger::warning(_("Failed to set effective capabilities: %s",
-                           "Не удалось установить эффективные capabilities: %s"), strerror(errno));
+            Logger::warning(std::string("Failed to set effective capabilities: ") + strerror(errno));
         } else if (cap_set_flag(caps, CAP_PERMITTED, 2, cap_list, CAP_SET) != 0) {
-            Logger::warning(_("Failed to set permitted capabilities: %s",
-                           "Не удалось установить разрешённые capabilities: %s"), strerror(errno));
+            Logger::warning(std::string("Failed to set permitted capabilities: ") + strerror(errno));
         } else if (cap_set_proc(caps) != 0) {
-            Logger::warning(_("Failed to set process capabilities: %s",
-                           "Не удалось установить capabilities процесса: %s"), strerror(errno));
+            Logger::warning(std::string("Failed to set process capabilities: ") + strerror(errno));
         } else {
-            Logger::info(_("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)",
-                        "Capabilities установлены: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (до setuid)"));
+            Logger::info("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)");
         }
         cap_free(caps);  // Освобождаем память
     }
@@ -245,17 +230,17 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
 
     // Устанавливаем UID (capabilities сохраняются благодаря установке ДО этого вызова)
     if (setuid(target_uid) != 0) {
-        Logger::error(_("Failed to set UID: %s", "Не удалось установить UID: %s"), strerror(errno));
+        Logger::error(std::string("Failed to set UID: ") + strerror(errno));
         return false;
     }
     
     // Запрещаем получение привилегий через execve
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
-        Logger::error(_("Failed to set NO_NEW_PRIVS: %s", "Не удалось установить NO_NEW_PRIVS: %s"), strerror(errno));
+        Logger::error(std::string("Failed to set NO_NEW_PRIVS: ") + strerror(errno));
         return false;
     }
-
-    Logger::info(_("Privileges dropped successfully", "Привилегии успешно сброшены"));
+    
+    Logger::info("Privileges dropped successfully");
     return true;
 }
 
@@ -300,12 +285,12 @@ bool init_seccomp() {
     // Это более безопасный подход - разрешаем только то что нужно
     scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_ERRNO(EPERM));
     if (ctx == nullptr) {
-        Logger::error(_("Failed to initialize seccomp context", "Не удалось инициализировать контекст seccomp"));
+        Logger::error("Failed to initialize seccomp context");
         return false;
     }
-
+    
     if (!ctx_wrapper.init(ctx)) {
-        Logger::error(_("Failed to initialize seccomp wrapper", "Не удалось инициализировать обёртку seccomp"));
+        Logger::error("Failed to initialize seccomp wrapper");
         return false;
     }
     
@@ -520,82 +505,74 @@ bool init_seccomp() {
     
     // Применяем фильтр
     if (!ctx_wrapper.load()) {
-        Logger::error(_("Failed to load seccomp filter", "Не удалось загрузить фильтр seccomp"));
+        Logger::error("Failed to load seccomp filter");
         return false;
     }
-
-    Logger::info(_("Seccomp sandbox initialized successfully (minimal syscall whitelist)",
-                "Песочница seccomp успешно инициализирована (минимальный белый список системных вызовов)"));
+    
+    Logger::info("Seccomp sandbox initialized successfully (minimal syscall whitelist)");
     return true;
 #else
-    Logger::warning(_("Seccomp support not available (libseccomp not installed)",
-                   "Поддержка seccomp недоступна (libseccomp не установлена)"));
+    Logger::warning("Seccomp support not available (libseccomp not installed)");
     return false;
 #endif
 }
 
 bool validate_file_for_compression(const std::string& path) {
     struct stat st;
-
+    
     // Проверяем что путь не является symlink (защита от symlink-атак)
     if (lstat(path.c_str(), &st) != 0) {
-        Logger::error(_("Cannot lstat file: %s: %s", "Не удалось получить lstat файла: %s: %s"),
-                     path.c_str(), strerror(errno));
+        Logger::error(std::string("Cannot lstat file: ") + path + ": " + strerror(errno));
         return false;
     }
-
+    
     // Отказываемся сжимать symlink
     if (S_ISLNK(st.st_mode)) {
-        Logger::error(_("Refusing to compress symlink: %s", "Отказ от сжатия символической ссылки: %s"),
-                     path.c_str());
+        Logger::error(std::string("Refusing to compress symlink: ") + path);
         return false;
     }
-
+    
     // Проверяем что это обычный файл
     if (!S_ISREG(st.st_mode)) {
-        Logger::error(_("Not a regular file, refusing to compress: %s",
-                     "Не является обычным файлом, отказ от сжатия: %s"), path.c_str());
+        Logger::error(std::string("Not a regular file, refusing to compress: ") + path);
         return false;
     }
-
+    
     // Проверяем права доступа - файл должен быть доступен для чтения владельцем
     if (!(st.st_mode & S_IRUSR)) {
-        Logger::error(_("File is not readable by owner: %s", "Файл не доступен для чтения владельцем: %s"),
-                     path.c_str());
+        Logger::error(std::string("File is not readable by owner: ") + path);
         return false;
     }
-
+    
     return true;
 }
 
 int safe_open_file(const std::string& path, int flags) {
     // Используем O_NOFOLLOW для защиты от symlink-атак
     int safe_flags = flags | O_NOFOLLOW;
-
+    
     // Открываем файл через /proc/self/fd/ для дополнительной проверки
     int fd = open(path.c_str(), safe_flags, 0644);
     if (fd < 0) {
-        Logger::error(_("Failed to open file: %s: %s", "Не удалось открыть файл: %s: %s"),
-                     path.c_str(), strerror(errno));
+        Logger::error(std::string("Failed to open file: ") + path + ": " + strerror(errno));
         return -1;
     }
-
+    
     // Дополнительная проверка через fstat что это действительно файл
     struct stat st;
     if (fstat(fd, &st) != 0) {
-        Logger::error(_("fstat failed: %s", "fstat не выполнен: %s"), strerror(errno));
+        Logger::error(std::string("fstat failed: ") + strerror(errno));
         close(fd);
         return -1;
     }
-
+    
     if (!S_ISREG(st.st_mode)) {
-        Logger::error(_("Opened file is not a regular file: %s",
-                     "Открытый файл не является обычным файлом: %s"), path.c_str());
+        Logger::error(std::string("Opened file is not a regular file: ") + path);
         close(fd);
         errno = EINVAL;
         return -1;
     }
-
+    
     return fd;
 }
 

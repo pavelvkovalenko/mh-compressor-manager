@@ -15,7 +15,6 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include "logger.h"
-#include "i18n.h"
 #include "performance_optimizer.h"
 
 // Приоритеты задач
@@ -61,15 +60,15 @@ public:
                     if (cpu_count == 0) cpu_count = 1;  // Защита от деления на 0
                     int core_id = static_cast<int>(i % cpu_count);
                     if (!PerformanceOptimizer::set_cpu_affinity(core_id)) {
-                        Logger::warning(_fmt("Failed to set CPU affinity for thread {} (core {})", "Не удалось установить привязку к ядру CPU для потока {} (ядро {})", i, core_id));
+                        Logger::warning(std::format("Failed to set CPU affinity for thread {} (core {})", i, core_id));
                     }
                 }
 
                 // Понижаем приоритет CPU (nice=10) — фоновые задачи уступают nginx и другим важным процессам
                 if (setpriority(PRIO_PROCESS, 0, 10) == 0) {
-                    Logger::debug(_fmt("Worker thread {} CPU nice set to 10 (lower priority)", "Поток {} установил приоритет CPU nice=10 (пониженный)", i));
+                    Logger::debug(std::format("Worker thread {} CPU nice set to 10 (lower priority)", i));
                 } else {
-                    Logger::debug(_fmt("Failed to set CPU nice for worker {}: {}", "Не удалось установить приоритет CPU nice для потока {}: {}", i, strerror(errno)));
+                    Logger::debug(std::format("Failed to set CPU nice for worker {}: {}", i, strerror(errno)));
                 }
 
                 // Понижаем I/O приоритет (idle class = 3) — минимальное влияние на диск
@@ -78,9 +77,9 @@ public:
                 constexpr int IOPRIO_WHO_PROCESS = 1;
                 int ioprio = IOPRIO_CLASS_IDLE << 13;  // level 0 within idle class
                 if (syscall(SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, ioprio) == 0) {
-                    Logger::debug(_fmt("Worker thread {} I/O priority set to idle", "Поток {} установил приоритет I/O в режим idle", i));
+                    Logger::debug(std::format("Worker thread {} I/O priority set to idle", i));
                 } else {
-                    Logger::debug(_fmt("Failed to set I/O priority for worker {}: {}", "Не удалось установить приоритет I/O для потока {}: {}", i, strerror(errno)));
+                    Logger::debug(std::format("Failed to set I/O priority for worker {}: {}", i, strerror(errno)));
                 }
                 
                 while (true) {
@@ -99,7 +98,7 @@ public:
                             // Если таймаут истек и слот всё ещё недоступен — пропускаем задачу
                             if (!wait_result) {
                                 if (stop_flag && tasks.empty()) return;
-                                Logger::warning(_("I/O slot wait timeout, requeueing task", "Таймаут ожидания слота I/O, задача возвращена в очередь"));
+                                Logger::warning("I/O slot wait timeout, requeueing task");
                                 // Перемещаем задачу в конец очереди чтобы избежать deadlock
                                 // на одной и той же задаче
                                 auto top_task = std::move(const_cast<PrioritizedTask&>(tasks.top()));
@@ -212,12 +211,12 @@ private:
                         std::this_thread::sleep_for(std::chrono::seconds(1));
                         auto elapsed = std::chrono::steady_clock::now() - start;
                         if (elapsed > std::chrono::seconds(60)) {
-                            Logger::error(_("Thread join timeout (60s), aborting monitor", "Таймаут ожидания завершения потока (60с), мониторинг прекращён"));
+                            Logger::error("Thread join timeout (60s), aborting monitor");
                             break;
                         }
                         int secs = static_cast<int>(elapsed.count());
                         if (secs >= 5 && secs % 5 == 0) {
-                            Logger::warning(_fmt("Thread still running after {}s", "Поток всё ещё выполняется после {}с", secs));
+                            Logger::warning(std::format("Thread still running after {}s", secs));
                         }
                     }
                 });
