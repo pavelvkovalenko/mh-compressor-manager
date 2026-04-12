@@ -7,14 +7,15 @@
 // Структура настроек для конкретной папки
 struct FolderOverride {
     std::string path;
-    std::optional<int> compression_level_gzip;      // Уровень сжатия gzip (переопределяет глобальный)
-    std::optional<int> compression_level_brotli;    // Уровень сжатия brotli (переопределяет глобальный)
-    std::vector<std::string> extensions;            // Список расширений для этой папки
-    bool process_files_without_extensions = false;  // Обрабатывать файлы без расширений
-    bool recursive = true;                          // Рекурсивная обработка подпапок
-    std::optional<int> rate_limit;                  // Лимит операций в минуту (0 = без лимита)
-    std::optional<int> io_delay_us;                 // Задержка I/O для этой папки
-    std::optional<size_t> max_active_ios;           // Лимит параллельных I/O для этой папки
+    bool enabled = true;                              // Включение/выключение данной секции
+    std::optional<int> compression_level_gzip;        // Уровень сжатия gzip (переопределяет глобальный)
+    std::optional<int> compression_level_brotli;      // Уровень сжатия brotli (переопределяет глобальный)
+    std::vector<std::string> extensions;              // Список расширений для этой папки
+    bool process_files_without_extensions = false;    // Обрабатывать файлы без расширений
+    bool recursive = true;                            // Рекурсивная обработка подпапок
+    std::optional<int> rate_limit;                    // Лимит операций в минуту (0 = без лимита)
+    std::optional<int> io_delay_us;                   // Задержка I/O для этой папки
+    std::optional<size_t> max_active_ios;             // Лимит параллельных I/O для этой папки
 };
 
 struct Config {

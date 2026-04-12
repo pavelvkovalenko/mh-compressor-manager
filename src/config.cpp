@@ -72,6 +72,8 @@ std::optional<size_t> get_folder_override_index(const Config& cfg, const std::st
 
     for (size_t i = 0; i < cfg.folder_overrides.size(); ++i) {
         const auto& override = cfg.folder_overrides[i];
+        // Пропускаем отключённые секции
+        if (!override.enabled) continue;
         // Проверяем, начинается ли путь с пути переопределения
         if (path.size() >= override.path.size()) {
             if (path.substr(0, override.path.size()) == override.path) {
@@ -346,8 +348,11 @@ Config load_config(int argc, char* argv[]) {
             else if (current_section == "folder_override" && !cfg.folder_overrides.empty()) {
                 // Обработка настроек для переопределения папки
                 FolderOverride& override = cfg.folder_overrides.back();
-                
-                if (key == "compression_level_gzip") {
+
+                if (key == "enabled") {
+                    override.enabled = (val == "true");
+                }
+                else if (key == "compression_level_gzip") {
                     int level = 0;
                     auto result = std::from_chars(val.data(), val.data() + val.size(), level);
                     if (result.ec == std::errc() && result.ptr == val.data() + val.size()) {
