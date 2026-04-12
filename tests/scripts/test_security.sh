@@ -38,7 +38,7 @@ sudo mkdir -p "$BASEDIR"
 # ===========================================================================
 log "=== SEC-1: Symlink на файл вне целевой директории ==="
 echo "external content" > /tmp/external_target.txt
-ln -sf /tmp/external_target.txt "$BASEDIR/symlink_outside.txt"
+sudo ln -sf /tmp/external_target.txt "$BASEDIR/symlink_outside.txt"
 
 sudo systemctl start "$SERVICE"
 sleep 5
@@ -52,7 +52,7 @@ check "[ ! -f '/tmp/external_target.txt.gz' ]" "SEC-1d: сжатая копия 
 
 # ===========================================================================
 log "=== SEC-2: Symlink на системный файл (/etc/passwd) ==="
-ln -sf /etc/passwd "$BASEDIR/symlink_passwd.txt"
+sudo ln -sf /etc/passwd "$BASEDIR/symlink_passwd.txt"
 sleep 3
 
 check "[ ! -f '$BASEDIR/symlink_passwd.txt.gz' ]" "SEC-2a: symlink на /etc/passwd не сжат"
@@ -65,8 +65,8 @@ python3 -c "print('A' * 500)" > "$BASEDIR/replace_test.txt"
 sleep 1
 
 # Заменяем его symlink'ом
-rm -f "$BASEDIR/replace_test.txt"
-ln -sf /tmp/external_target.txt "$BASEDIR/replace_test.txt"
+sudo rm -f "$BASEDIR/replace_test.txt"
+sudo ln -sf /tmp/external_target.txt "$BASEDIR/replace_test.txt"
 sleep 5
 
 # Сжатая копия не должна быть создана
@@ -76,7 +76,7 @@ check "[ ! -f '$BASEDIR/replace_test.txt.br' ]" "SEC-3b: после подмен
 # ===========================================================================
 log "=== SEC-4: Файл без прав на чтение ==="
 python3 -c "print('B' * 500)" > "$BASEDIR/no_read.txt"
-chmod 000 "$BASEDIR/no_read.txt"
+sudo chmod 000 "$BASEDIR/no_read.txt"
 sleep 5
 
 check "[ ! -f '$BASEDIR/no_read.txt.gz' ]" "SEC-4a: файл без прав чтения не сжат"
@@ -114,7 +114,7 @@ if [ -f "$BASEDIR/zero_perms.txt.gz" ]; then
     check "[ '$STATUS' = 'active' ]" "SEC-6a: сервис не упал при правах 000 на .gz"
 
     # Восстанавливаем
-    chmod 644 "$BASEDIR/zero_perms.txt.gz" 2>/dev/null || true
+    sudo chmod 644 "$BASEDIR/zero_perms.txt.gz" 2>/dev/null || true
 else
     # Если .gz не создана — тоже ок
     check "true" "SEC-6a: .gz не создана, тест пропущен"

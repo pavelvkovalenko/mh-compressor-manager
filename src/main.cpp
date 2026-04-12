@@ -672,7 +672,8 @@ void compress_task(const fs::path& path) {
                 struct stat post_stat;
                 if (lstat(path.c_str(), &post_stat) != 0) {
                     Logger::warning(std::format("Race condition: streaming file {} deleted during compression, discarding results", path.string()));
-                    // Отменяем результаты — файлы .gz.tmp/.br.tmp будут удалены деструкторами
+                    // Файл удалён — удаляем записанные сжатые копии если они есть
+                    Compressor::safe_remove_compressed(path);
                     gzip_success = false;
                     brotli_success = false;
                     g_metrics.failed_tasks++;
@@ -681,6 +682,8 @@ void compress_task(const fs::path& path) {
                 if (post_stat.st_mtime.tv_sec != st.st_mtime.tv_sec ||
                     post_stat.st_mtime.tv_nsec != st.st_mtime.tv_nsec) {
                     Logger::debug(std::format("Race condition: streaming file {} modified during compression (mtime changed), discarding results", path.string()));
+                    // Файл изменён — удаляем записанные сжатые копии (они содержат устаревшие данные)
+                    Compressor::safe_remove_compressed(path);
                     gzip_success = false;
                     brotli_success = false;
                     g_metrics.failed_tasks++;
@@ -688,6 +691,8 @@ void compress_task(const fs::path& path) {
                 }
                 if (post_stat.st_ino != st.st_ino) {
                     Logger::debug(std::format("Race condition: streaming file {} inode changed during compression, discarding results", path.string()));
+                    // Inode изменился — файл перемещён/заменён, удаляем сжатые копии
+                    Compressor::safe_remove_compressed(path);
                     gzip_success = false;
                     brotli_success = false;
                     g_metrics.failed_tasks++;

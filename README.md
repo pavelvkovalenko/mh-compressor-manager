@@ -548,7 +548,7 @@ SOFTWARE.
 | **Репозиторий** | [https://github.com/pavelvkovalenko/mh-compressor-manager.git](https://github.com/pavelvkovalenko/mh-compressor-manager.git) |
 | **Issues** | [GitHub Issues](https://github.com/pavelvkovalenko/mh-compressor-manager/issues) |
 | **Документация** | [docs/README.md](docs/README.md), [Спецификация](docs/specification/TECHNICAL_SPECIFICATION.md) |
-| **Техническое задание** | ТЗ версия 3.1 |
+| **Техническое задание** | ТЗ версия 3.4 |
 | **Лицензия** | [MIT](LICENSE) |
 
 ---

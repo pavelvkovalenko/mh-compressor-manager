@@ -23,6 +23,12 @@ check() {
     fi
 }
 
+cleanup() {
+    sudo systemctl stop "$SERVICE" 2>/dev/null || true
+    sudo rm -rf "$BASEDIR"
+}
+trap cleanup EXIT
+
 # ===========================================================================
 # ЭТАП 1: Подготовка
 # ===========================================================================
@@ -33,63 +39,58 @@ sudo rm -rf "$BASEDIR"
 sudo mkdir -p "$BASEDIR"
 
 # ===========================================================================
-# ЭТАП 2: Генерация 500 файлов (~350MB) — реальный веб-контент
+# ЭТАП 2: Генерация 600+ файлов (~1.2GB) — реальный веб-контент
 # ===========================================================================
-log "=== ЭТАП 2: Генерация тестовых данных ==="
+log "=== ЭТАП 2: Генерация тестовых данных (≥1GB по ТЗ §18.2.1) ==="
 
-# HTML файлы (80 шт, ~40MB)
+# HTML файлы (100 шт, ~50MB) — генерируем через dd для скорости
+for i in $(seq 1 100); do
+    size=$((400000 + RANDOM % 600000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/page_${i}.html" 2>/dev/null
+done
+log "  Сгенерировано 100 HTML файлов"
+
+# CSS файлы (80 шт, ~40MB)
 for i in $(seq 1 80); do
-    size=$((200000 + RANDOM % 800000))
-    python3 -c "
-print('<!DOCTYPE html><html><head><title>Test Page $i</title></head><body>')
-print('<h1>Load Test Page $i</h1>')
-print('<p>' + 'A' * $((size - 200)) + '</p>')
-print('</body></html>')
-" > "$BASEDIR/page_${i}.html" 2>/dev/null
+    size=$((400000 + RANDOM % 600000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/style_${i}.css" 2>/dev/null
 done
-log "  Сгенерировано 80 HTML файлов"
+log "  Сгенерировано 80 CSS файлов"
 
-# CSS файлы (50 шт, ~25MB)
+# JS файлы (80 шт, ~40MB)
+for i in $(seq 1 80); do
+    size=$((400000 + RANDOM % 600000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/script_${i}.js" 2>/dev/null
+done
+log "  Сгенерировано 80 JS файлов"
+
+# JSON файлы (80 шт, ~40MB)
+for i in $(seq 1 80); do
+    size=$((400000 + RANDOM % 600000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/data_${i}.json" 2>/dev/null
+done
+log "  Сгенерировано 80 JSON файлов"
+
+# XML файлы (50 шт, ~50MB)
 for i in $(seq 1 50); do
-    python3 -c "
-print('/* CSS Test File $i */')
-for j in range(200):
-    print(f'.class-{j} {{ color: #{j:06x}; margin: {j}px; padding: {j}px; }}')
-" > "$BASEDIR/style_${i}.css" 2>/dev/null
+    size=$((800000 + RANDOM % 1200000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/feed_${i}.xml" 2>/dev/null
 done
-log "  Сгенерировано 50 CSS файлов"
+log "  Сгенерировано 50 XML файлов"
 
-# JS файлы (50 шт, ~30MB)
-for i in $(seq 1 50); do
-    python3 -c "
-print('// JavaScript Test File $i')
-print('function testFunc() {')
-for j in range(300):
-    print(f'  var var_{j} = \"test_string_{j}\" * {j};')
-print('}')
-" > "$BASEDIR/script_${i}.js" 2>/dev/null
+# TXT файлы (200 шт, ~1GB логов) — основной объём
+for i in $(seq 1 200); do
+    size=$((4000000 + RANDOM % 6000000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/log_${i}.txt" 2>/dev/null
 done
-log "  Сгенерировано 50 JS файлов"
+log "  Сгенерировано 200 TXT файлов"
 
-# JSON файлы (60 шт, ~30MB)
-for i in $(seq 1 60); do
-    python3 -c "
-import json
-data = {'id': $i, 'data': [{'key': str(k), 'value': k*10} for k in range(200)]}
-print(json.dumps(data, indent=2))
-" > "$BASEDIR/data_${i}.json" 2>/dev/null
+# SVG файлы (20 шт, ~20MB)
+for i in $(seq 1 20); do
+    size=$((800000 + RANDOM % 1200000))
+    head -c "$size" /dev/urandom | base64 | head -c "$size" > "$BASEDIR/image_${i}.svg" 2>/dev/null
 done
-log "  Сгенерировано 60 JSON файлов"
-
-# TXT файлы (260 шт, ~200MB)
-for i in $(seq 1 260); do
-    size=$((500000 + RANDOM % 2000000))
-    python3 -c "
-for j in range($((size // 50))):
-    print(f'Line {j}: Lorem ipsum dolor sit amet, consectetur adipiscing elit.')
-" > "$BASEDIR/log_${i}.txt" 2>/dev/null
-done
-log "  Сгенерировано 260 TXT файлов"
+log "  Сгенерировано 20 SVG файлов"
 
 # Мелкие файлы для проверки порога (50 шт, 50-200 байт)
 for i in $(seq 1 50); do
@@ -100,7 +101,7 @@ log "  Сгенерировано 50 мелких файлов (< 256 байт)"
 
 FILE_COUNT=$(sudo find "$BASEDIR" -type f | wc -l)
 TOTAL_SIZE=$(sudo du -sm "$BASEDIR" | cut -f1)
-log "  ИТОГО: $FILE_COUNT файлов, ${TOTAL_SIZE}MB"
+log "  ИТОГО: $FILE_COUNT файлов, ${TOTAL_SIZE}MB (требуется ≥1024MB по ТЗ)"
 
 # ===========================================================================
 # ЭТАП 3: Stale detection (40% предварительно сжатых файлов)
