@@ -133,7 +133,9 @@ public:
     
     // Безопасное удаление сжатых копий с проверками
     static bool safe_remove_compressed(const fs::path& original_path);
-    static bool validate_path_in_directory(const fs::path& path, const std::vector<std::string>& allowed_dirs);
+
+private:
+    // Внутренние проверки для safe_remove_compressed
     static bool check_file_ownership(const fs::path& path, uid_t expected_uid);
     static bool is_symlink_attack(const fs::path& path);
 };
