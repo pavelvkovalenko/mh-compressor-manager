@@ -1,51 +1,69 @@
 #pragma once
 #include <cstdlib>
-#include <string>
+#include <cstring>
 #include <string_view>
-#include <fmt/format.h>
 
 /**
- * @brief Локализация приложения (i18n).
- * Один файл для всего проекта. Язык определяется по env LANG при первом вызове.
- * По умолчанию — английский. При LANG=ru_* — русский.
+ * @brief Локализация приложения (i18n) — единый файл для всего проекта.
  *
- * Простые строки:
- *   Logger::info(_("File compressed", "Файл сжат"));
+ * Архитектура: GNU gettext (подход coreutils/systemd).
+ * Исходный код содержит только английские строки.
+ * Переводы — в отдельных .po/.mo файлах.
+ * При отсутствии .mo — программа работает на английском без ошибок.
  *
- * Строки с форматированием:
- *   Logger::info(_fmt("File: {} bytes", "Файл: {} байт", size));
+ * Использование:
+ *   // Простая строка:
+ *   Logger::info(_("File compressed"));
+ *
+ *   // Строка с аргументами (printf-style):
+ *   Logger::info_fmt(_("Compressed %s: %zu bytes"), path.c_str(), size);
+ *
+ * Компиляция с gettext:
+ *   -DHAVE_GETTEXT - подключить libintl
+ * Без gettext (fallback):
+ *   -DHAVE_GETTEXT не определён → dgettext(d,s) → (s) → возвращает оригинал
  */
+
+// Fallback: если gettext недоступен, макрос возвращает строку как есть
+#ifndef HAVE_GETTEXT
+#define dgettext(domain, msgid) (msgid)
+#endif
+
+/**
+ * @brief Перевод строки через dgettext().
+ * @param msgid Оригинальная (английская) строка
+ * @return Переведённая строка или оригинал, если перевод не найден
+ */
+#define _(msgid) dgettext("mh-compressor-manager", msgid)
+
+/**
+ * @brief Пометка строки для извлечения без перевода (статические массивы).
+ */
+#define N_(msgid) (msgid)
+
 namespace i18n {
 
-inline bool is_russian() {
-    static const bool ru = []() {
-        const char* lang = std::getenv("LANG");
-        if (!lang) lang = std::getenv("LC_ALL");
-        if (!lang) lang = std::getenv("LC_MESSAGES");
-        if (!lang) return false;
-        std::string_view sv(lang);
-        return sv.starts_with("ru") || sv.starts_with("RU");
-    }();
-    return ru;
-}
-
-inline const char* tr(const char* en, const char* ru) {
-    return is_russian() ? ru : en;
-}
-
 /**
- * @brief Перевод + форматирование строки (runtime).
- * Использует fmt::format с fmt::runtime() для поддержки runtime формат-строк.
- * libfmt не требует constexpr строки в отличие от std::format (GCC 15).
+ * @brief Инициализация локализации.
+ * Вызывается один раз в main(), до первого использования _().
+ *
+ * @param locale_dir Путь к каталогу с .mo файлами (обычно /usr/share/locale)
  */
-template<typename... Args>
-std::string tr_fmt(const char* en, const char* ru, Args&&... args) {
-    return fmt::format(fmt::runtime(is_russian() ? ru : en),
-                       std::forward<Args>(args)...);
+inline void init(const char* locale_dir = "/usr/share/locale") {
+    // Инициализация locale из переменных окружения (LANG, LC_ALL, LC_MESSAGES)
+    std::setlocale(LC_ALL, "");
+
+#ifdef HAVE_GETTEXT
+    // Привязка домена переводов к каталогу
+    bindtextdomain("mh-compressor-manager", locale_dir);
+    // Установка кодировки домена
+    bind_textdomain_codeset("mh-compressor-manager", "UTF-8");
+    // Установка домена по умолчанию
+    textdomain("mh-compressor-manager");
+#else
+    // Fallback: gettext недоступен, используем оригинальные строки
+    (void)locale_dir;
+#endif
 }
 
 } // namespace i18n
-
-// Короткие макросы
-#define _(en, ru) i18n::tr(en, ru)
-#define _fmt(en, ru, ...) i18n::tr_fmt(en, ru, ##__VA_ARGS__)

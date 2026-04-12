@@ -19,7 +19,14 @@ public:
     static void info(const std::string& msg);
     static void warning(const std::string& msg);
     static void error(const std::string& msg);
-    
+
+    // printf-style методы для локализации (ТЗ §22.4)
+    // __attribute__((format(printf, 1, 2)) — компилятор проверяет соответствие аргументов
+    static void debug_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void info_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void warning_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void error_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+
 private:
     static bool s_debug;
     static std::thread s_async_thread;

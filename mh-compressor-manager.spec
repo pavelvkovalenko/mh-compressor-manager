@@ -50,6 +50,13 @@ install -m 644 ../compressor-manager.conf.full %{buildroot}/etc/mediahive/
 mkdir -p %{buildroot}/%{_unitdir}
 install -m 644 ../mh-compressor-manager.service %{buildroot}/%{_unitdir}/
 
+# Установка файлов переводов (.mo)
+if [ -f build/translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo ]; then
+    mkdir -p %{buildroot}/%{_datadir}/locale/ru/LC_MESSAGES
+    install -m 644 build/translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo \
+        %{buildroot}/%{_datadir}/locale/ru/LC_MESSAGES/
+fi
+
 %post
 if [ $1 -eq 1 ]; then
     /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
@@ -70,6 +77,8 @@ fi
 %config(noreplace) /etc/mediahive/compressor-manager.conf
 /etc/mediahive/compressor-manager.conf.full
 %{_unitdir}/mh-compressor-manager.service
+# Файлы переводов (ТЗ §22.7)
+%{_datadir}/locale/ru/LC_MESSAGES/mh-compressor-manager.mo
 %doc README.md
 %doc README.html
 %license LICENSE

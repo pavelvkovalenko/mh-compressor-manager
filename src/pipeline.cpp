@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "security.h"
 #include "compressor.h"
+#include "i18n.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -10,14 +11,6 @@
 #include <cstring>
 #include <chrono>
 #include <algorithm>
-#if __has_include(<format>)
-#include <format>
-#else
-#include <fmt/format.h>
-namespace std {
-    using fmt::format;
-}
-#endif
 
 #ifdef HAVE_LIBBROTLI
 #include <brotli/encode.h>
@@ -28,10 +21,10 @@ namespace std {
 #endif
 
 // Переименованы макросы для избежания конфликта с <syslog.h>
-#define PIPE_LOG_INFO(msg, ...) Logger::info(std::format(msg, ##__VA_ARGS__))
-#define PIPE_LOG_ERROR(msg, ...) Logger::error(std::format(msg, ##__VA_ARGS__))
-#define PIPE_LOG_WARN(msg, ...) Logger::warning(std::format(msg, ##__VA_ARGS__))
-#define PIPE_LOG_DEBUG(msg, ...) Logger::debug(std::format(msg, ##__VA_ARGS__))
+#define PIPE_LOG_INFO(msg, ...) Logger::info_fmt(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_ERROR(msg, ...) Logger::error_fmt(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_WARN(msg, ...) Logger::warning_fmt(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_DEBUG(msg, ...) Logger::debug_fmt(_(msg), ##__VA_ARGS__)
 
 /**
  * @brief Конструктор конвейера

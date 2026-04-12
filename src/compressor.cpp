@@ -3,6 +3,7 @@
 #include "memory_pool.h"
 #include "async_io.h"
 #include "performance_optimizer.h"
+#include "i18n.h"
 #ifdef HAVE_LIBDEFLATE
 #include <libdeflate.h>
 #endif
@@ -115,11 +116,11 @@ bool Compressor::compress_dual(const fs::path& input,
                                int brotli_level) {
     // Проверка диапазонов уровней сжатия
     if (!validate_compression_level(gzip_level, 1, 9)) {
-        Logger::warning(std::format("Invalid gzip level {}, using default 6", gzip_level));
+        Logger::warning_fmt(_("Invalid gzip level %d, using default 6"), gzip_level);
         gzip_level = 6;
     }
     if (!validate_compression_level(brotli_level, 1, 11)) {
-        Logger::warning(std::format("Invalid brotli level {}, using default 4", brotli_level));
+        Logger::warning_fmt(_("Invalid brotli level %d, using default 4"), brotli_level);
         brotli_level = 4;
     }
     
@@ -132,19 +133,19 @@ bool Compressor::compress_dual(const fs::path& input,
     
     int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (dir_fd < 0) {
-        Logger::error(std::format("Failed to open directory {}: {}", parent_dir.string(), strerror(errno)));
+        Logger::error_fmt(_("Failed to open directory %s: %s"), parent_dir.string().c_str(), strerror(errno));
         return false;
     }
-    
+
     int fd_path = openat(dir_fd, basename.c_str(), O_PATH | O_NOFOLLOW);
     if (fd_path < 0) {
         int saved_errno = errno;
         close(dir_fd);
         if (saved_errno == ELOOP || saved_errno == EMLINK) {
-            Logger::error(std::format("Symlink attack detected: {} - refusing to open", input.string()));
+            Logger::error_fmt(_("Symlink attack detected: %s - refusing to open"), input.string().c_str());
             return false;
         }
-        Logger::error(std::format("Failed to open file reference: {} - {}", input.string(), strerror(saved_errno)));
+        Logger::error_fmt(_("Failed to open file reference: %s - %s"), input.string().c_str(), strerror(saved_errno));
         return false;
     }
     close(dir_fd);
@@ -152,20 +153,20 @@ bool Compressor::compress_dual(const fs::path& input,
     struct stat st;
     if (fstat(fd_path, &st) != 0 || !S_ISREG(st.st_mode)) {
         close(fd_path);
-        Logger::error(std::format("Path is not a regular file or is a symlink: {}", input.string()));
+        Logger::error_fmt(_("Path is not a regular file or is a symlink: %s"), input.string().c_str());
         return false;
     }
-    
+
     if (static_cast<uint64_t>(st.st_size) > MAX_FILE_SIZE) {
         close(fd_path);
-        Logger::warning(std::format("File too large: {} (size: {} bytes, max: {} bytes)", 
-                                    input.string(), st.st_size, MAX_FILE_SIZE));
+        Logger::warning_fmt(_("File too large: %s (size: %zu bytes, max: %zu bytes)"),
+                                    input.string().c_str(), st.st_size, MAX_FILE_SIZE);
         return false;
     }
     
     if ((st.st_mode & S_IRUSR) == 0 && getuid() != st.st_uid && getuid() != 0) {
         close(fd_path);
-        Logger::warning(std::format("No read permission for file: {}", input.string()));
+        Logger::warning_fmt(_("No read permission for file: %s"), input.string().c_str());
         return false;
     }
     
@@ -174,15 +175,15 @@ bool Compressor::compress_dual(const fs::path& input,
     if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
         int saved_errno = errno;
         close(fd_path);
-        Logger::error(std::format("snprintf failed for proc path: {} - {}", input.string(), strerror(saved_errno)));
+        Logger::error_fmt(_("snprintf failed for proc path: %s - %s"), input.string().c_str(), strerror(saved_errno));
         return false;
     }
-    
+
     int fd_in = open(proc_path, O_RDONLY);
     if (fd_in < 0) {
         int saved_errno = errno;
         close(fd_path);
-        Logger::error(std::format("Failed to reopen file for reading: {} - {}", input.string(), strerror(saved_errno)));
+        Logger::error_fmt(_("Failed to reopen file for reading: %s - %s"), input.string().c_str(), strerror(saved_errno));
         return false;
     }
     close(fd_path);
@@ -196,7 +197,7 @@ bool Compressor::compress_dual(const fs::path& input,
     if (lstat(gzip_output.c_str(), &out_st_tmp) == 0 && S_ISREG(out_st_tmp.st_mode)) {
         try {
             if (fs::last_write_time(gzip_output) < fs::last_write_time(input)) {
-                Logger::info(std::format("Removing stale compressed file: {}", gzip_output.string()));
+                Logger::info_fmt(_("Removing stale compressed file: %s"), gzip_output.string().c_str());
                 unlink(gzip_output.c_str());
             }
         } catch (...) {}
@@ -207,11 +208,11 @@ bool Compressor::compress_dual(const fs::path& input,
         int saved_errno = errno;
         close(fd_in);
         if (saved_errno == EEXIST) {
-            Logger::error(std::format("Output file already exists: {}", gzip_output.string()));
+            Logger::error_fmt(_("Output file already exists: %s"), gzip_output.string().c_str());
         } else if (saved_errno == ELOOP) {
-            Logger::error(std::format("Symlink attack detected on output path: {}", gzip_output.string()));
+            Logger::error_fmt(_("Symlink attack detected on output path: %s"), gzip_output.string().c_str());
         } else {
-            Logger::error(std::format("Failed to open output file {}: {}", gzip_output.string(), strerror(saved_errno)));
+            Logger::error_fmt(_("Failed to open output file %s: %s"), gzip_output.string().c_str(), strerror(saved_errno));
         }
         return false;
     }
@@ -224,7 +225,7 @@ bool Compressor::compress_dual(const fs::path& input,
     if (lstat(brotli_output.c_str(), &out_st_tmp) == 0 && S_ISREG(out_st_tmp.st_mode)) {
         try {
             if (fs::last_write_time(brotli_output) < fs::last_write_time(input)) {
-                Logger::info(std::format("Removing stale compressed file: {}", brotli_output.string()));
+                Logger::info_fmt(_("Removing stale compressed file: %s"), brotli_output.string().c_str());
                 unlink(brotli_output.c_str());
             }
         } catch (...) {}
@@ -237,11 +238,11 @@ bool Compressor::compress_dual(const fs::path& input,
         close(fd_gzip);
         unlink(gzip_output.c_str());
         if (saved_errno == EEXIST) {
-            Logger::error(std::format("Output file already exists: {}", brotli_output.string()));
+            Logger::error_fmt(_("Output file already exists: %s"), brotli_output.string().c_str());
         } else if (saved_errno == ELOOP) {
-            Logger::error(std::format("Symlink attack detected on output path: {}", brotli_output.string()));
+            Logger::error_fmt(_("Symlink attack detected on output path: %s"), brotli_output.string().c_str());
         } else {
-            Logger::error(std::format("Failed to open output file {}: {}", brotli_output.string(), strerror(saved_errno)));
+            Logger::error_fmt(_("Failed to open output file %s: %s"), brotli_output.string().c_str(), strerror(saved_errno));
         }
         return false;
     }
@@ -377,9 +378,9 @@ bool Compressor::compress_dual(const fs::path& input,
     bool has_error = false;
     do {
         ssize_t bytes_read = AsyncIO::sync_read(fd_in, in_buffer, buffer_size);
-        
+
         if (bytes_read < 0) {
-            Logger::error(std::format("Failed to read input file {}: {}", input.string(), strerror(errno)));
+            Logger::error_fmt(_("Failed to read input file %s: %s"), input.string().c_str(), strerror(errno));
             has_error = true;
             break;
         }
@@ -404,7 +405,7 @@ bool Compressor::compress_dual(const fs::path& input,
                 if (have > 0) {
                     ssize_t written = AsyncIO::sync_write(fd_gzip, gzip_out_buffer, have);
                     if (written < 0 || static_cast<size_t>(written) != have) {
-                        Logger::error(std::format("Failed to write gzip data: {}", strerror(errno)));
+                        Logger::error_fmt(_("Failed to write gzip data: %s"), strerror(errno));
                         has_error = true;
                         break;
                     }
@@ -435,7 +436,7 @@ bool Compressor::compress_dual(const fs::path& input,
                 if (written > 0) {
                     ssize_t w = AsyncIO::sync_write(fd_brotli, brotli_out_buffer, written);
                     if (w < 0 || static_cast<size_t>(w) != written) {
-                        Logger::error(std::format("Failed to write brotli data: {}", strerror(errno)));
+                        Logger::error_fmt(_("Failed to write brotli data: %s"), strerror(errno));
                         has_error = true;
                         break;
                     }
@@ -486,8 +487,8 @@ bool Compressor::compress_dual(const fs::path& input,
         return false;
     }
     
-    Logger::info(std::format("Dual compression completed: {} -> {} + {}",
-                             input.string(), gzip_output.string(), brotli_output.string()));
+    Logger::info_fmt(_("Dual compression completed: %s -> %s + %s"),
+                             input.string().c_str(), gzip_output.string().c_str(), brotli_output.string().c_str());
     return true;
 }
 #endif  // compress_dual отключена
@@ -497,7 +498,7 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     
     // Получаем информацию об исходном файле (lstat для обработки ссылок)
     if (lstat(source.c_str(), &st) != 0) {
-        Logger::warning(std::format("Failed to stat source file {}: {}", source.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to stat source file %s: %s"), source.string().c_str(), strerror(errno));
         return false;
     }
     
@@ -510,7 +511,7 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     
     int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (dir_fd < 0) {
-        Logger::warning(std::format("Failed to open directory {} for metadata copy: {}", parent_dir.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to open directory %s for metadata copy: %s"), parent_dir.string().c_str(), strerror(errno));
         return false;
     }
     
@@ -519,14 +520,14 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     close(dir_fd);
     
     if (dest_fd < 0) {
-        Logger::warning(std::format("Failed to open destination file {} for metadata copy: {}", dest.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to open destination file %s for metadata copy: %s"), dest.string().c_str(), strerror(errno));
         return false;
     }
     
     // 1. Копируем права доступа (режим) через fchmod
     if (fchmod(dest_fd, st.st_mode) != 0) {
         close(dest_fd);
-        Logger::warning(std::format("Failed to set permissions on {}: {}", dest.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to set permissions on %s: %s"), dest.string().c_str(), strerror(errno));
         return false;
     }
     
@@ -535,10 +536,10 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     if (fchown(dest_fd, st.st_uid, st.st_gid) != 0) {
         // Если не удалось сменить владельца (нет прав), логируем, но не считаем это фатальной ошибкой
         if (errno == EPERM) {
-            Logger::debug(std::format("No permission to change ownership of {} (running as non-root?)", dest.string()));
+            Logger::debug_fmt(_("No permission to change ownership of %s (running as non-root?)"), dest.string().c_str());
         } else {
             close(dest_fd);
-            Logger::warning(std::format("Failed to set ownership on {}: {}", dest.string(), strerror(errno)));
+            Logger::warning_fmt(_("Failed to set ownership on %s: %s"), dest.string().c_str(), strerror(errno));
             return false;
         }
     }
@@ -549,7 +550,7 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     times[1] = st.st_mtim;
     if (futimens(dest_fd, times) != 0) {
         close(dest_fd);
-        Logger::warning(std::format("Failed to set timestamps on {}: {}", dest.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to set timestamps on %s: %s"), dest.string().c_str(), strerror(errno));
         return false;
     }
     
@@ -560,14 +561,14 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     char* src_context = nullptr;
     if (getfilecon(source.c_str(), &src_context) >= 0) {
         if (setfilecon(dest.c_str(), src_context) != 0) {
-            Logger::debug(std::format("Failed to set SELinux context on {}: {}", dest.string(), strerror(errno)));
+            Logger::debug_fmt(_("Failed to set SELinux context on %s: %s"), dest.string().c_str(), strerror(errno));
         }
         freecon(src_context);
     }
     #endif
-    
-    Logger::debug(std::format("Metadata copied: {} -> {} (mode={}, uid={}, gid={})", 
-                              source.string(), dest.string(), st.st_mode, st.st_uid, st.st_gid));
+
+    Logger::debug_fmt(_("Metadata copied: %s -> %s (mode=%u, uid=%u, gid=%u)"),
+                              source.string().c_str(), dest.string().c_str(), st.st_mode, st.st_uid, st.st_gid);
     return true;
 }
 
@@ -578,7 +579,7 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     
     // Проверяем, является ли файл символической ссылкой
     if (lstat(path.c_str(), &st) != 0) {
-        Logger::warning(std::format("Failed to lstat {}: {}", path.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to lstat %s: %s"), path.string().c_str(), strerror(errno));
         return false;  // Не можем проверить - считаем безопасным для логирования
     }
     
@@ -591,12 +592,12 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     char target[PATH_MAX];
     ssize_t len = readlink(path.c_str(), target, sizeof(target) - 1);
     if (len < 0) {
-        Logger::warning(std::format("Failed to readlink {}: {}", path.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to readlink %s: %s"), path.string().c_str(), strerror(errno));
         return true;  // Считаем потенциальной атакой
     }
     target[len] = '\0';
-    
-    Logger::warning(std::format("Symlink detected: {} -> {}", path.string(), target));
+
+    Logger::warning_fmt(_("Symlink detected: %s -> %s"), path.string().c_str(), target);
     
     // Проверяем, указывает ли ссылка на файл вне типичных пользовательских директорий
     std::string target_str(target);
@@ -606,7 +607,7 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
         target_str.find("/proc/") == 0 ||
         target_str.find("/sys/") == 0 ||
         target_str.find("/root/") == 0) {
-        Logger::error(std::format("Potential symlink attack detected: {} points to system directory", path.string()));
+        Logger::error_fmt(_("Potential symlink attack detected: %s points to system directory"), path.string().c_str());
         return true;
     }
     
@@ -616,7 +617,7 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     int fd = open(target, O_PATH|O_NOFOLLOW);
     if (fd < 0) {
         // Файл может не существовать - это нормально для некоторых случаев
-        Logger::warning(std::format("Cannot open target {} for verification: {}", target, strerror(errno)));
+        Logger::warning_fmt(_("Cannot open target %s for verification: %s"), target, strerror(errno));
         return false;  // Не можем проверить - считаем безопасным
     }
     
@@ -625,7 +626,7 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
     int ret = snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd);
     if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
         close(fd);
-        Logger::warning(std::format("snprintf failed for proc path in verify_no_symlink_attack: {}", strerror(errno)));
+        Logger::warning_fmt(_("snprintf failed for proc path in verify_no_symlink_attack: %s"), strerror(errno));
         return false;
     }
     
@@ -643,11 +644,11 @@ bool Compressor::is_symlink_attack(const fs::path& path) {
             resolved_str.find("/proc/") == 0 ||
             resolved_str.find("/sys/") == 0 ||
             resolved_str.find("/root/") == 0) {
-            Logger::error(std::format("Potential symlink attack detected: {} resolves to system file {}", path.string(), resolved_str));
+            Logger::error_fmt(_("Potential symlink attack detected: %s resolves to system file %s"), path.string().c_str(), resolved_str.c_str());
             return true;
         }
     }
-    
+
     return false;  // Symlink существует, но не указывает на системные директории
 }
 
@@ -656,17 +657,17 @@ bool Compressor::check_file_ownership(const fs::path& path, uid_t expected_uid) 
     struct stat st;
     
     if (lstat(path.c_str(), &st) != 0) {
-        Logger::warning(std::format("Failed to stat {}: {}", path.string(), strerror(errno)));
+        Logger::warning_fmt(_("Failed to stat %s: %s"), path.string().c_str(), strerror(errno));
         return false;
     }
-    
+
     if (st.st_uid != expected_uid && expected_uid != 0) {
         // Получаем информацию о владельце для логирования
         struct passwd* pw = getpwuid(st.st_uid);
         const char* owner_name = pw ? pw->pw_name : "unknown";
-        
-        Logger::warning(std::format("File ownership mismatch for {}: expected uid={}, actual uid={} ({})", 
-                                   path.string(), expected_uid, st.st_uid, owner_name));
+
+        Logger::warning_fmt(_("File ownership mismatch for %s: expected uid=%u, actual uid=%u (%s)"),
+                                   path.string().c_str(), expected_uid, st.st_uid, owner_name);
         return false;
     }
     
@@ -679,7 +680,7 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
     
     // 1. Проверка на symlink-атаку для оригинального пути
     if (is_symlink_attack(original_path)) {
-        Logger::error(std::format("Refusing to remove compressed copies: potential symlink attack for {}", original_path.string()));
+        Logger::error_fmt(_("Refusing to remove compressed copies: potential symlink attack for %s"), original_path.string().c_str());
         return false;
     }
     
@@ -690,7 +691,7 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
     
     if (!orig_exists) {
         // Файл уже удалён - используем uid=0 для пропуска проверки владельца
-        Logger::debug(std::format("Original file does not exist, skipping ownership check for compressed copies of {}", original_path.string()));
+        Logger::debug_fmt(_("Original file does not exist, skipping ownership check for compressed copies of %s"), original_path.string().c_str());
     }
     
     // Вспомогательная функция для безопасного удаления файла
@@ -704,25 +705,25 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
         // Открываем директорию с O_DIRECTORY | O_NOFOLLOW для защиты от symlink
         int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
         if (dir_fd < 0) {
-            Logger::error(std::format("Failed to open directory {} for {} removal: {}", 
-                                     parent_dir.string(), type, strerror(errno)));
+            Logger::error_fmt(_("Failed to open directory %s for %s removal: %s"),
+                                     parent_dir.string().c_str(), type, strerror(errno));
             return false;
         }
-        
+
         // Используем unlinkat с AT_REMOVEDIR для удаления без следования за symlink
         if (unlinkat(dir_fd, basename.c_str(), 0) != 0) {
             int saved_errno = errno;
             close(dir_fd);
             if (saved_errno == ENOENT) {
-                Logger::debug(std::format("{} file does not exist: {}", type, filepath.string()));
+                Logger::debug_fmt(_("%s file does not exist: %s"), type, filepath.string().c_str());
                 return true;  // Не ошибка, файл уже удалён
             }
-            Logger::error(std::format("Failed to unlink {} {}: {}", type, filepath.string(), strerror(saved_errno)));
+            Logger::error_fmt(_("Failed to unlink %s %s: %s"), type, filepath.string().c_str(), strerror(saved_errno));
             return false;
         }
-        
+
         close(dir_fd);
-        Logger::info(std::format("Removed {} copy: {}", type, filepath.string()));
+        Logger::info_fmt(_("Removed %s copy: %s"), type, filepath.string().c_str());
         return true;
     };
     
@@ -732,34 +733,34 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
     if (lstat(gz_path.c_str(), &gz_st) == 0) {
         // Проверка на symlink-атаку для сжатого файла
         if (S_ISLNK(gz_st.st_mode)) {
-            Logger::error(std::format("SECURITY: Refusing to remove {}: potential symlink attack", gz_path.string()));
+            Logger::error_fmt(_("SECURITY: Refusing to remove %s: potential symlink attack"), gz_path.string().c_str());
         } else if (S_ISREG(gz_st.st_mode)) {
             // Проверка владельца (пропускаем, если оригинал не существует)
             if (!orig_exists || check_file_ownership(gz_path, expected_uid)) {
                 safe_unlink(gz_path, "gzip");
             } else {
-                Logger::error(std::format("Ownership check failed for {}, skipping removal", gz_path.string()));
+                Logger::error_fmt(_("Ownership check failed for %s, skipping removal"), gz_path.string().c_str());
             }
         }
     }
-    
+
     // 4. Проверяем и удаляем .br копию через lstat (безопасная проверка)
     fs::path br_path = original_path.string() + ".br";
     struct stat br_st;
     if (lstat(br_path.c_str(), &br_st) == 0) {
         // Проверка на symlink-атаку для сжатого файла
         if (S_ISLNK(br_st.st_mode)) {
-            Logger::error(std::format("SECURITY: Refusing to remove {}: potential symlink attack", br_path.string()));
+            Logger::error_fmt(_("SECURITY: Refusing to remove %s: potential symlink attack"), br_path.string().c_str());
         } else if (S_ISREG(br_st.st_mode)) {
             // Проверка владельца (пропускаем, если оригинал не существует)
             if (!orig_exists || check_file_ownership(br_path, expected_uid)) {
                 safe_unlink(br_path, "brotli");
             } else {
-                Logger::error(std::format("Ownership check failed for {}, skipping removal", br_path.string()));
+                Logger::error_fmt(_("Ownership check failed for %s, skipping removal"), br_path.string().c_str());
             }
         }
     }
-    
+
     return true;
 }
 
@@ -780,7 +781,7 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
     int fd_out = open(tmp_path_str.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode);
     if (fd_out < 0) {
         int saved_errno = errno;
-        Logger::error(std::format("Failed to open temp file {}: {}", tmp_path_str, strerror(saved_errno)));
+        Logger::error_fmt(_("Failed to open temp file %s: %s"), tmp_path_str.c_str(), strerror(saved_errno));
         return false;
     }
 
@@ -793,7 +794,7 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
             int saved_errno = errno;
             close(fd_out);
             unlink(tmp_path_str.c_str());
-            Logger::error(std::format("Failed to write temp file {}: {}", tmp_path_str, strerror(saved_errno)));
+            Logger::error_fmt(_("Failed to write temp file %s: %s"), tmp_path_str.c_str(), strerror(saved_errno));
             return false;
         }
         total_written += written;
@@ -804,7 +805,7 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
         int saved_errno = errno;
         close(fd_out);
         unlink(tmp_path_str.c_str());
-        Logger::error(std::format("fsync failed for {}: {}", tmp_path_str, strerror(saved_errno)));
+        Logger::error_fmt(_("fsync failed for %s: %s"), tmp_path_str.c_str(), strerror(saved_errno));
         return false;
     }
     close(fd_out);
@@ -813,7 +814,7 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
     if (rename(tmp_path_str.c_str(), output_path.c_str()) != 0) {
         int saved_errno = errno;
         unlink(tmp_path_str.c_str());
-        Logger::error(std::format("rename failed {} -> {}: {}", tmp_path_str, output_path.string(), strerror(saved_errno)));
+        Logger::error_fmt(_("rename failed %s -> %s: %s"), tmp_path_str.c_str(), output_path.string().c_str(), strerror(saved_errno));
         return false;
     }
 
@@ -830,7 +831,7 @@ bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
 
     // Проверка диапазона уровня сжатия
     if (!validate_compression_level(level, 1, 9)) {
-        Logger::warning(std::format("Invalid gzip level {}, using default 6", level));
+        Logger::warning_fmt(_("Invalid gzip level %d, using default 6"), level);
         level = 6;
     }
 
@@ -851,7 +852,7 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
 
     // Проверка диапазона уровня сжатия
     if (!validate_compression_level(level, 1, 11)) {
-        Logger::warning(std::format("Invalid brotli level {}, using default 4", level));
+        Logger::warning_fmt(_("Invalid brotli level %d, using default 4"), level);
         level = 4;
     }
 
@@ -878,7 +879,7 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
                                       &available_in, &next_in,
                                       &available_out, &next_out,
                                       nullptr)) {
-        Logger::error(std::format("Brotli compression stream error for output: {}", output_path.string()));
+        Logger::error_fmt(_("Brotli compression stream error for output: %s"), output_path.string().c_str());
         BrotliEncoderDestroyInstance(state);
         return false;
     }
@@ -887,7 +888,7 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
     BrotliEncoderDestroyInstance(state);
 
     if (compressed_size == 0) {
-        Logger::error(std::format("Brotli produced zero bytes for output: {}", output_path.string()));
+        Logger::error_fmt(_("Brotli produced zero bytes for output: %s"), output_path.string().c_str());
         return false;
     }
 
@@ -896,8 +897,8 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
         return false;
     }
 
-    Logger::debug(std::format("Brotli compressed from memory: {} bytes -> {} bytes -> {}",
-                               size, compressed_size, output_path.string()));
+    Logger::debug_fmt(_("Brotli compressed from memory: %zu bytes -> %zu bytes -> %s"),
+                               size, compressed_size, output_path.string().c_str());
     return true;
 }
 
@@ -933,7 +934,7 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
     // Сжимаем всё за один проход (one-shot для данных в памяти)
     int ret = deflate(&strm, Z_FINISH);
     if (ret != Z_STREAM_END) {
-        Logger::error(std::format("Gzip deflate error (zlib), ret={}", ret));
+        Logger::error_fmt(_("Gzip deflate error (zlib), ret=%d"), ret);
         deflateEnd(&strm);
         return false;
     }
@@ -942,7 +943,7 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
     deflateEnd(&strm);
 
     if (compressed_size == 0) {
-        Logger::error(std::format("Gzip produced zero bytes (zlib) for output: {}", output_path.string()));
+        Logger::error_fmt(_("Gzip produced zero bytes (zlib) for output: %s"), output_path.string().c_str());
         return false;
     }
 
@@ -951,8 +952,8 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
         return false;
     }
 
-    Logger::debug(std::format("Gzip compressed from memory (zlib): {} bytes -> {} bytes -> {}",
-                               size, compressed_size, output_path.string()));
+    Logger::debug_fmt(_("Gzip compressed from memory (zlib): %zu bytes -> %zu bytes -> %s"),
+                               size, compressed_size, output_path.string().c_str());
     return true;
 }
 
@@ -970,7 +971,7 @@ bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_
     // Создаём компрессор
     struct libdeflate_compressor* comp = libdeflate_alloc_compressor(level);
     if (!comp) {
-        Logger::error(std::format("libdeflate_alloc_compressor failed for {}", output_path.string()));
+        Logger::error_fmt(_("libdeflate_alloc_compressor failed for %s"), output_path.string().c_str());
         return false;
     }
 
@@ -979,7 +980,7 @@ bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_
     libdeflate_free_compressor(comp);
 
     if (actual_out_size == 0) {
-        Logger::error(std::format("libdeflate_gzip_compress failed for {}", output_path.string()));
+        Logger::error_fmt(_("libdeflate_gzip_compress failed for %s"), output_path.string().c_str());
         return false;
     }
 
@@ -988,8 +989,8 @@ bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_
         return false;
     }
 
-    Logger::debug(std::format("Gzip compressed from memory (libdeflate): {} bytes -> {} bytes -> {}",
-                               size, actual_out_size, output_path.string()));
+    Logger::debug_fmt(_("Gzip compressed from memory (libdeflate): %zu bytes -> %zu bytes -> %s"),
+                               size, actual_out_size, output_path.string().c_str());
     return true;
 }
 #endif  // HAVE_LIBDEFLATE
@@ -1040,7 +1041,7 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     // Открываем временный файл
     state.fd_out = open(state.tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, src_mode & 0666);
     if (state.fd_out < 0) {
-        Logger::error(std::format("gzip_stream_start: failed to open temp file {}: {}", state.tmp_path, strerror(errno)));
+        Logger::error_fmt(_("gzip_stream_start: failed to open temp file %s: %s"), state.tmp_path.c_str(), strerror(errno));
         state.has_error = true;
         return false;
     }
@@ -1057,7 +1058,7 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     }
 
     state.initialized = true;
-    Logger::debug(std::format("gzip_stream_start: {}", output_path.string()));
+    Logger::debug_fmt(_("gzip_stream_start: %s"), output_path.string().c_str());
     return true;
 }
 
@@ -1093,7 +1094,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
                 ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
                 if (n < 0) {
                     if (errno == EINTR) continue;
-                    Logger::error(std::format("gzip_stream_process: write failed: {}", strerror(errno)));
+                    Logger::error_fmt(_("gzip_stream_process: write failed: %s"), strerror(errno));
                     state.has_error = true;
                     return false;
                 }
@@ -1125,7 +1126,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
                     ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
                     if (n < 0) {
                         if (errno == EINTR) continue;
-                        Logger::error(std::format("gzip_stream_process: write failed in finalize: {}", strerror(errno)));
+                        Logger::error_fmt(_("gzip_stream_process: write failed in finalize: %s"), strerror(errno));
                         state.has_error = true;
                         return false;
                     }
@@ -1141,7 +1142,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     // завершил ли deflate в первом или втором цикле
     if (flush) {
         if (fsync(state.fd_out) != 0) {
-            Logger::error(std::format("gzip_stream_process: fsync failed: {}", strerror(errno)));
+            Logger::error_fmt(_("gzip_stream_process: fsync failed: %s"), strerror(errno));
             state.has_error = true;
             return false;
         }
@@ -1149,12 +1150,12 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         state.fd_out = -1;
 
         if (rename(state.tmp_path.c_str(), state.final_path.c_str()) != 0) {
-            Logger::error(std::format("gzip_stream_process: rename failed: {} -> {} (errno: {})", state.tmp_path, state.final_path, strerror(errno)));
+            Logger::error_fmt(_("gzip_stream_process: rename failed: %s -> %s (errno: %s)"), state.tmp_path.c_str(), state.final_path.c_str(), strerror(errno));
             state.has_error = true;
             return false;
         }
         state.tmp_path.clear();  // Больше не нужно удалять временный файл
-        Logger::debug(std::format("gzip_stream_process: finished, renamed to {}", state.final_path));
+        Logger::debug_fmt(_("gzip_stream_process: finished, renamed to %s"), state.final_path.c_str());
     }
 
     return true;
@@ -1172,7 +1173,7 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
     // Открываем временный файл
     state.fd_out = open(state.tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, src_mode & 0666);
     if (state.fd_out < 0) {
-        Logger::error(std::format("brotli_stream_start: failed to open temp file {}: {}", state.tmp_path, strerror(errno)));
+        Logger::error_fmt(_("brotli_stream_start: failed to open temp file %s: %s"), state.tmp_path.c_str(), strerror(errno));
         state.has_error = true;
         return false;
     }
@@ -1189,7 +1190,7 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
     BrotliEncoderSetParameter(state.enc, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
 
     state.initialized = true;
-    Logger::debug(std::format("brotli_stream_start: {}", output_path.string()));
+    Logger::debug_fmt(_("brotli_stream_start: %s"), output_path.string().c_str());
     return true;
 }
 
@@ -1233,7 +1234,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
                 ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
                 if (n < 0) {
                     if (errno == EINTR) continue;
-                    Logger::error(std::format("brotli_stream_process: write failed: {}", strerror(errno)));
+                    Logger::error_fmt(_("brotli_stream_process: write failed: %s"), strerror(errno));
                     state.has_error = true;
                     return false;
                 }
@@ -1275,7 +1276,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
         }
 
         if (fsync(state.fd_out) != 0) {
-            Logger::error(std::format("brotli_stream_process: fsync failed: {}", strerror(errno)));
+            Logger::error_fmt(_("brotli_stream_process: fsync failed: %s"), strerror(errno));
             state.has_error = true;
             return false;
         }
@@ -1283,12 +1284,12 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
         state.fd_out = -1;
 
         if (rename(state.tmp_path.c_str(), state.final_path.c_str()) != 0) {
-            Logger::error(std::format("brotli_stream_process: rename failed: {} -> {} (errno: {})", state.tmp_path, state.final_path, strerror(errno)));
+            Logger::error_fmt(_("brotli_stream_process: rename failed: %s -> %s (errno: %s)"), state.tmp_path.c_str(), state.final_path.c_str(), strerror(errno));
             state.has_error = true;
             return false;
         }
         state.tmp_path.clear();
-        Logger::debug(std::format("brotli_stream_process: finished, renamed to {}", state.final_path));
+        Logger::debug_fmt(_("brotli_stream_process: finished, renamed to %s"), state.final_path.c_str());
     }
 
     return true;

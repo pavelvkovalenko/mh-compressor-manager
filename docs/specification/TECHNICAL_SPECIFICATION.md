@@ -2576,5 +2576,143 @@ if (file_size <= chunk_size) {
 
 ---
 
+## 22. Локализация (i18n)
+
+### 22.1. Архитектура
+
+Программа использует **GNU gettext** для локализации пользовательских сообщений (логи, `--help`, диагностика). Подход идентичен GNU coreutils (ls, df) и systemd.
+
+**Принцип:** Исходный код содержит **только английские строки**. Переводы хранятся в отдельных `.po` файлах и компилируются в бинарные `.mo` файлы. При отсутствии `.mo` файла программа **не падает** — возвращает оригинальные английские строки.
+
+```
+src/*.cpp (.h)               translations/                  Установленные файлы
+  Logger::info_fmt(           mh-compressor-manager.pot     /usr/bin/mh-compressor-manager
+    _("File %s"), path); ──xgettext→ ru.po  ← перевод  ──msgfmt→ /usr/share/locale/ru/
+                                                              LC_MESSAGES/mh-compressor-manager.mo
+```
+
+### 22.2. Языки
+
+| Элемент | Язык по умолчанию | Перевод |
+|---------|-------------------|---------|
+| **Сообщения программы** (логи, --help) | Английский | Да, через gettext `.po/.mo` |
+| **Комментарии в исходном коде** | Русский | Нет, фиксируются в коде |
+| **Ключи конфигурации (INI)** | Английский | Нет, стандарт |
+| **Имена файлов, пути** | — | Зависит от системы пользователя |
+
+### 22.3. Макросы локализации
+
+| Макрос | Назначение | Пример |
+|--------|-----------|--------|
+| `_(str)` | Перевод строки через `dgettext()` | `_("File compressed")` |
+| `_fmt(fmt, ...)` | Перевод + printf-форматирование | `_fmt("File: %s, size: %zu", path, size)` |
+| `N_(str)` | Пометка строки без перевода (статические массивы) | `N_("%b %e %Y")` |
+
+### 22.4. Форматирование сообщений
+
+**Запрещено:** `std::format(_(str), args)` — несовместимо с GCC 15 (требует constexpr формат-строку).
+
+**Разрешено:** printf-style через `vsnprintf` в `Logger::*_fmt()`:
+
+```cpp
+// ✅ ПРАВИЛЬНО (gettext-совместимо, GCC 14/15)
+Logger::info_fmt(_("Compressed %s: %zu bytes"), path.c_str(), size);
+
+// ❌ НЕПРАВИЛЬНО (не компилируется на GCC 15)
+Logger::info(std::format(_("Compressed %s", path), size));
+```
+
+**Спецификаторы формата:**
+| Тип | Спецификатор | Пример |
+|-----|-------------|--------|
+| `std::string` | `%s` + `.c_str()` | `path.c_str()` |
+| `size_t` | `%zu` | `file_size` |
+| `int` | `%d` | `level` |
+| `long` | `%ld` | `count` |
+| `errno` | `%s` + `strerror(errno)` | `strerror(errno)` |
+
+### 22.5. Файлы переводов
+
+**Структура:**
+```
+translations/
+├── CMakeLists.txt                     # Компиляция .po → .mo
+├── mh-compressor-manager.pot          # Шаблон (автогенерация)
+└── ru.po                              # Русский перевод
+```
+
+**Сборка:**
+```cmake
+# translations/CMakeLists.txt
+file(GLOB PO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.po")
+foreach(PO_FILE ${PO_FILES})
+    get_filename_component(LANG ${PO_FILE} NAME_WE)
+    set(MO_FILE "${CMAKE_CURRENT_BINARY_DIR}/locale/${LANG}/LC_MESSAGES/mh-compressor-manager.mo")
+    add_custom_command(OUTPUT ${MO_FILE}
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/locale/${LANG}/LC_MESSAGES"
+        COMMAND ${GETTEXT_MSGFMT_EXECUTABLE} -o ${MO_FILE} ${PO_FILE}
+        DEPENDS ${PO_FILE})
+    add_custom_target(locale_${LANG} ALL DEPENDS ${MO_FILE})
+    install(FILES ${MO_FILE} DESTINATION share/locale/${LANG}/LC_MESSAGES)
+endforeach()
+```
+
+**Обновление шаблона:**
+```bash
+make update-pot  # Генерирует translations/mh-compressor-manager.pot
+```
+
+### 22.6. Инициализация
+
+```cpp
+// main.cpp — один раз в начале main()
+i18n::init();  // setlocale + bindtextdomain + textdomain
+```
+
+При отсутствии gettext (CMake fallback):
+```cpp
+target_compile_definitions(mh-compressor-manager PRIVATE "dgettext(d,s)=(s)")
+```
+
+### 22.7. Установка
+
+**RPM spec:**
+```spec
+%files
+/usr/bin/mh-compressor-manager
+/usr/share/locale/ru/LC_MESSAGES/mh-compressor-manager.mo
+```
+
+**_local-install.sh:**
+```bash
+sudo mkdir -p /usr/share/locale/ru/LC_MESSAGES
+sudo cp translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo \
+    /usr/share/locale/ru/LC_MESSAGES/
+```
+
+### 22.8. Добавление нового языка
+
+1. `cp translations/mh-compressor-manager.pot translations/de.po`
+2. Перевести `msgstr` в `de.po`
+3. `make && sudo make install`
+4. `LANG=de_DE.UTF-8 mh-compressor-manager` — немецкий вывод
+
+**Изменения в исходном коде НЕ требуются.**
+
+### 22.9. Критерии приёмки
+
+| Проверка | Ожидаемый результат |
+|----------|---------------------|
+| `LANG=ru_RU.UTF-8` | Русский вывод логов и --help |
+| `LANG=C` | Английский вывод |
+| Без LANG / `LANG=en_US.UTF-8` | Английский вывод |
+| Удалить `/usr/share/locale/ru/` | Английский вывод, без ошибок |
+| GCC 14 сборка | ✅ Без ошибок |
+| GCC 15 сборка | ✅ Без ошибок |
+| `grep -rn 'Logger::.*std::format' src/` | 0 результатов |
+| `make update-pot` | Генерирует актуальный `.pot` |
+
+---
+
 **© 2026 MediaHive.ru** | ООО ОКБ "Улей" | Автор: Коваленко Павел
 Техническая спецификация версия 3.4 | Документ утвержден в 2026 году

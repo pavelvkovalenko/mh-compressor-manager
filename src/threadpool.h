@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include "logger.h"
 #include "performance_optimizer.h"
+#include "i18n.h"
 
 // Приоритеты задач
 enum class TaskPriority : uint8_t {
@@ -60,15 +61,15 @@ public:
                     if (cpu_count == 0) cpu_count = 1;  // Защита от деления на 0
                     int core_id = static_cast<int>(i % cpu_count);
                     if (!PerformanceOptimizer::set_cpu_affinity(core_id)) {
-                        Logger::warning(std::format("Failed to set CPU affinity for thread {} (core {})", i, core_id));
+                        Logger::warning_fmt(_("Failed to set CPU affinity for thread %zu (core %d)"), i, core_id);
                     }
                 }
 
                 // Понижаем приоритет CPU (nice=10) — фоновые задачи уступают nginx и другим важным процессам
                 if (setpriority(PRIO_PROCESS, 0, 10) == 0) {
-                    Logger::debug(std::format("Worker thread {} CPU nice set to 10 (lower priority)", i));
+                    Logger::debug_fmt(_("Worker thread %zu CPU nice set to 10 (lower priority)"), i);
                 } else {
-                    Logger::debug(std::format("Failed to set CPU nice for worker {}: {}", i, strerror(errno)));
+                    Logger::debug_fmt(_("Failed to set CPU nice for worker %zu: %s"), i, strerror(errno));
                 }
 
                 // Понижаем I/O приоритет (idle class = 3) — минимальное влияние на диск
@@ -77,9 +78,9 @@ public:
                 constexpr int IOPRIO_WHO_PROCESS = 1;
                 int ioprio = IOPRIO_CLASS_IDLE << 13;  // level 0 within idle class
                 if (syscall(SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, ioprio) == 0) {
-                    Logger::debug(std::format("Worker thread {} I/O priority set to idle", i));
+                    Logger::debug_fmt(_("Worker thread %zu I/O priority set to idle"), i);
                 } else {
-                    Logger::debug(std::format("Failed to set I/O priority for worker {}: {}", i, strerror(errno)));
+                    Logger::debug_fmt(_("Failed to set I/O priority for worker %zu: %s"), i, strerror(errno));
                 }
                 
                 while (true) {
@@ -216,7 +217,7 @@ private:
                         }
                         int secs = static_cast<int>(elapsed.count());
                         if (secs >= 5 && secs % 5 == 0) {
-                            Logger::warning(std::format("Thread still running after {}s", secs));
+                            Logger::warning_fmt(_("Thread still running after %ds"), secs);
                         }
                     }
                 });

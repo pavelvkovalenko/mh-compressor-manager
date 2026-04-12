@@ -127,4 +127,52 @@ audit/
 
 ---
 
+## 🌐 План локализации
+
+Архитектура построена на **gettext** (подход GNU coreutils, systemd): исходный код содержит только английские строки, переводы — в отдельных `.po` файлах. При отсутствии `.mo` файла программа работает на английском без ошибок.
+
+```
+src/*.cpp                          translations/                    Установленные файлы
+  Logger::info_fmt(                 mh-compressor-manager.pot       /usr/bin/mh-compressor-manager
+    _("File %s"), path); ──xgettext→ ru.po  ← перевод       ──msgfmt→ /usr/share/locale/ru/
+                                                                 LC_MESSAGES/mh-compressor-manager.mo
+```
+
+### Этапы реализации
+
+| Этап | Описание | Файлы | Время |
+|------|----------|-------|-------|
+| **0** | Инфраструктура: `src/i18n.h`, CMakeLists.txt (Gettext) | i18n.h, CMakeLists.txt | 1 ч |
+| **0б** | Файлы переводов: `translations/ru.po`, компиляция `.po` → `.mo` | translations/*.po, CMakeLists.txt | 1 ч |
+| **1** | Logger printf-style: `info_fmt()`, `warning_fmt()`, `error_fmt()`, `debug_fmt()` | logger.h, logger.cpp | 1 ч |
+| **2** | Перевод config.cpp (~20 вызовов) | config.cpp, ru.po | 1.5 ч |
+| **3** | Перевод compressor.cpp (~30 вызовов) | compressor.cpp, ru.po | 1.5 ч |
+| **4** | Перевод monitor.cpp (~40 вызовов) | monitor.cpp, ru.po | 2 ч |
+| **5** | Перевод остальных 7 файлов (~80 вызовов) | main.cpp, async_io.cpp, и др. | 3 ч |
+| **6** | RPM spec + _local-install.sh: установка `.mo` файлов | .spec, _local-install.sh | 0.5 ч |
+| **7** | Тестирование: GCC 14/15, ru/en/locale-off | — | 2 ч |
+
+### Ключевые решения
+
+| Вопрос | Решение |
+|--------|---------|
+| **Язык по умолчанию** | Английский (оригинальные строки возвращаются при отсутствии `.mo`) |
+| **Язык комментариев в коде** | Русский (зафиксировано в RULES.md) |
+| **Форматирование сообщений** | printf-style (`%s`, `%zu`) через `vsnprintf`, НЕ `std::format` |
+| **Совместимость** | GCC 14 (std::vformat fallback) и GCC 15 (fmt::runtime) |
+| **Без gettext** | Программа работает, макрос `dgettext(d,s)` → `(s)` |
+
+### Добавление нового языка
+
+```bash
+cp translations/mh-compressor-manager.pot translations/de.po
+# Перевести msgstr в de.po
+make && sudo make install
+# LANG=de_DE.UTF-8 — программа заговорит по-немецки без изменений в коде
+```
+
+Подробности: [Раздел 22 в TECHNICAL_SPECIFICATION.md](../docs/specification/TECHNICAL_SPECIFICATION.md)
+
+---
+
 **© 2026 MediaHive.ru** | ООО ОКБ "Улей" | Автор: Коваленко Павел

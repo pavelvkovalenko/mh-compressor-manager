@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "i18n.h"
 #include <iostream>
 #if __has_include(<format>)
 #include <format>
@@ -89,7 +90,7 @@ void Logger::shutdown() {
         }
         // Принудительный flush оставшихся логов перед закрытием
         if (!s_log_queue.empty()) {
-            Logger::log(LogLevel::WARNING, "Log queue still has messages after timeout, flushing remaining...");
+            Logger::log(LogLevel::WARNING, _("Log queue still has messages after timeout, flushing remaining..."));
             // Даём ещё немного времени на обработку
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -133,3 +134,45 @@ void Logger::debug(const std::string& msg) { if (s_debug) log(LogLevel::DEBUG, m
 void Logger::info(const std::string& msg) { log(LogLevel::INFO, msg); }
 void Logger::warning(const std::string& msg) { log(LogLevel::WARNING, msg); }
 void Logger::error(const std::string& msg) { log(LogLevel::ERROR, msg); }
+
+// ============================================================================
+// printf-style методы для локализации (ТЗ §22.4)
+// Используют vsnprintf — совместимы с GCC 14/15, не требуют constexpr строк
+// ============================================================================
+
+void Logger::debug_fmt(const char* fmt, ...) {
+    if (!s_debug) return;
+    char buf[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    log(LogLevel::DEBUG, std::string(buf));
+}
+
+void Logger::info_fmt(const char* fmt, ...) {
+    char buf[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    log(LogLevel::INFO, std::string(buf));
+}
+
+void Logger::warning_fmt(const char* fmt, ...) {
+    char buf[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    log(LogLevel::WARNING, std::string(buf));
+}
+
+void Logger::error_fmt(const char* fmt, ...) {
+    char buf[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    log(LogLevel::ERROR, std::string(buf));
+}

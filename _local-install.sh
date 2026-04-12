@@ -31,6 +31,14 @@ if [[ -f "compressor-manager.conf.full" ]]; then
     sudo chmod 644 "$CONF_DIR/${CONF_NAME}.full"
 fi
 
+# 2в. Установка файлов переводов (.mo) — ТЗ §22.7
+if [[ -f "translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo" ]]; then
+    sudo mkdir -p /usr/share/locale/ru/LC_MESSAGES
+    sudo cp translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo \
+        /usr/share/locale/ru/LC_MESSAGES/
+    sudo chmod 644 /usr/share/locale/ru/LC_MESSAGES/mh-compressor-manager.mo
+fi
+
 # 4. Установка systemd-юнита
 sudo cp mh-compressor-manager.service /usr/lib/systemd/system/
 

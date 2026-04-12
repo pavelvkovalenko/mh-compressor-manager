@@ -1,6 +1,7 @@
 #include "monitor.h"
 #include "logger.h"
 #include "security.h"
+#include "i18n.h"
 #include <sys/inotify.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -68,8 +69,8 @@ Monitor::Monitor(const Config& cfg) : m_cfg(cfg), m_inotify_fd(), m_running(fals
     }
 
     update_compressed_extensions();
-    Logger::info(std::format("Initialized monitor with {} source extensions, {} compressed extensions based on algorithms: {}",
-                             m_extensions_cache.size(), m_compressed_extensions.size(), m_cfg.algorithms));
+    Logger::info_fmt(_("Initialized monitor with %zu source extensions, %zu compressed extensions based on algorithms: %s"),
+                             m_extensions_cache.size(), m_compressed_extensions.size(), m_cfg.algorithms.c_str());
 }
 
 void Monitor::update_compressed_extensions() {
@@ -137,8 +138,8 @@ void Monitor::reload_config(const Config& new_cfg) {
     // Обновляем кэш расширений сжатых файлов (unlocked версия чтобы избежать deadlock)
     update_compressed_extensions_unlocked();
 
-    Logger::info(std::format("Monitor configuration reloaded: {} source extensions, {} compressed extensions",
-                             m_extensions_cache.size(), m_compressed_extensions.size()));
+    Logger::info_fmt(_("Monitor configuration reloaded: %zu source extensions, %zu compressed extensions"),
+                             m_extensions_cache.size(), m_compressed_extensions.size());
 
     // Пересоздаём inotify watches для новых путей
     // Снимаем блокировку конфигурации чтобы add_watch_recursive мог захватить shared_lock
@@ -156,7 +157,7 @@ void Monitor::reload_config(const Config& new_cfg) {
 
     // Добавляем watches для новых путей
     for (const auto& path : new_paths) {
-        Logger::info(std::format("Adding watch for new path: {}", path));
+        Logger::info_fmt(_("Adding watch for new path: %s"), path.c_str());
         add_watch_recursive(fs::path(path));
     }
 
@@ -167,14 +168,14 @@ void Monitor::reload_config(const Config& new_cfg) {
             if (op == np) { found = true; break; }
         }
         if (!found) {
-            Logger::info(std::format("Removing watch for old path: {}", op));
+            Logger::info_fmt(_("Removing watch for old path: %s"), op.c_str());
             remove_watch_recursive(fs::path(op));
         }
     }
 
     if (!new_paths.empty() || old_paths.size() != m_cfg.target_paths.size()) {
-        Logger::info(std::format("Watches updated: {} added, {} removed",
-                                 new_paths.size(), old_paths.size() - m_cfg.target_paths.size() + new_paths.size()));
+        Logger::info_fmt(_("Watches updated: %zu added, %zu removed"),
+                                 new_paths.size(), old_paths.size() - m_cfg.target_paths.size() + new_paths.size());
     }
 }
 
@@ -241,18 +242,18 @@ void Monitor::scan_existing_files() {
         // Используем lstat вместо fs::exists/fs::is_directory для предотвращения TOCTOU
         struct stat st;
         if (lstat(base_path.c_str(), &st) != 0) {
-            Logger::warning(std::format("Path does not exist or inaccessible: {}", path_str));
+            Logger::warning_fmt(_("Path does not exist or inaccessible: %s"), path_str.c_str());
             continue;
         }
         
         // Проверка: базовый путь не должен быть symlink - это потенциальная атака
         if (S_ISLNK(st.st_mode)) {
-            Logger::error(std::format("SECURITY: Base path is a symlink (potential attack): {}", path_str));
+            Logger::error_fmt(_("SECURITY: Base path is a symlink (potential attack): %s"), path_str.c_str());
             continue;
         }
         
         if (!S_ISDIR(st.st_mode)) {
-            Logger::warning(std::format("Path is not a directory: {}", path_str));
+            Logger::warning_fmt(_("Path is not a directory: %s"), path_str.c_str());
             continue;
         }
         
@@ -269,7 +270,7 @@ void Monitor::scan_existing_files() {
                 
                 // Пропускаем symlinkи - потенциальная атака
                 if (S_ISLNK(st.st_mode)) {
-                    Logger::debug(std::format("Skipping symlink: {} (potential security risk)", entry.path().string()));
+                    Logger::debug_fmt(_("Skipping symlink: %s (potential security risk)"), entry.path().string().c_str());
                     continue;
                 }
                 
@@ -277,7 +278,7 @@ void Monitor::scan_existing_files() {
                     std::string filepath = entry.path().string();
                     // Проверка имени файла на опасные символы (ТЗ §8.4)
                     if (!security::validate_filename(entry.path().filename().string())) {
-                        Logger::warning(std::format("Skipping file with invalid name during scan: {}", filepath));
+                        Logger::warning_fmt(_("Skipping file with invalid name during scan: %s"), filepath.c_str());
                         continue;
                     }
                     if (is_target_extension(filepath)) {
@@ -307,15 +308,15 @@ void Monitor::scan_existing_files() {
                                     bool removed_any = false;
                                     if (lstat(gz.c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode) && !S_ISLNK(gz_st.st_mode)) {
                                         if (unlink(gz.c_str()) == 0) {
-                                            Logger::info(std::format("Removed stale gzip copy: {} (original {} bytes < threshold {} bytes)",
-                                                entry.path().string(), src_size, effective_min));
+                                            Logger::info_fmt(_("Removed stale gzip copy: %s (original %zu bytes < threshold %zu bytes)"),
+                                                entry.path().string().c_str(), src_size, effective_min);
                                             removed_any = true;
                                         }
                                     }
                                     if (lstat(br.c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode) && !S_ISLNK(br_st.st_mode)) {
                                         if (unlink(br.c_str()) == 0) {
-                                            Logger::info(std::format("Removed stale brotli copy: {} (original {} bytes < threshold {} bytes)",
-                                                entry.path().string(), src_size, effective_min));
+                                            Logger::info_fmt(_("Removed stale brotli copy: %s (original %zu bytes < threshold %zu bytes)"),
+                                                entry.path().string().c_str(), src_size, effective_min);
                                             removed_any = true;
                                         }
                                     }
@@ -354,12 +355,12 @@ void Monitor::scan_existing_files() {
                                     if (missing_br && !missing_gz) missing_files += ".br";
                                     else if (missing_br) missing_files += " and .br";
                                     
-                                    Logger::info(std::format("Missing compressed file(s) for {}: queued for re-compression ({})",
-                                        entry.path().string(), missing_files));
+                                    Logger::info_fmt(_("Missing compressed file(s) for %s: queued for re-compression (%s)"),
+                                        entry.path().string().c_str(), missing_files.c_str());
                                 }
                             } catch (const fs::filesystem_error& e) {
-                                Logger::debug(std::format("Error checking times for {}: {}", 
-                                    entry.path().string(), e.what()));
+                                Logger::debug_fmt(_("Error checking times for %s: %s"),
+                                    entry.path().string().c_str(), e.what());
                                 need_compress = true;
                             }
                             
@@ -376,14 +377,14 @@ void Monitor::scan_existing_files() {
                 }
             }
         } catch (const fs::filesystem_error& e) {
-            Logger::warning(std::format("Directory access error: {}", e.what()));
+            Logger::warning_fmt(_("Directory access error: %s"), e.what());
         } catch (const std::exception& e) {
-            Logger::warning(std::format("Unexpected error during directory scan: {}", e.what()));
+            Logger::warning_fmt(_("Unexpected error during directory scan: %s"), e.what());
         }
     }
     
-    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued for compression ({} with missing compressed versions)",
-                             scanned, enqueued, missing_compressed));
+    Logger::info_fmt(_("Initial scan completed: %d files scanned, %d queued for compression (%d with missing compressed versions)"),
+                             scanned, enqueued, missing_compressed);
 }
 
 void Monitor::set_task_handler(std::function<void(const fs::path&)> handler) {
@@ -401,26 +402,26 @@ void Monitor::add_watch_recursive(const fs::path& base_path) {
 void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) {
     // Ограничение глубины рекурсии для защиты от DoS-атаки через глубокие директории
     if (depth > MAX_RECURSION_DEPTH) {
-        Logger::warning(std::format("Maximum recursion depth ({}) exceeded at: {} - skipping subdirectories", 
-                                     MAX_RECURSION_DEPTH, base_path.string()));
+        Logger::warning_fmt(_("Maximum recursion depth (%zu) exceeded at: %s - skipping subdirectories"),
+                                     MAX_RECURSION_DEPTH, base_path.string().c_str());
         return;
     }
     
     // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Используем lstat вместо fs.exists для предотвращения symlink атак ===
     struct stat st;
     if (lstat(base_path.c_str(), &st) != 0) {
-        Logger::warning(std::format("Path does not exist or inaccessible: {}", base_path.string()));
+        Logger::warning_fmt(_("Path does not exist or inaccessible: %s"), base_path.string().c_str());
         return;
     }
     
     // Проверка: базовый путь не должен быть symlink
     if (S_ISLNK(st.st_mode)) {
-        Logger::error(std::format("SECURITY: Base path is a symlink (potential attack): {}", base_path.string()));
+        Logger::error_fmt(_("SECURITY: Base path is a symlink (potential attack): %s"), base_path.string().c_str());
         return;
     }
     
     if (!S_ISDIR(st.st_mode)) {
-        Logger::warning(std::format("Path is not a directory: {}", base_path.string()));
+        Logger::warning_fmt(_("Path is not a directory: %s"), base_path.string().c_str());
         return;
     }
     
@@ -429,19 +430,19 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
     if (wd >= 0) {
         std::unique_lock<std::shared_mutex> lock(m_wd_path_map_mutex);
         m_wd_path_map[wd] = base_path.string();
-        Logger::info(std::format("Watching directory: {} (depth: {})", base_path.string(), depth));
+        Logger::info_fmt(_("Watching directory: %s (depth: %zu)"), base_path.string().c_str(), depth);
     } else {
         int err = errno;
         if (err == EACCES) {
-            Logger::warning(std::format("Permission denied, cannot watch: {} (check file permissions, SELinux, or container mounts)", base_path.string()));
+            Logger::warning_fmt(_("Permission denied, cannot watch: %s (check file permissions, SELinux, or container mounts)"), base_path.string().c_str());
         } else if (err == EPERM) {
-            Logger::warning(std::format("Operation not permitted for: {} (check SELinux context, seccomp, or container security)", base_path.string()));
+            Logger::warning_fmt(_("Operation not permitted for: %s (check SELinux context, seccomp, or container security)"), base_path.string().c_str());
         } else if (err == ENOENT) {
-            Logger::warning(std::format("Directory removed before watch could be added: {}", base_path.string()));
+            Logger::warning_fmt(_("Directory removed before watch could be added: %s"), base_path.string().c_str());
         } else if (err == ENOSPC) {
-            Logger::error(std::format("Inotify watch limit exceeded for: {} (increase fs.inotify.max_user_watches)", base_path.string()));
+            Logger::error_fmt(_("Inotify watch limit exceeded for: %s (increase fs.inotify.max_user_watches)"), base_path.string().c_str());
         } else {
-            Logger::error(std::format("Failed to add watch for: {}: {}", base_path.string(), strerror(err)));
+            Logger::error_fmt(_("Failed to add watch for: %s: %s"), base_path.string().c_str(), strerror(err));
         }
     }
 
@@ -463,11 +464,11 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
                     } else {
                         int err = errno;
                         if (err == EACCES) {
-                            Logger::warning(std::format("Permission denied, cannot watch: {} (owner={}:{}, mode={:o})",
-                                entry.path().string(),
+                            Logger::warning_fmt(_("Permission denied, cannot watch: %s (owner=%u:%u, mode=%o)",
+                                entry.path().string().c_str(),
                                 st.st_uid, st.st_gid, st.st_mode & 07777));
                         } else if (err == EPERM) {
-                            Logger::warning(std::format("Operation not permitted for: {} (check seccomp or container security)", entry.path().string()));
+                            Logger::warning_fmt(_("Operation not permitted for: %s (check seccomp or container security)"), entry.path().string().c_str());
                         }
                         continue;
                     }
@@ -477,7 +478,7 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
             }
         }
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format("Directory access error: {}", e.what()));
+        Logger::warning_fmt(_("Directory access error: %s"), e.what());
     }
 }
 
@@ -490,7 +491,7 @@ void Monitor::remove_watch_recursive(const fs::path& base_path) {
             watched_path.find(base_path.string() + '/') == 0) {
             int wd = it->first;
             inotify_rm_watch(m_inotify_fd.get(), wd);
-            Logger::debug(std::format("Removed watch: {}", watched_path));
+            Logger::debug_fmt(_("Removed watch: %s"), watched_path.c_str());
             it = m_wd_path_map.erase(it);
         } else {
             ++it;
@@ -550,8 +551,8 @@ void Monitor::run() {
                     while (i < len) {
                         // Проверка: достаточно ли места в буфере для заголовка события
                         if (i + sizeof(struct inotify_event) > static_cast<size_t>(len)) {
-                            Logger::warning(std::format("inotify buffer truncated: {} bytes remaining, need at least {} for event header",
-                                                        len - i, sizeof(struct inotify_event)));
+                            Logger::warning_fmt(_("inotify buffer truncated: %d bytes remaining, need at least %zu for event header"),
+                                                        len - i, sizeof(struct inotify_event));
                             break;
                         }
 
@@ -559,7 +560,7 @@ void Monitor::run() {
 
                         // Проверка: достаточно ли места для имени файла
                         if (i + sizeof(struct inotify_event) + event->len > static_cast<size_t>(len)) {
-                            Logger::warning("inotify buffer truncated: event name extends beyond buffer boundary");
+                            Logger::warning(_("inotify buffer truncated: event name extends beyond buffer boundary"));
                             break;
                         }
 
@@ -574,7 +575,7 @@ void Monitor::run() {
                     for (const auto& [wd, mask, name, cookie] : batch_events) {
                         // Проверка переполнения очереди inotify
                         if (mask & IN_Q_OVERFLOW) {
-                            Logger::warning("inotify queue overflow detected — some events may have been lost. Initiating rescan.");
+                            Logger::warning(_("inotify queue overflow detected — some events may have been lost. Initiating rescan."));
                             overflow_detected = true;
                         }
                         process_event(wd, mask, name, cookie);
@@ -583,7 +584,7 @@ void Monitor::run() {
                     // При переполнении inotify — запускаем повторное сканирование в отдельном потоке
                     // чтобы не блокировать основной цикл мониторинга
                     if (overflow_detected && m_on_compress) {
-                        Logger::info("Rescanning directories after inotify overflow (background)...");
+                        Logger::info(_("Rescanning directories after inotify overflow (background)..."));
 
                         // Очистка завершённых rescan-потоков
                         {
@@ -602,7 +603,7 @@ void Monitor::run() {
                         {
                             std::lock_guard<std::mutex> lock(m_rescan_threads_mutex);
                             if (m_rescan_threads.size() >= 3) {
-                                Logger::warning("Too many concurrent rescan threads, skipping");
+                                Logger::warning(_("Too many concurrent rescan threads, skipping"));
                             } else {
                                 m_rescan_threads.emplace_back([this]() {
                                     try {
@@ -625,9 +626,9 @@ void Monitor::run() {
                                                 }
                                             }
                                         }
-                                        Logger::info("Rescan completed after inotify overflow");
+                                        Logger::info(_("Rescan completed after inotify overflow"));
                                     } catch (const std::exception& e) {
-                                        Logger::error(std::format("Rescan after inotify overflow failed: {}", e.what()));
+                                        Logger::error_fmt(_("Rescan after inotify overflow failed: %s"), e.what());
                                     }
                                 });
                             }
@@ -643,8 +644,8 @@ void Monitor::run() {
                                 now - it->second.timestamp).count();
                             if (elapsed > MOVE_COOKIE_TIMEOUT_MS) {
                                 // Таймаут истек - файл был перемещен за пределы monitored зоны или удален
-                                Logger::info(std::format("Move timeout expired for compressed file: {}, treating as deletion", 
-                                                         it->second.path));
+                                Logger::info_fmt(_("Move timeout expired for compressed file: %s, treating as deletion"),
+                                                         it->second.path.c_str());
                                 
                                 // Добавляем оригинал в очередь на сжатие
                                 std::string original_path = get_original_path_from_compressed(fs::path(it->second.path));
@@ -655,7 +656,7 @@ void Monitor::run() {
                                             m_on_compress(fs::path(original_path));
                                         }
                                     } else {
-                                        Logger::warning(std::format("Rate limit exceeded, skipping re-compression: {}", original_path));
+                                        Logger::warning_fmt(_("Rate limit exceeded, skipping re-compression: %s"), original_path.c_str());
                                     }
                                 }
                                 
@@ -677,12 +678,12 @@ void Monitor::run() {
                 } else if (len < 0 && errno == EINVAL) {
                     // Буфер переполнен - увеличиваем его размер
                     overflow_count++;
-                    Logger::warning(std::format("inotify buffer overflow detected (count: {}), events may be lost", overflow_count));
+                    Logger::warning_fmt(_("inotify buffer overflow detected (count: %d), events may be lost"), overflow_count);
                     
                     if (overflow_count >= MAX_OVERFLOW_BEFORE_RESIZE && buffer.size() < MAX_BUFFER_SIZE) {
                         size_t new_size = std::min(buffer.size() * 2, MAX_BUFFER_SIZE);
                         buffer.resize(new_size);
-                        Logger::info(std::format("Increased inotify buffer to {} bytes", new_size));
+                        Logger::info_fmt(_("Increased inotify buffer to %zu bytes"), new_size);
                         overflow_count = 0;
                     }
                     break;
@@ -713,13 +714,13 @@ void Monitor::run() {
 
             // Вызываем обработчики ВНЕ блокировки — предотвращаем deadlock
             for (const auto& path : expired_files) {
-                Logger::debug(std::format("Debounce expired for: {}", path));
+                Logger::debug_fmt(_("Debounce expired for: %s"), path.c_str());
                 if (security::g_compression_rate_limiter.try_acquire()) {
                     if (m_on_compress) {
                         m_on_compress(fs::path(path));
                     }
                 } else {
-                    Logger::warning(std::format("Rate limit exceeded, skipping compression after debounce: {}", path));
+                    Logger::warning_fmt(_("Rate limit exceeded, skipping compression after debounce: %s"), path.c_str());
                 }
             }
         }
@@ -733,7 +734,7 @@ bool Monitor::is_target_extension(const std::string& filepath) {
 
     // Проверка имени файла на null-byte инъекции и опасные символы
     if (!security::validate_filename(filename)) {
-        Logger::warning(std::format("Invalid filename detected (possible null-byte injection): {}", filename));
+        Logger::warning_fmt(_("Invalid filename detected (possible null-byte injection): %s"), filename.c_str());
         return false;
     }
 
@@ -841,7 +842,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
         }
     }
     if (base_path.empty()) {
-        Logger::debug(std::format("Unknown wd: {}, name: {}", wd, name));
+        Logger::debug_fmt(_("Unknown wd: %d, name: %s"), wd, name.c_str());
         return;
     }
 
@@ -854,7 +855,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
         normalized_path = fs::weakly_canonical(full_path).string();
         normalized_base = fs::weakly_canonical(fs::path(base_path)).string();
     } catch (const fs::filesystem_error& e) {
-        Logger::warning(std::format("Path normalization failed for {}: {}", full_path.string(), e.what()));
+        Logger::warning_fmt(_("Path normalization failed for %s: %s"), full_path.string().c_str(), e.what());
         return;
     }
 
@@ -864,8 +865,8 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     //   base="/data/logs", path="/data/logs-evil" — пройдёт проверку.
     if (normalized_path != normalized_base &&
         normalized_path.rfind(normalized_base + "/", 0) != 0) {
-        Logger::warning(std::format("SECURITY: Path traversal attempt detected: {} (base: {})",
-                                     normalized_path, normalized_base));
+        Logger::warning_fmt(_("SECURITY: Path traversal attempt detected: %s (base: %s)"),
+                                     normalized_path.c_str(), normalized_base.c_str());
         return;
     }
     
@@ -885,14 +886,14 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
     // Проверка на symlink — symlink-файлы не обрабатываем (potentially dangerous)
     struct stat path_st;
     if (lstat(full_path.c_str(), &path_st) == 0 && S_ISLNK(path_st.st_mode)) {
-        Logger::debug(std::format("Skipping symlink event: {}", full_path.string()));
+        Logger::debug_fmt(_("Skipping symlink event: %s"), full_path.string().c_str());
         return;
     }
 
-    Logger::debug(std::format("Event detected: mask={}, path={}, type={}, cookie={}",
-                              mask, full_path.string(), 
+    Logger::debug_fmt(_("Event detected: mask=%u, path=%s, type=%s, cookie=%u"),
+                              mask, full_path.string().c_str(),
                               is_compressed ? "compressed" : "target",
-                              cookie));
+                              cookie);
 
     // Обработка событий для сжатых файлов (.gz, .br)
     if (is_compressed) {
@@ -900,15 +901,15 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
             // Сжатый файл удален - добавляем оригинал в очередь на сжатие
             std::string original_path = get_original_path_from_compressed(full_path);
             if (!original_path.empty()) {
-                Logger::info(std::format("Compressed file deleted: {}, queuing original for re-compression: {}", 
-                                         full_path.string(), original_path));
+                Logger::info_fmt(_("Compressed file deleted: %s, queuing original for re-compression: %s"),
+                                         full_path.string().c_str(), original_path.c_str());
                 // Проверка rate limiting перед запуском сжатия (DoS protection)
                 if (security::g_compression_rate_limiter.try_acquire()) {
                     if (m_on_compress) {
                         m_on_compress(fs::path(original_path));
                     }
                 } else {
-                    Logger::warning(std::format("Rate limit exceeded, skipping re-compression: {}", original_path));
+                    Logger::warning_fmt(_("Rate limit exceeded, skipping re-compression: %s"), original_path.c_str());
                 }
             }
         } else if (mask & IN_MOVED_FROM) {
@@ -919,20 +920,20 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
                 std::chrono::steady_clock::now()
             };
             
-            Logger::debug(std::format("IN_MOVED_FROM for compressed file: {} (cookie: {})", 
-                                      full_path.string(), cookie));
+            Logger::debug_fmt(_("IN_MOVED_FROM for compressed file: %s (cookie: %u)"),
+                                      full_path.string().c_str(), cookie);
         } else if (mask & IN_MOVED_TO) {
             // Проверяем есть ли соответствующее событие IN_MOVED_FROM с тем же cookie
             std::unique_lock<std::shared_mutex> lock(m_move_mutex);
             auto it_cookie = m_move_cookies.find(cookie);
             if (it_cookie != m_move_cookies.end()) {
                 // Это перемещение внутри monitored зоны - удаляем из списка ожидающих
-                Logger::info(std::format("Compressed file moved within monitored directory: {} -> {}", 
-                                         it_cookie->second.path, full_path.string()));
+                Logger::info_fmt(_("Compressed file moved within monitored directory: %s -> %s"),
+                                         it_cookie->second.path.c_str(), full_path.string().c_str());
                 m_move_cookies.erase(it_cookie);
             } else {
                 // Файл перемещен в monitored директорию извне - можно добавить в очередь проверки
-                Logger::info(std::format("Compressed file moved into directory from outside: {}", full_path.string()));
+                Logger::info_fmt(_("Compressed file moved into directory from outside: %s"), full_path.string().c_str());
             }
         }
         
@@ -949,7 +950,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
         if (m_on_delete) m_on_delete(full_path);
     } else if (mask & IN_MOVED_FROM) {
         // Файл был перемещён из monitored директории - удаляем сжатые копии
-        Logger::info(std::format("File moved out of monitored directory: {}", full_path.string()));
+        Logger::info_fmt(_("File moved out of monitored directory: %s"), full_path.string().c_str());
         if (m_on_delete) m_on_delete(full_path);
     } else if (!is_compressed && (mask & (IN_MODIFY | IN_CREATE | IN_MOVED_TO))) {
         // Безопасное чтение m_cfg.debounce_delay под блокировкой
@@ -978,7 +979,7 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
             // Первое событие для этого файла
             m_debounce_map[full_path.string()] = deadline;
         }
-        Logger::debug(std::format("Scheduled compression for: {} (delay: {}s)",
-            full_path.string(), delay));
+        Logger::debug_fmt(_("Scheduled compression for: %s (delay: %ds)"),
+            full_path.string().c_str(), delay);
     }
 }
