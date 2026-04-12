@@ -196,7 +196,7 @@ void graceful_shutdown_with_timeout() {
             Logger::warning(_fmt("Graceful shutdown timeout reached ({} seconds). "
                                          "Active tasks: {}. Forcing termination.",
                                          "Таймаут корректного завершения ({} сек). "
-                                         "Активных задач: {}. Принудительное завершение."),
+                                         "Активных задач: {}. Принудительное завершение.",
                                          std::chrono::duration_cast<std::chrono::seconds>(elapsed).count(),
                                          g_pool->active_count()));
             break;
