@@ -16,13 +16,16 @@ NC='\033[0m'
 # Парсинг аргументов
 VERSION=""
 CLEAN_OLD=false
+AUTO_INSTALL=false
 for arg in "$@"; do
     case "$arg" in
         --clean|-c) CLEAN_OLD=true ;;
+        --yes|-y) AUTO_INSTALL=true ;;
         --help|-h)
-            echo "Использование: $0 [version] [--clean]"
+            echo "Использование: $0 [version] [--clean] [--yes]"
             echo "  version    Версия пакета (по умолчанию: из SPEC)"
             echo "  --clean    Очистить старые артефакты сборки перед началом"
+            echo "  --yes      Автоматически установить недостающие зависимости"
             exit 0
             ;;
         -*)
@@ -108,7 +111,45 @@ done
 
 if [ -n "$MISSING" ]; then
     echo -e "${RED}✗ Отсутствуют пакеты:${MISSING}${NC}"
-    echo "Установите: sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build rpmdevtools"
+    echo ""
+
+    if [ "$AUTO_INSTALL" = true ]; then
+        # Автоматическая установка (флаг --yes)
+        echo -e "${YELLOW}Автоматическая установка зависимостей...${NC}"
+        sudo dnf install -y zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build pkgconf-pkg-config rpmdevtools
+    else
+        # Интерактивный режим — спрашиваем пользователя
+        echo -e "${YELLOW}Хотите установить отсутствующие зависимости автоматически? (y/n): ${NC}"
+        read -r -n 1 -s REPLY
+        echo ""
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            echo -e "${BLUE}Установка зависимостей...${NC}"
+            sudo dnf install -y zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build pkgconf-pkg-config rpmdevtools
+        else
+            echo -e "${RED}Установка отменена. Установите зависимости вручную:${NC}"
+            echo "  sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build rpmdevtools"
+            exit 1
+        fi
+    fi
+    echo -e "${GREEN}✓ Зависимости установлены успешно${NC}"
+fi
+
+# Финальная проверка что все зависимости действительно установлены
+MISSING_FINAL=""
+for pkg_new in "${!PACKAGES[@]}"; do
+    pkg_old="${PACKAGES[$pkg_new]}"
+    if ! check_package "$pkg_new" "$pkg_old"; then
+        if [ -n "$pkg_old" ]; then
+            MISSING_FINAL="${MISSING_FINAL} ${pkg_new}/${pkg_old}"
+        else
+            MISSING_FINAL="${MISSING_FINAL} ${pkg_new}"
+        fi
+    fi
+done
+
+if [ -n "$MISSING_FINAL" ]; then
+    echo -e "${RED}✗ Не удалось установить пакеты:${MISSING_FINAL}${NC}"
+    echo "Установите вручную: sudo dnf install zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel cmake gcc-c++ rpm-build rpmdevtools"
     exit 1
 fi
 
