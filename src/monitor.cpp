@@ -120,6 +120,9 @@ void Monitor::reload_config(const Config& new_cfg) {
 
     Logger::info("Reloading monitor configuration...");
 
+    // Определяем новые и удалённые пути
+    std::vector<std::string> old_paths = m_cfg.target_paths;
+
     // Обновляем конфигурацию
     m_cfg = new_cfg;
 
@@ -136,6 +139,43 @@ void Monitor::reload_config(const Config& new_cfg) {
 
     Logger::info(std::format("Monitor configuration reloaded: {} source extensions, {} compressed extensions",
                              m_extensions_cache.size(), m_compressed_extensions.size()));
+
+    // Пересоздаём inotify watches для новых путей
+    // Снимаем блокировку конфигурации чтобы add_watch_recursive мог захватить shared_lock
+    lock.unlock();
+
+    // Определяем новые пути
+    std::vector<std::string> new_paths;
+    for (const auto& p : m_cfg.target_paths) {
+        bool found = false;
+        for (const auto& op : old_paths) {
+            if (p == op) { found = true; break; }
+        }
+        if (!found) new_paths.push_back(p);
+    }
+
+    // Добавляем watches для новых путей
+    for (const auto& path : new_paths) {
+        Logger::info(std::format("Adding watch for new path: {}", path));
+        add_watch_recursive(fs::path(path));
+    }
+
+    // Удаляем watches для удалённых путей
+    for (const auto& op : old_paths) {
+        bool found = false;
+        for (const auto& np : m_cfg.target_paths) {
+            if (op == np) { found = true; break; }
+        }
+        if (!found) {
+            Logger::info(std::format("Removing watch for old path: {}", op));
+            remove_watch_recursive(fs::path(op));
+        }
+    }
+
+    if (!new_paths.empty() || old_paths.size() != m_cfg.target_paths.size()) {
+        Logger::info(std::format("Watches updated: {} added, {} removed",
+                                 new_paths.size(), old_paths.size() - m_cfg.target_paths.size() + new_paths.size()));
+    }
 }
 
 Monitor::~Monitor() {
@@ -183,6 +223,8 @@ void Monitor::scan_existing_files() {
     Logger::info("Starting initial scan of existing files...");
     int scanned = 0;
     int to_compress = 0;
+    int enqueued = 0;
+    int queue_full_skipped = 0;
     int missing_compressed = 0;  // Счётчик файлов с отсутствующими сжатыми версиями
     
     for (const auto& path_str : m_cfg.target_paths) {
@@ -316,9 +358,16 @@ void Monitor::scan_existing_files() {
                             
                             if (need_compress) {
                                 // Rate limiter НЕ применяется к initial scan — это фоновая обработка, не DoS
-                                // Initial scan запускается один раз при старте, реальная защита — через очередь ThreadPool
                                 to_compress++;
-                                m_on_compress(entry.path());
+                                if (m_on_compress) {
+                                    if (!m_on_compress(entry.path())) {
+                                        queue_full_skipped++;
+                                        Logger::warning(std::format("Initial scan: compression queue full, skipping {} (will be caught by monitor or next run)",
+                                                                    entry.path().string()));
+                                    } else {
+                                        enqueued++;
+                                    }
+                                }
                             }
                         }
                     }
@@ -331,8 +380,8 @@ void Monitor::scan_existing_files() {
         }
     }
     
-    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued for compression ({} with missing compressed versions)", 
-                             scanned, to_compress, missing_compressed));
+    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued ({} enqueued, {} skipped due to queue full), {} with missing compressed versions",
+                             scanned, to_compress, enqueued, queue_full_skipped, missing_compressed));
 }
 
 void Monitor::set_task_handler(std::function<void(const fs::path&)> handler) {
@@ -430,6 +479,23 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
     }
 }
 
+void Monitor::remove_watch_recursive(const fs::path& base_path) {
+    std::unique_lock<std::shared_mutex> lock(m_wd_path_map_mutex);
+    for (auto it = m_wd_path_map.begin(); it != m_wd_path_map.end(); ) {
+        const std::string& watched_path = it->second;
+        // Проверяем что путь начинается с base_path (сам base_path или поддиректория)
+        if (watched_path == base_path.string() ||
+            watched_path.find(base_path.string() + '/') == 0) {
+            int wd = it->first;
+            inotify_rm_watch(m_inotify_fd.get(), wd);
+            Logger::debug(std::format("Removed watch: {}", watched_path));
+            it = m_wd_path_map.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void Monitor::run() {
     // ОПТИМИЗАЦИЯ: Увеличенный буфер для обработки массовых событий inotify
     // 256KB вместо 64KB для лучшей производительности при большом количестве событий
@@ -480,7 +546,21 @@ void Monitor::run() {
                     batch_events.clear();
                     
                     while (i < len) {
+                        // Проверка: достаточно ли места в буфере для заголовка события
+                        if (i + sizeof(struct inotify_event) > static_cast<size_t>(len)) {
+                            Logger::warning(std::format("inotify buffer truncated: {} bytes remaining, need at least {} for event header",
+                                                        len - i, sizeof(struct inotify_event)));
+                            break;
+                        }
+
                         struct inotify_event* event = (struct inotify_event*)&buffer[i];
+
+                        // Проверка: достаточно ли места для имени файла
+                        if (i + sizeof(struct inotify_event) + event->len > static_cast<size_t>(len)) {
+                            Logger::warning("inotify buffer truncated: event name extends beyond buffer boundary");
+                            break;
+                        }
+
                         if (event->len > 0) {
                             batch_events.emplace_back(event->wd, event->mask, std::string(event->name), event->cookie);
                         }
@@ -498,32 +578,37 @@ void Monitor::run() {
                         process_event(wd, mask, name, cookie);
                     }
 
-                    // При переполнении inotify — запускаем повторное сканирование для восстановления пропущенных изменений
+                    // При переполнении inotify — запускаем повторное сканирование в отдельном потоке
+                    // чтобы не блокировать основной цикл мониторинга
                     if (overflow_detected && m_on_compress) {
-                        Logger::info("Rescanning directories after inotify overflow...");
-                        try {
-                            // Берём копию target_paths под блокировкой для защиты от data race
-                            std::vector<std::string> target_paths;
-                            {
-                                std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
-                                target_paths = m_cfg.target_paths;
-                            }
-                            for (const auto& path_str : target_paths) {
-                                fs::path base_path(path_str);
-                                struct stat st;
-                                if (lstat(base_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
-                                    for (const auto& entry : fs::recursive_directory_iterator(base_path,
-                                            fs::directory_options::skip_permission_denied)) {
-                                        if (entry.is_regular_file() && is_target_extension(entry.path().string())) {
-                                            m_on_compress(entry.path());
+                        Logger::info("Rescanning directories after inotify overflow (background)...");
+                        std::thread rescan_thread([this]() {
+                            try {
+                                std::vector<std::string> target_paths;
+                                {
+                                    std::shared_lock<std::shared_mutex> cfg_lock(m_config_mutex);
+                                    target_paths = m_cfg.target_paths;
+                                }
+                                for (const auto& path_str : target_paths) {
+                                    fs::path base_path(path_str);
+                                    struct stat st;
+                                    if (lstat(base_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
+                                        for (const auto& entry : fs::recursive_directory_iterator(base_path,
+                                                fs::directory_options::skip_permission_denied)) {
+                                            if (entry.is_regular_file() && is_target_extension(entry.path().string())) {
+                                                if (m_on_compress) {
+                                                    m_on_compress(entry.path());
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                                Logger::info("Rescan completed after inotify overflow");
+                            } catch (const std::exception& e) {
+                                Logger::error(std::format("Rescan after inotify overflow failed: {}", e.what()));
                             }
-                            Logger::info("Rescan completed after inotify overflow");
-                        } catch (const std::exception& e) {
-                            Logger::error(std::format("Rescan after inotify overflow failed: {}", e.what()));
-                        }
+                        });
+                        rescan_thread.detach();  // Фоновый поток, не ждём завершения
                     }
                     
                     // Очищаем старые cookie перемещения (таймаут)
@@ -833,6 +918,11 @@ void Monitor::process_event(int wd, uint32_t mask, const std::string& name, uint
 
     // Обработка событий для целевых (исходных) файлов
     if (mask & IN_DELETE) {
+        // Удаляем из debounce map чтобы избежать phantom compression
+        {
+            std::lock_guard<std::mutex> lock(m_debounce_mutex);
+            m_debounce_map.erase(full_path.string());
+        }
         if (m_on_delete) m_on_delete(full_path);
     } else if (mask & IN_MOVED_FROM) {
         // Файл был перемещён из monitored директории - удаляем сжатые копии

@@ -1,5 +1,21 @@
 # Changelog — mh-compressor-manager
 
+## [Раунд 8] — 2026-04-12 — Полный аудит
+
+### Исправления логики мониторинга
+- **monitor.cpp**: Rescan при `IN_Q_OVERFLOW` вынесен в detached поток — основной monitoring loop больше не блокируется
+- **monitor.cpp**: При `IN_DELETE` запись удаляется из `m_debounce_map` — предотвращение phantom compression после удаления файла
+- **monitor.cpp**: `scan_existing_files` проверяет возвращаемое значение `m_on_compress` (enqueue result) — при переполнении очереди логируется WARNING, файлы не теряются молча
+- **monitor.cpp**: `reload_config` теперь обновляет inotify watches — добавлены `remove_watch_recursive` для старых путей и `add_watch_recursive` для новых
+- **monitor.cpp**: Добавлена проверка bounds буфера перед cast `inotify_event` — предотвращение out-of-bounds read при повреждённом буфере
+
+### Исправления многопоточности
+- **threadpool.h**: `wait_all()` больше не прерывается по `stop_flag` — гарантирует завершение всех поставленных задач
+
+### Исправления безопасности
+- **security.cpp**: `cap_set_proc` перенесён ДО `setuid()` — ранее вызов после setuid возвращал EPERM silently, capabilities не устанавливались
+- **monitor.cpp**: Bounds check для inotify buffer — проверка `i + sizeof(inotify_event) <= len` перед cast указателя
+
 ## [1.0.88] — 2026-04-11
 
 ### Исправления безопасности

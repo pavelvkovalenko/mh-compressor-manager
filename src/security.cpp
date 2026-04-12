@@ -198,33 +198,22 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         Logger::error(std::string("Failed to clear supplementary groups: ") + strerror(errno));
         return false;
     }
-    
+
     // Устанавливаем GID
     if (setgid(target_gid) != 0) {
         Logger::error(std::string("Failed to set GID: ") + strerror(errno));
         return false;
     }
-    
-    // Устанавливаем UID
-    if (setuid(target_uid) != 0) {
-        Logger::error(std::string("Failed to set UID: ") + strerror(errno));
-        return false;
-    }
-    
-    // === КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ: Явный сброс capabilities перед установкой NO_NEW_PRIVS ===
-    // Это предотвращает возможность получения привилегий через execve даже если какие-то
-    // capabilities остались после drop_privileges
+
+    // Настраиваем capabilities ДО сброса UID — после setuid cap_set_proc вернёт EPERM
+    // PR_SET_KEEPCAPS сохраняет capabilities при setuid, но нам это не нужно —
+    // мы устанавливаем их ДО setuid пока ещё root
 #if HAVE_LIBCAP
-    // Вместо полного сброса всех capabilities (что ломает чтение чужих файлов root'ом),
-    // устанавливаем минимальный набор, необходимый для работы монитора файлов:
-    //   CAP_DAC_OVERRIDE  — чтение файлов независимо от Unix-прав (target_path может принадлежать nginx)
-    //   CAP_DAC_READ_SEARCH — чтение и поиск в директориях независимо от прав
-    // Без этих capabilities root не может делать inotify_add_watch на директориях drwx------ nginx:nginx
     cap_t caps = cap_init();  // Создаем пустую структуру capabilities
     if (caps == NULL) {
         Logger::warning(std::string("Failed to initialize capabilities structure: ") + strerror(errno));
     } else {
-        // Добавляем необходимые capabilities
+        // Добавляем необходимые capabilities для чтения файлов независимо от Unix-прав
         cap_value_t cap_list[] = {CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH};
         if (cap_set_flag(caps, CAP_EFFECTIVE, 2, cap_list, CAP_SET) != 0) {
             Logger::warning(std::string("Failed to set effective capabilities: ") + strerror(errno));
@@ -233,11 +222,17 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         } else if (cap_set_proc(caps) != 0) {
             Logger::warning(std::string("Failed to set process capabilities: ") + strerror(errno));
         } else {
-            Logger::info("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH");
+            Logger::info("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)");
         }
         cap_free(caps);  // Освобождаем память
     }
 #endif
+
+    // Устанавливаем UID (capabilities сохраняются благодаря установке ДО этого вызова)
+    if (setuid(target_uid) != 0) {
+        Logger::error(std::string("Failed to set UID: ") + strerror(errno));
+        return false;
+    }
     
     // Запрещаем получение привилегий через execve
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {

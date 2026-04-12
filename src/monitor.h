@@ -56,6 +56,7 @@ private:
     void run();
     void add_watch_recursive(const fs::path& path);
     void add_watch_recursive_impl(const fs::path& path, size_t depth);  // Внутренняя реализация с ограничением глубины
+    void remove_watch_recursive(const fs::path& path);  // Удаление watches для пути
     void process_event(int wd, uint32_t mask, const std::string& name, uint32_t cookie = 0);
     bool is_target_extension(const std::string& filename);
     bool is_compressed_extension(const std::string& filename);

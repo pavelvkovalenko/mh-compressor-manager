@@ -137,13 +137,37 @@
 
 ---
 
+## Раунд 8 — Полный аудит
+
+**Дата:** 2026-04-12
+**Режим:** Полный аудит (3 субагента: A — сжатие/I/O, B — мониторинг/потоки, E — безопасность)
+**Найдено:** 7 ошибок (1 high, 6 medium)
+
+| # | Файл | Проблема | Исправление | Критичность |
+|---|------|----------|-------------|-------------|
+| 1 | monitor.cpp | Rescan при IN_Q_OVERFLOW блокирует monitoring loop | Вынесен в detached поток | **high** |
+| 2 | monitor.cpp | IN_DELETE не удаляет из debounce_map — phantom compress | `m_debounce_map.erase()` | medium |
+| 3 | monitor.cpp | Initial scan не проверяет результат enqueue | Проверка return value + счётчики | medium |
+| 4 | monitor.cpp | reload_config не обновляет inotify watches | `add_watch_recursive` + `remove_watch_recursive` | medium |
+| 5 | threadpool.h | wait_all() ложно сигнализирует при stop_flag | Убран `|| stop_flag` из предиката | medium |
+| 6 | security.cpp | cap_set_proc после setuid — всегда EPERM | Перенесён ДО setuid() | medium |
+| 7 | monitor.cpp | Inotify buffer: нет bounds check перед cast | Добавлены проверки `i + sizeof <= len` | medium |
+
+**Отложить:**
+- E#10: Blacklist symlink вместо whitelist — сложная замена, не критично
+- A#M1: MemoryPool destructor vs thread-local cache — безопасно в текущей архитектуре
+
+**Коммит:** (предстоит)
+
+---
+
 ## Сводная статистика
 
 | Метрика | Значение |
 |---------|----------|
-| **Всего раундов** | 9 (1-7 с параллельными) |
-| **Всего исправлений** | ~35 |
+| **Всего раундов** | 10 (1-7 + 8 полный + чистка/переименование) |
+| **Всего исправлений** | ~42 |
 | **Критических исправлений** | ~15 |
-| **Новых файлов** | 2 (cache_info.h, cache_info.cpp) |
-| **Изменённых файлов** | 14 |
+| **Новых файлов** | 3 (cache_info.h, cache_info.cpp, +remove_watch_recursive) |
+| **Изменённых файлов** | 18 |
 | **Раундов без ошибок** | 1 (раунд 5) |

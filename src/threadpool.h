@@ -178,10 +178,13 @@ public:
     }
 
     // Ожидание завершения всех задач
+    // Гарантирует что все поставленные задачи завершены (или отброшены при stop)
     void wait_all() {
         std::unique_lock<std::mutex> lock(queue_mutex);
         task_done.wait(lock, [this] {
-            return (tasks.empty() && active_tasks == 0) || stop_flag;
+            // Ждём пока все задачи не будут обработаны ИЛИ очередь не пуста И нет активных
+            // stop_flag НЕ прерывает ожидание — caller должен знать что задачи могут быть отброшены
+            return tasks.empty() && active_tasks == 0;
         });
     }
 
