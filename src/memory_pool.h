@@ -141,6 +141,7 @@ public:
             if (ptr) {
                 ++total_allocated_;
                 allocated_set_.insert(static_cast<T*>(ptr));
+                numa_allocated_.insert(ptr);  // Трекируем для корректного освобождения
                 lock.unlock();
                 return static_cast<T*>(ptr);
             }

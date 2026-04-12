@@ -99,7 +99,11 @@ public:
                             if (!wait_result) {
                                 if (stop_flag && tasks.empty()) return;
                                 Logger::warning("I/O slot wait timeout, requeueing task");
-                                // Не берём задачу — возвращаемся к ожиданию
+                                // Перемещаем задачу в конец очереди чтобы избежать deadlock
+                                // на одной и той же задаче
+                                auto top_task = std::move(const_cast<PrioritizedTask&>(tasks.top()));
+                                tasks.pop();
+                                tasks.push(std::move(top_task));
                                 continue;
                             }
                             if (stop_flag && tasks.empty()) return;

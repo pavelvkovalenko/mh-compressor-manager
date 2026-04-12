@@ -10,7 +10,7 @@ namespace fs = std::filesystem;
 
 size_t CacheInfo::optimal_buffer_size() const {
     if (l3_total == 0 || thread_count == 0) {
-        return FALLBACK_L3 / 4;  // Fallback при неизвестном L3
+        return FALLBACK_L3;  // Fallback при неизвестном L3 — 2 МБ по ТЗ §3.2.9
     }
     size_t per_thread = l3_total / thread_count;
     return std::clamp(per_thread, MIN_BUFFER_SIZE, MAX_BUFFER_SIZE);

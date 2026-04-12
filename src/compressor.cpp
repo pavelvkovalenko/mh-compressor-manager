@@ -584,8 +584,8 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
         const uint8_t* next_in = in_buffer;
         size_t available_in = bytes_read;
         
-        // Обрабатываем прочитанные данные
-        if (bytes_read > 0 || !feof(file_in)) {
+        // Обрабатываем прочитанные данные или финализируем при EOF
+        if (bytes_read > 0 || feof(file_in)) {
             int iteration_count = 0;
             constexpr int MAX_ITERATIONS = 10000;  // Защита от бесконечного цикла
             while (available_in > 0 || !BrotliEncoderIsFinished(state)) {
@@ -687,6 +687,9 @@ bool Compressor::compress_brotli(const fs::path& input, const fs::path& output, 
  * - Все проверки выполняются до начала чтения
  * - При ошибке одного из потоков оба файла удаляются
  */
+// compress_dual ОТКЛЮЧЕНА — содержит критическую data race (ТЗ: encoder state shared между потоками без mutex)
+// Функция deprecated и не используется в main.cpp
+#if 0
 bool Compressor::compress_dual(const fs::path& input, 
                                const fs::path& gzip_output, 
                                const fs::path& brotli_output,
@@ -1065,10 +1068,11 @@ bool Compressor::compress_dual(const fs::path& input,
         return false;
     }
     
-    Logger::info(std::format("Dual compression completed: {} -> {} + {}", 
+    Logger::info(std::format("Dual compression completed: {} -> {} + {}",
                              input.string(), gzip_output.string(), brotli_output.string()));
     return true;
 }
+#endif  // compress_dual отключена
 
 bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     struct stat st;
