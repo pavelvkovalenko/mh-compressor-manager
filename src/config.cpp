@@ -186,16 +186,26 @@ Config load_config(int argc, char* argv[]) {
                 // Проверка на секцию folder_override с путем
                 if (section_content.rfind("folder_override:", 0) == 0) {
                     // Это секция переопределения для конкретной папки
-                    current_section = "folder_override";
                     current_folder_path = trim(section_content.substr(16));  // Извлекаем путь после "folder_override:"
-                    
+
+                    // Проверяем включены ли folder_overrides
+                    if (!cfg.enable_folder_overrides) {
+                        Logger::debug(std::format("folder_overrides disabled, skipping section: {}", current_folder_path));
+                        current_section = "";  // Сбрасываем — пропускаем все ключи в этой секции
+                        current_folder_path.clear();
+                        continue;
+                    }
+
+                    current_section = "folder_override";
+
                     // Валидация пути
                     if (!is_path_safe(current_folder_path)) {
                         Logger::warning(std::format("Unsafe path in folder_override section: {}, skipping", current_folder_path));
                         current_folder_path.clear();
+                        current_section = "";
                         continue;
                     }
-                    
+
                     // Создаем новую запись переопределения
                     FolderOverride override;
                     override.path = current_folder_path;
@@ -331,6 +341,7 @@ Config load_config(int argc, char* argv[]) {
                 else if (key == "enable_seccomp") cfg.enable_seccomp = (val == "true");
                 else if (key == "run_as_user") cfg.run_as_user = val;
                 else if (key == "process_files_without_extensions") cfg.process_files_without_extensions = (val == "true");
+                else if (key == "enable_folder_overrides") cfg.enable_folder_overrides = (val == "true");
             }
             else if (current_section == "folder_override" && !cfg.folder_overrides.empty()) {
                 // Обработка настроек для переопределения папки

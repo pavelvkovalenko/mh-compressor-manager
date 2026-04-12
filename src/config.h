@@ -48,7 +48,10 @@ struct Config {
     
     // Поддержка файлов без расширений (глобальная настройка)
     bool process_files_without_extensions = false;  // Обрабатывать файлы без расширений
-    
+
+    // Включение/выключение секций folder_override (по умолчанию включено)
+    bool enable_folder_overrides = true;  // Разрешить индивидуальные настройки для папок
+
     // Индивидуальные настройки для папок (переопределяют глобальные)
     std::vector<FolderOverride> folder_overrides;
     
