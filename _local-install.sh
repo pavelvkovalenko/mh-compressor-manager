@@ -25,6 +25,12 @@ else
 fi
 sudo chmod 644 "$CONF_DIR/$CONF_NAME"
 
+# 2б. Полная конфигурация с документацией (справочник, перезаписывается при обновлении)
+if [[ -f "compressor-manager.conf.full" ]]; then
+    sudo cp compressor-manager.conf.full "$CONF_DIR/${CONF_NAME}.full"
+    sudo chmod 644 "$CONF_DIR/${CONF_NAME}.full"
+fi
+
 # 4. Установка systemd-юнита
 sudo cp mh-compressor-manager.service /usr/lib/systemd/system/
 

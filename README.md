@@ -142,7 +142,8 @@ sudo systemctl daemon-reload
 | Файл | Путь | Права |
 |------|------|-------|
 | Бинарный файл | `/usr/bin/mh-compressor-manager` | 755 |
-| Конфигурация | `/etc/mediahive/compressor-manager.conf` | 644 |
+| Конфигурация (боевая) | `/etc/mediahive/compressor-manager.conf` | 644 |
+| Конфигурация (полная, справка) | `/etc/mediahive/compressor-manager.conf.full` | 644 |
 | Systemd-юнит | `/usr/lib/systemd/system/mh-compressor-manager.service` | 644 |
 
 ---

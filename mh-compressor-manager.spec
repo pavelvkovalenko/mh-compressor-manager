@@ -44,6 +44,8 @@ make install DESTDIR=%{buildroot}
 
 mkdir -p %{buildroot}/etc/mediahive
 install -m 644 ../compressor-manager.conf %{buildroot}/etc/mediahive/
+# Полная конфигурация с документацией (справочник)
+install -m 644 ../compressor-manager.conf.full %{buildroot}/etc/mediahive/
 
 mkdir -p %{buildroot}/%{_unitdir}
 install -m 644 ../mh-compressor-manager.service %{buildroot}/%{_unitdir}/
@@ -66,6 +68,7 @@ fi
 %files
 /usr/bin/mh-compressor-manager
 %config(noreplace) /etc/mediahive/compressor-manager.conf
+/etc/mediahive/compressor-manager.conf.full
 %{_unitdir}/mh-compressor-manager.service
 %doc README.md
 %doc README.html
