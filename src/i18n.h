@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <string>
 #include <string_view>
-#include <format>
+#include <fmt/format.h>
 
 /**
  * @brief Локализация приложения (i18n).
@@ -13,7 +13,7 @@
  *   Logger::info(_("File compressed", "Файл сжат"));
  *
  * Строки с форматированием:
- *   Logger::info(tr_fmt("File: {} bytes", "Файл: {} байт", size));
+ *   Logger::info(_fmt("File: {} bytes", "Файл: {} байт", size));
  */
 namespace i18n {
 
@@ -35,12 +35,13 @@ inline const char* tr(const char* en, const char* ru) {
 
 /**
  * @brief Перевод + форматирование строки (runtime).
- * Использует std::vformat вместо std::format для поддержки runtime строк.
+ * Использует fmt::format с fmt::runtime() для поддержки runtime формат-строк.
+ * libfmt не требует constexpr строки в отличие от std::format (GCC 15).
  */
 template<typename... Args>
-std::string tr_fmt(const char* en, const char* ru, const Args&... args) {
-    return std::vformat(is_russian() ? ru : en,
-                        std::make_format_args(args...));
+std::string tr_fmt(const char* en, const char* ru, Args&&... args) {
+    return fmt::format(fmt::runtime(is_russian() ? ru : en),
+                       std::forward<Args>(args)...);
 }
 
 } // namespace i18n
