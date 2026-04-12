@@ -224,7 +224,6 @@ void Monitor::scan_existing_files() {
     int scanned = 0;
     int to_compress = 0;
     int enqueued = 0;
-    int queue_full_skipped = 0;
     int missing_compressed = 0;  // Счётчик файлов с отсутствующими сжатыми версиями
     
     for (const auto& path_str : m_cfg.target_paths) {
@@ -360,13 +359,8 @@ void Monitor::scan_existing_files() {
                                 // Rate limiter НЕ применяется к initial scan — это фоновая обработка, не DoS
                                 to_compress++;
                                 if (m_on_compress) {
-                                    if (!m_on_compress(entry.path())) {
-                                        queue_full_skipped++;
-                                        Logger::warning(std::format("Initial scan: compression queue full, skipping {} (will be caught by monitor or next run)",
-                                                                    entry.path().string()));
-                                    } else {
-                                        enqueued++;
-                                    }
+                                    m_on_compress(entry.path());
+                                    enqueued++;
                                 }
                             }
                         }
@@ -380,8 +374,8 @@ void Monitor::scan_existing_files() {
         }
     }
     
-    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued ({} enqueued, {} skipped due to queue full), {} with missing compressed versions",
-                             scanned, to_compress, enqueued, queue_full_skipped, missing_compressed));
+    Logger::info(std::format("Initial scan completed: {} files scanned, {} queued for compression ({} with missing compressed versions)",
+                             scanned, enqueued, missing_compressed));
 }
 
 void Monitor::set_task_handler(std::function<void(const fs::path&)> handler) {
