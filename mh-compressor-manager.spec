@@ -1,5 +1,5 @@
 Name:           mh-compressor-manager
-Version:        1.0.0
+Version:        1.0.88
 Release:        1%{?dist}
 Summary:        Автоматическое сжатие статического контента для nginx
 

@@ -48,6 +48,18 @@ ssh www "journalctl -u mh-compressor-manager --no-pager | grep -iE 'error|fail|p
 5. Перезапустить: `sudo systemctl restart mh-compressor-manager`
 6. Проверить статус и логи
 
+## Зависимости для сборки (Fedora 43+)
+
+```bash
+sudo dnf install \
+  cmake gcc-c++ \
+  zlib-ng-compat-devel brotli-devel systemd-devel libselinux-devel \
+  libdeflate-devel fmt-devel liburing-devel numactl-devel libseccomp-devel libcap-devel \
+  pkgconf-pkg-config rpm-build
+```
+
+> **Примечание:** `_build.sh` автоматически проверяет все зависимости. Для Fedora 38-42 замените `zlib-ng-compat-devel` на `zlib-devel`.
+
 ## Известные проблемы сборки
 - **GCC 15:** `fs::last_write_time()` несовместим с `__file_clock`. Использовать `utimensat()`.
 - **safe.directory:** При ошибке `dubious ownership` выполнить:

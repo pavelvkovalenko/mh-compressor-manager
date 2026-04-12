@@ -103,7 +103,8 @@ Config load_config(int argc, char* argv[]) {
                       << "  --ext <list>      Extensions (override)\n"
                       << "  --gzip-level <N>  Gzip level (1-9)\n"
                       << "  --brotli-level <N> Brotli level (1-11)\n"
-                      << "  --min-size <N>    Optimal min file size for compression (default 1024, min 256)\n"
+                      << "  --min-size <N>    Min file size for compression (default 256, min 256)\n"
+                      << "  --min-compress-size <N>  Alias for --min-size\n"
                       << "  --dry-run         Dry run mode\n"
                       << "  --debug           Debug logging mode\n"
                       << "  --version         Show version\n"
@@ -152,9 +153,9 @@ Config load_config(int argc, char* argv[]) {
         }
         else if (arg == "--debug") cfg.cli_debug = true;
         else if (arg == "--dry-run") cfg.dry_run = true;
-        else if (arg == "--min-size" && i + 1 < argc) {
+        else if ((arg == "--min-size" || arg == "--min-compress-size") && i + 1 < argc) {
             ++i;
-            int sz = 1024;
+            int sz = 256;
             auto result = std::from_chars(argv[i], argv[i] + std::strlen(argv[i]), sz);
             if (result.ec == std::errc() && result.ptr == argv[i] + std::strlen(argv[i]) && sz >= 256) {
                 cfg.cli_min_size = sz;

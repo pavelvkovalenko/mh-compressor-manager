@@ -249,6 +249,34 @@ void Monitor::scan_existing_files() {
                                 if (lstat(entry.path().c_str(), &src_st) != 0) {
                                     continue;
                                 }
+
+                                // === STALE-BY-SIZE DETECTION (ТЗ §3.1.6) ===
+                                // Если исходный файл ниже порога сжатия — удаляем stale-копии
+                                const size_t effective_min = std::max(Config::MIN_COMPRESS_SIZE, m_cfg.optimal_min_compress_size);
+                                size_t src_size = static_cast<size_t>(src_st.st_size);
+                                if (src_size < effective_min) {
+                                    bool removed_any = false;
+                                    if (lstat(gz.c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode) && !S_ISLNK(gz_st.st_mode)) {
+                                        if (unlink(gz.c_str()) == 0) {
+                                            Logger::info(std::format("Removed stale gzip copy: {} (original {} bytes < threshold {} bytes)",
+                                                entry.path().string(), src_size, effective_min));
+                                            removed_any = true;
+                                        }
+                                    }
+                                    if (lstat(br.c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode) && !S_ISLNK(br_st.st_mode)) {
+                                        if (unlink(br.c_str()) == 0) {
+                                            Logger::info(std::format("Removed stale brotli copy: {} (original {} bytes < threshold {} bytes)",
+                                                entry.path().string(), src_size, effective_min));
+                                            removed_any = true;
+                                        }
+                                    }
+                                    if (removed_any) {
+                                        // Счётчик будет учтён при анализе логов
+                                    }
+                                    // Не сжимаем файл — он ниже порога
+                                    continue;
+                                }
+
                                 auto src_time = std::chrono::system_clock::from_time_t(src_st.st_mtime);
 
                                 // Безопасная проверка сжатых файлов через lstat (не следует за symlink)

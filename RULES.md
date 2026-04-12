@@ -7,7 +7,7 @@
 ## Именование
 - Функции: `snake_case`
 - Классы: `PascalCase`
-- Переные-члены: `m_` префикс + `snake_case`
+- Члены-переменные: `m_` префикс + `snake_case`
 - Константы: `UPPER_SNAKE_CASE`
 - Макросы: `UPPER_SNAKE_CASE`
 

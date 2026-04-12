@@ -29,12 +29,13 @@ struct Config {
     std::string config_path = "/etc/mediahive/compressor-manager.conf";
 
     // Минимальный размер файла для сжатия (ТЗ §4)
-    // MIN_COMPRESS_SIZE = 256 байт — захардкожен, не настраивается пользователем
+    // MIN_COMPRESS_SIZE = 256 байт — захардкоженный абсолютный минимум
     static constexpr size_t MIN_COMPRESS_SIZE = 256;
 
-    // OPTIMAL_MIN_COMPRESS_SIZE — настраиваемый порог (по умолчанию 1024)
+    // OPTIMAL_MIN_COMPRESS_SIZE — настраиваемый порог (по умолчанию 256)
     // Фактический минимум = max(MIN_COMPRESS_SIZE, optimal_min_compress_size)
-    size_t optimal_min_compress_size = 1024;
+    // ТЗ §4.4: "Значение по умолчанию: 256 байт"
+    size_t optimal_min_compress_size = 256;
 
     // Ограничение I/O нагрузки (глобальные настройки)
     int io_delay_us = 0;         // Задержка между файлами (микросекунды)

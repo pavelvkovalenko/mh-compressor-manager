@@ -494,6 +494,45 @@ void compress_task(const fs::path& path) {
                 Logger::warning(std::format("Partial read: expected {} bytes, got {} bytes for {}", file_size, total_read, path.string()));
             }
 
+            // === RACE CONDITION CHECK (ТЗ §3.1.8) ===
+            // После чтения файла проверяем, что он не был изменён/удалён/перемещён
+            {
+                struct stat post_stat;
+                if (lstat(path.c_str(), &post_stat) != 0) {
+                    // Файл удалён во время чтения — отменяем сжатие
+                    Logger::warning(std::format("Race condition: file {} deleted during read, compression cancelled", path.string()));
+                    buffer_pool().release_raw(buffer);
+                    g_metrics.failed_tasks++;
+                    return;
+                }
+                if (post_stat.st_mtime.tv_sec != st.st_mtime.tv_sec ||
+                    post_stat.st_mtime.tv_nsec != st.st_mtime.tv_nsec) {
+                    // Файл изменён во время чтения — отменяем сжатие
+                    Logger::debug(std::format("Race condition: file {} modified during read (mtime changed), compression cancelled", path.string()));
+                    buffer_pool().release_raw(buffer);
+                    g_metrics.failed_tasks++;
+                    return;
+                }
+                if (post_stat.st_ino != st.st_ino) {
+                    // Inode изменился — файл был перемещён/заменён
+                    Logger::debug(std::format("Race condition: file {} inode changed during read, compression cancelled", path.string()));
+                    buffer_pool().release_raw(buffer);
+                    g_metrics.failed_tasks++;
+                    return;
+                }
+                // Проверяем, что размер не упал ниже порога во время чтения
+                size_t post_size = static_cast<size_t>(post_stat.st_size);
+                if (post_size < effective_min) {
+                    Logger::debug(std::format("Race condition: file {} size dropped below threshold ({} < {}) during read, compression cancelled",
+                                               path.string(), post_size, effective_min));
+                    buffer_pool().release_raw(buffer);
+                    // Удаляем stale-копии, если они есть
+                    Compressor::safe_remove_compressed(path);
+                    g_metrics.completed_tasks++;
+                    return;
+                }
+            }
+
             // Сжатие из одного буфера (данные остаются в L3 кэше CPU)
             bool prefer_brotli = (cfg->algorithms == "all" || cfg->algorithms == "brotli");
 
@@ -626,6 +665,45 @@ void compress_task(const fs::path& path) {
 
             close(fd);
             buffer_pool().release_raw(buffer);
+
+            // === RACE CONDITION CHECK для streaming (ТЗ §3.1.8) ===
+            // После завершения чтения всех чанков проверяем, что файл не изменился
+            {
+                struct stat post_stat;
+                if (lstat(path.c_str(), &post_stat) != 0) {
+                    Logger::warning(std::format("Race condition: streaming file {} deleted during compression, discarding results", path.string()));
+                    // Отменяем результаты — файлы .gz.tmp/.br.tmp будут удалены деструкторами
+                    gzip_success = false;
+                    brotli_success = false;
+                    g_metrics.failed_tasks++;
+                    return;
+                }
+                if (post_stat.st_mtime.tv_sec != st.st_mtime.tv_sec ||
+                    post_stat.st_mtime.tv_nsec != st.st_mtime.tv_nsec) {
+                    Logger::debug(std::format("Race condition: streaming file {} modified during compression (mtime changed), discarding results", path.string()));
+                    gzip_success = false;
+                    brotli_success = false;
+                    g_metrics.failed_tasks++;
+                    return;
+                }
+                if (post_stat.st_ino != st.st_ino) {
+                    Logger::debug(std::format("Race condition: streaming file {} inode changed during compression, discarding results", path.string()));
+                    gzip_success = false;
+                    brotli_success = false;
+                    g_metrics.failed_tasks++;
+                    return;
+                }
+                size_t post_size = static_cast<size_t>(post_stat.st_size);
+                if (post_size < effective_min) {
+                    Logger::debug(std::format("Race condition: streaming file {} size dropped below threshold ({} < {}) during compression, discarding results",
+                                               path.string(), post_size, effective_min));
+                    Compressor::safe_remove_compressed(path);
+                    gzip_success = false;
+                    brotli_success = false;
+                    g_metrics.completed_tasks++;
+                    return;
+                }
+            }
 
             // Каждый алгоритм оценивается независимо
             if (gzip_started && !gz_state.has_error) gzip_success = true;
