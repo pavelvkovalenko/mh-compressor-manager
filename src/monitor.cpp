@@ -464,9 +464,8 @@ void Monitor::add_watch_recursive_impl(const fs::path& base_path, size_t depth) 
                     } else {
                         int err = errno;
                         if (err == EACCES) {
-                            Logger::warning_fmt(_("Permission denied, cannot watch: %s (owner=%u:%u, mode=%o)",
-                                entry.path().string().c_str(),
-                                st.st_uid, st.st_gid, st.st_mode & 07777));
+                            Logger::warning_fmt(_("Permission denied, cannot watch: %s (owner=%u:%u, mode=%o)"), entry.path().string().c_str(),
+                                st.st_uid, st.st_gid, st.st_mode & 07777);
                         } else if (err == EPERM) {
                             Logger::warning_fmt(_("Operation not permitted for: %s (check seccomp or container security)"), entry.path().string().c_str());
                         }
