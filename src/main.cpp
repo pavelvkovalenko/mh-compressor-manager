@@ -505,8 +505,7 @@ void compress_task(const fs::path& path) {
                     g_metrics.failed_tasks++;
                     return;
                 }
-                if (post_stat.st_mtime.tv_sec != st.st_mtime.tv_sec ||
-                    post_stat.st_mtime.tv_nsec != st.st_mtime.tv_nsec) {
+                if (post_stat.st_mtime != st.st_mtime) {
                     // Файл изменён во время чтения — отменяем сжатие
                     Logger::debug(std::format("Race condition: file {} modified during read (mtime changed), compression cancelled", path.string()));
                     buffer_pool().release_raw(buffer);
@@ -679,8 +678,7 @@ void compress_task(const fs::path& path) {
                     g_metrics.failed_tasks++;
                     return;
                 }
-                if (post_stat.st_mtime.tv_sec != st.st_mtime.tv_sec ||
-                    post_stat.st_mtime.tv_nsec != st.st_mtime.tv_nsec) {
+                if (post_stat.st_mtime != st.st_mtime) {
                     Logger::debug(std::format("Race condition: streaming file {} modified during compression (mtime changed), discarding results", path.string()));
                     // Файл изменён — удаляем записанные сжатые копии (они содержат устаревшие данные)
                     Compressor::safe_remove_compressed(path);
