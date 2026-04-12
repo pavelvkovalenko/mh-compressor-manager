@@ -171,8 +171,7 @@ if(Gettext_FOUND AND GETTEXT_MSGFMT_EXECUTABLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE intl)
 else()
     message(STATUS "Gettext NOT found — localization disabled, English only")
-    # Fallback: макрос _() возвращает строку как есть
-    target_compile_definitions(${PROJECT_NAME} PRIVATE "dgettext(d,s)=(s)")
+    # Fallback: макрос _() возвращает строку как есть (определено в i18n.h)
 endif()
 
 # ============================================================================
