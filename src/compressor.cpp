@@ -404,11 +404,11 @@ bool Compressor::compress_brotli_from_memory(std::span<const uint8_t> data,
     BrotliEncoderSetParameter(state, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
 
     // Выделяем буфер вывода
-    size_t max_compressed_size = BrotliEncoderMaxCompressedSize(size);
+    size_t max_compressed_size = BrotliEncoderMaxCompressedSize(data.size());
     std::vector<uint8_t> compressed(max_compressed_size);
 
-    const uint8_t* next_in = data;
-    size_t available_in = size;
+    const uint8_t* next_in = data.data();
+    size_t available_in = data.size();
 
     // Финализация Brotli — может потребовать многократных вызовов (ТЗ §3.2.4)
     size_t available_out = max_compressed_size;
