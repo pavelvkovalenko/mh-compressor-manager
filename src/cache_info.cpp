@@ -169,10 +169,6 @@ CacheInfo CacheInfo::detect() {
         }
     }
 
-    // L3 shared cores — читаем из shared_cpu_list
-    // Для простоты считаем что L3 общий для всех ядер (типично для consumer CPU)
-    info.l3_shared_cores = info.thread_count;
-
     // Логирование
     if (info.l1_dcache_per_core > 0) {
         Logger::info(_("CPU cache: L1d = %zu KB/core, L2 = %zu KB/core, L3 = %zu MB"),

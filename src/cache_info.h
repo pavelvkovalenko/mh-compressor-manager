@@ -10,7 +10,6 @@ struct CacheInfo {
     size_t l1_dcache_per_core;   ///< L1 data cache на ядро (обычно 32-48 КБ)
     size_t l2_per_core;          ///< L2 cache на ядро (обычно 512 КБ – 2 МБ)
     size_t l3_total;             ///< L3 cache общий (12-480 МБ)
-    size_t l3_shared_cores;      ///< Сколько ядер делят L3
     size_t thread_count;         ///< std::thread::hardware_concurrency()
 
     // Минимальный и максимальный размер буфера (ТЗ §3.2.9)
