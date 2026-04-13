@@ -186,7 +186,6 @@ set(SOURCES
     security.cpp
     async_io.cpp
     performance_optimizer.cpp
-    pipeline.cpp
     numa_utils.cpp
     cache_info.cpp
 )
@@ -201,7 +200,6 @@ set(HEADERS
     memory_pool.h
     async_io.h
     performance_optimizer.h
-    pipeline.h
     numa_utils.h
     cache_info.h
 )

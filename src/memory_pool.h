@@ -10,9 +10,7 @@
 #include <sys/mman.h>
 #include <immintrin.h>
 #include <unordered_set>
-#include <unordered_map>
 #include "logger.h"
-#include "performance_optimizer.h"
 #include "numa_utils.h"
 
 /**
@@ -91,22 +89,6 @@ public:
         total_allocated_ = 0;
     }
     
-    // Выделение буфера из пула (возвращает vector для удобства)
-    // ВНИМАНИЕ: vector КОПИРУЕТ данные из пула во внутреннюю память.
-    // Это НЕ тот же буфер — используйте allocate_raw()/release_raw() для
-    // zero-copy работы с пулом.
-    [[deprecated("allocate() copies data — use allocate_raw()/release_raw() for zero-copy pool access")]]
-    std::vector<T> allocate() {
-        T* raw_buf = allocate_raw();
-        if (!raw_buf) {
-            throw std::bad_alloc();
-        }
-        std::vector<T> vec(raw_buf, raw_buf + buffer_size / sizeof(T));
-        // Возвращаем raw_buf обратно в пул — vector сделал копию
-        release_raw(raw_buf);
-        return vec;
-    }
-    
     // Выделение сырого буфера (для прямого использования с read/write)
     T* allocate_raw() {
         // Сначала пробуем взять из per-thread кэша (без блокировки)
@@ -166,21 +148,6 @@ public:
         allocated_set_.insert(result);
         lock.unlock();
         return result;
-    }
-    
-    // Возврат буфера в пул.
-    // ВНИМАНИЕ: std::vector владеет собственной памятью (std::allocator),
-    // а НЕ памятью пула. Этот метод НЕ помещает vector data обратно в пул —
-    // это был бы invalid-free. Используйте release_raw() для буферов из пула.
-    [[deprecated("release(vector) cannot reclaim vector's internal memory — use release_raw() instead")]]
-    void release(std::vector<T>& buffer) {
-        if (buffer.empty()) {
-            return;
-        }
-        // Вектор владеет своей памятью через std::allocator — не трогаем её.
-        // allocated_set_ не содержит указателей на vector internal storage,
-        // так что erase не нужен.
-        buffer.clear();
     }
     
     // Возврат сырого буфера в пул (с приоритетом на per-thread кэш)

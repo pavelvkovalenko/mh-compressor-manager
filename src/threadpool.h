@@ -8,8 +8,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <future>
-#include <csignal>
 #include <cstring>
 #include <sys/resource.h>
 #include <sys/syscall.h>

@@ -20,9 +20,7 @@
 #include <filesystem>
 #include <thread>
 #include <chrono>
-#include <unordered_map>
 #include <memory>
-#include <future>
 #include <shared_mutex>
 #include <systemd/sd-daemon.h>
 
