@@ -2771,13 +2771,19 @@ sudo cp translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo \
 
 **Интерактивный скрипт `_translate.sh`:**
 
-Скрипт в корне проекта автоматизирует весь цикл. Запуск без аргументов — интерактивный режим:
-```bash
-./_translate.sh
-```
+Скрипт в корне проекта автоматизирует весь цикл управления переводами.
 
-Меню:
+**Режимы запуска:**
+
+| Режим | Команда | Описание |
+|-------|---------|----------|
+| Интерактивный | `./_translate.sh` | Меню с выбором действий |
+| Командный | `./_translate.sh <cmd> [lang]` | Выполнение конкретного действия |
+
+**Интерактивное меню:**
 ```
+=== Управление переводами mh-compressor-manager ===
+
 1) Обновить шаблон (.pot)
 2) Обновить перевод (.po из .pot)
 3) Очистить obsolete строки
@@ -2785,28 +2791,93 @@ sudo cp translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo \
 5) Установить .mo в систему
 6) Протестировать перевод
 7) Полный цикл (pot → update → compile → install → test)
+
+Выберите действие (1-7):
 ```
 
-Командная строка:
+**Командная строка:**
 ```bash
-./_translate.sh pot              # Генерация .pot
-./_translate.sh update ru         # Обновление ru.po
-./_translate.sh clean ru          # Очистка obsolete
-./_translate.sh compile ru        # Компиляция .mo
-./_translate.sh install ru        # Установка в /usr/share/locale/
-./_translate.sh test ru           # Тест: LANG=ru_RU.UTF-8 ./mh-compressor-manager --help
-./_translate.sh all ru            # Полный цикл
+# Генерация шаблона из исходников
+./_translate.sh pot
+
+# Обновление существующего перевода из шаблона
+./_translate.sh update ru
+
+# Очистка obsolete строк (которых нет в исходниках)
+./_translate.sh clean ru
+
+# Компиляция .po в бинарный .mo
+./_translate.sh compile ru
+
+# Установка .mo в /usr/share/locale/
+./_translate.sh install ru
+
+# Тестирование: запуск с LANG=ru_RU.UTF-8
+./_translate.sh test ru
+
+# Полный цикл: pot → update → compile → install → test
+./_translate.sh all ru
 ```
 
-**Добавление нового языка:**
+**Полный цикл добавления нового языка:**
 ```bash
-./_translate.sh update de   # Создаёт de.po из .pot
-# Редактирует translations/de.po — заполняет msgstr
-./_translate.sh compile de  # Компилирует de.mo
-./_translate.sh install de  # Устанавливает
+# 1. Создать .po из шаблона
+./_translate.sh update de
+
+# 2. Открыть translations/de.po в редакторе (Poedit, vim, etc.)
+#    Заполнить msgstr для каждой пустой строки
+
+# 3. Скомпилировать в .mo
+./_translate.sh compile de
+
+# 4. Установить в систему
+./_translate.sh install de
+
+# 5. Протестировать
+LANG=de_DE.UTF-8 ./mh-compressor-manager --help
 ```
 
-Изменения в исходном коде **не требуются**.
+**Работа с переводчиком (пошагово):**
+
+1. **Разработчик** обновляет `.pot`:
+   ```bash
+   ./_translate.sh pot
+   # Вывод: "Шаблон обновлён: 150 строк для перевода"
+   ```
+
+2. **Разработчик** обновляет `.po` из `.pot`:
+   ```bash
+   ./_translate.sh update ru
+   # msgmerge добавляет новые строки, помечает obsolete
+   # Вывод: "Обновлено: 120 переведено, 30 осталось перевести"
+   ```
+
+3. **Переводчик** редактирует `translations/ru.po`:
+   - Открывает файл в Poedit или текстовом редакторе
+   - Заполняет `msgstr ""` для 30 новых строк
+   - Сохраняет файл
+
+4. **Разработчик** компилирует и устанавливает:
+   ```bash
+   ./_translate.sh compile ru   # .po → .mo
+   ./_translate.sh install ru   # установка в систему
+   ```
+
+5. **Проверка**:
+   ```bash
+   LANG=ru_RU.UTF-8 ./mh-compressor-manager --help
+   ```
+
+**Автоматизация в CI/CD:**
+```bash
+# В GitHub Actions или CI:
+./_translate.sh pot                    # Генерация .pot
+./_translate.sh update ru              # Обновление ru.po
+./_translate.sh compile ru             # Компиляция .mo
+# .mo файлы устанавливаются через make install
+```
+
+Изменения в исходном коде **не требуются** при добавлении нового языка.
 
 ### 22.11. Ключевые правила перевода
 
