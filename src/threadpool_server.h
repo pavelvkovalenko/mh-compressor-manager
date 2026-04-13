@@ -8,18 +8,15 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
+#include <csignal>
 #include <cstring>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include "logger.h"
 #include "performance_optimizer.h"
-#include "memory_pool.h"
 #include "i18n.h"
-
-// I/O приоритет для worker-потоков (idle class — минимальное влияние на диск)
-static constexpr int THREADPOOL_IOPRIO_CLASS_IDLE = 3;
-static constexpr int THREADPOOL_IOPRIO_WHO_PROCESS = 1;
 
 // Приоритеты задач
 enum class TaskPriority : uint8_t {
@@ -76,8 +73,11 @@ public:
                 }
 
                 // Понижаем I/O приоритет (idle class = 3) — минимальное влияние на диск
-                int ioprio = THREADPOOL_IOPRIO_CLASS_IDLE << 13;
-                if (syscall(SYS_ioprio_set, THREADPOOL_IOPRIO_WHO_PROCESS, 0, ioprio) == 0) {
+                // ioprio_set(IOPRIO_WHO_PROCESS, 0, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_IDLE, 0))
+                constexpr int IOPRIO_CLASS_IDLE = 3;
+                constexpr int IOPRIO_WHO_PROCESS = 1;
+                int ioprio = IOPRIO_CLASS_IDLE << 13;  // level 0 within idle class
+                if (syscall(SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, ioprio) == 0) {
                     Logger::debug(_("Worker thread %zu I/O priority set to idle"), i);
                 } else {
                     Logger::debug(_("Failed to set I/O priority for worker %zu: %s"), i, strerror(errno));
@@ -88,14 +88,7 @@ public:
                     {
                         std::unique_lock<std::mutex> lock(queue_mutex);
                         condition.wait(lock, [this] { return stop_flag || !tasks.empty(); });
-                        if (stop_flag && tasks.empty()) {
-                            // Очищаем thread_local кэш пула буферов перед выходом из потока
-                            // Без этого буферы, помещённые в thread_local кэш (и удалённые
-                            // из allocated_set_), утекают — вектор уничтожается, но raw
-                            // указатели НЕ освобождаются.
-                            ByteBufferPool::cleanup_thread_cache();
-                            return;
-                        }
+                        if (stop_flag && tasks.empty()) return;
                         
                         // Ждем доступного I/O слота если установлен лимит (с таймаутом для предотвращения блокировок)
                         if (m_max_active_ios > 0) {

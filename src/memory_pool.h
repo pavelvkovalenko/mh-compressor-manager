@@ -238,27 +238,14 @@ public:
 
         return freed;
     }
-    
-private:
-    // Получение per-thread кэша (thread_local для избежания блокировок)
-    static std::vector<T*>& get_thread_cache() {
-        thread_local static std::vector<T*> cache;
-        cache.reserve(THREAD_CACHE_SIZE);
-        return cache;
-    }
 
-    // Очистка thread_local кэша — вызывается при завершении worker-потока.
+    // Очистка thread_local кэша — вызывается из ThreadPool при завершении worker-потока.
     // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: без этого буферы из кэша утекают, т.к.
     // allocated_set_.erase(buffer) вызывается при помещении в кэш, и
     // деструктор пула их НЕ освободит.
-    // Возвращает количество освобождённых буферов (для логирования).
     static size_t cleanup_thread_cache() {
         auto& cache = get_thread_cache();
         if (cache.empty()) return 0;
-        // Освобождаем напрямую — буферы уже удалены из allocated_set_
-        // при помещении в кэш, и pool destructor их не тронет.
-        // aligned_free недоступен напрямую, используем free() (posix_memalign)
-        // или _aligned_free() (MSVC).
         for (auto* buf : cache) {
 #if defined(_MSC_VER)
             _aligned_free(buf);
@@ -269,6 +256,14 @@ private:
         size_t count = cache.size();
         cache.clear();
         return count;
+    }
+
+private:
+    // Получение per-thread кэша (thread_local для избежания блокировок)
+    static std::vector<T*>& get_thread_cache() {
+        thread_local static std::vector<T*> cache;
+        cache.reserve(THREAD_CACHE_SIZE);
+        return cache;
     }
 
     void* aligned_alloc(size_t alignment, size_t size) {
