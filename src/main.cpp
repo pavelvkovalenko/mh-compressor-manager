@@ -8,6 +8,7 @@
 #include "memory_pool.h"
 #include "cache_info.h"
 #include "i18n.h"
+#include <span>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -649,14 +650,14 @@ void compress_task(const fs::path& path) {
 
                 // Оба алгоритма обрабатывают один чанк — данные в L3 кэше
                 if (brotli_started && !br_state.has_error) {
-                    if (!Compressor::brotli_stream_process(br_state, buffer, bytes_read, is_last)) {
+                    if (!Compressor::brotli_stream_process(br_state, std::span<const uint8_t>(buffer, bytes_read), is_last)) {
                         Logger::error(_("Brotli streaming error for %s"), path.string().c_str());
                         // Не ставим stream_error — пусть gzip продолжится
                     }
                 }
 
                 if (gzip_started && !gz_state.has_error) {
-                    if (!Compressor::gzip_stream_process(gz_state, buffer, bytes_read, is_last)) {
+                    if (!Compressor::gzip_stream_process(gz_state, std::span<const uint8_t>(buffer, bytes_read), is_last)) {
                         Logger::error(_("Gzip streaming error for %s"), path.string().c_str());
                         // Не ставим stream_error — алгоритмы независимы
                     }
