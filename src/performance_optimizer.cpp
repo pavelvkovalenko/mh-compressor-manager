@@ -29,7 +29,7 @@ void PerformanceOptimizer::init(bool use_huge_pages, int io_threads, int cpu_thr
     // Проверяем поддержку Huge Pages
     if (use_huge_pages && is_huge_pages_available()) {
         huge_pages_initialized_ = true;
-        Logger::info(_("Huge Pages enabled (%zu MB pages)"), huge_page_size_ / (1024 * 1024));
+        Logger::info_fmt(_("Huge Pages enabled (%zu MB pages)"), huge_page_size_ / (1024 * 1024));
     } else if (use_huge_pages) {
         Logger::warning(_("Huge Pages requested but not available, falling back to regular pages"));
         huge_pages_initialized_ = false;
@@ -51,8 +51,8 @@ void PerformanceOptimizer::init(bool use_huge_pages, int io_threads, int cpu_thr
         // Для CPU-bound операций (сжатие): меньше чем ядер для избежания contention
         cpu_thread_count_ = std::max(1, cpu_count - 1);
     }
-    
-    Logger::info(_("Performance optimizer initialized: %d I/O threads, %d CPU threads"),
+
+    Logger::info_fmt(_("Performance optimizer initialized: %d I/O threads, %d CPU threads"),
                              io_thread_count_, cpu_thread_count_);
 }
 
@@ -61,19 +61,19 @@ bool PerformanceOptimizer::set_cpu_affinity(int core_id) {
     CPU_ZERO(&cpuset);
     
     if (core_id < 0 || core_id >= get_cpu_count()) {
-        Logger::warning(_("Invalid CPU core ID: %d"), core_id);
+        Logger::warning_fmt(_("Invalid CPU core ID: %d"), core_id);
         return false;
     }
     
     CPU_SET(core_id, &cpuset);
     
     if (sched_setaffinity(0, sizeof(cpuset), &cpuset) != 0) {
-        Logger::error(_("Failed to set CPU affinity to core %d: %s"),
+        Logger::error_fmt(_("Failed to set CPU affinity to core %d: %s"),
                                   core_id, strerror(errno));
         return false;
     }
-    
-    Logger::debug(_("CPU affinity set to core %d"), core_id);
+
+    Logger::debug_fmt(_("CPU affinity set to core %d"), core_id);
     return true;
 }
 
@@ -82,20 +82,20 @@ bool PerformanceOptimizer::set_thread_cpu_affinity(std::thread& thread, int core
     CPU_ZERO(&cpuset);
     
     if (core_id < 0 || core_id >= get_cpu_count()) {
-        Logger::warning(_("Invalid CPU core ID for thread: %d"), core_id);
+        Logger::warning_fmt(_("Invalid CPU core ID for thread: %d"), core_id);
         return false;
     }
-    
+
     CPU_SET(core_id, &cpuset);
-    
+
     pthread_t native_handle = thread.native_handle();
     if (pthread_setaffinity_np(native_handle, sizeof(cpuset), &cpuset) != 0) {
-        Logger::error(_("Failed to set thread CPU affinity to core %d: %s"),
+        Logger::error_fmt(_("Failed to set thread CPU affinity to core %d: %s"),
                                   core_id, strerror(errno));
         return false;
     }
-    
-    Logger::debug(_("Thread CPU affinity set to core %d"), core_id);
+
+    Logger::debug_fmt(_("Thread CPU affinity set to core %d"), core_id);
     return true;
 }
 
@@ -113,11 +113,11 @@ PerformanceOptimizer::AllocatedMemory PerformanceOptimizer::allocate_aligned_mem
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
 
         if (ptr == MAP_FAILED) {
-            Logger::warning(_("Huge Pages allocation failed: %s, falling back to regular pages",
-                                        strerror(errno)));
+            Logger::warning_fmt(_("Huge Pages allocation failed: %s, falling back to regular pages"),
+                                        strerror(errno));
             ptr = nullptr;
         } else {
-            Logger::debug(_("Allocated %zu bytes with Huge Pages"), aligned_size);
+            Logger::debug_fmt(_("Allocated %zu bytes with Huge Pages"), aligned_size);
             method = 1;
             return {ptr, method, aligned_size};
         }
@@ -127,10 +127,10 @@ PerformanceOptimizer::AllocatedMemory PerformanceOptimizer::allocate_aligned_mem
     // Fallback: выделение обычной памяти с выравниванием
     if (ptr == nullptr) {
         if (posix_memalign(&ptr, page_size_, aligned_size) != 0) {
-            Logger::error(_("Failed to allocate aligned memory: %s"), strerror(errno));
+            Logger::error_fmt(_("Failed to allocate aligned memory: %s"), strerror(errno));
             return {nullptr, 0, 0};
         }
-        Logger::debug(_("Allocated %zu bytes with regular pages"), aligned_size);
+        Logger::debug_fmt(_("Allocated %zu bytes with regular pages"), aligned_size);
         method = 0;
     }
 
@@ -157,18 +157,18 @@ bool PerformanceOptimizer::preallocate_file(int fd, uint64_t size) {
         Logger::error(_("Invalid file descriptor for preallocation"));
         return false;
     }
-    
+
     // Используем fallocate для предварительного выделения места
     // Это предотвращает фрагментацию и улучшает производительность записи
     if (fallocate(fd, 0, 0, size) != 0) {
         // Fallback: ftruncate (менее эффективно, но работает на всех ФС)
         if (ftruncate(fd, size) != 0) {
-            Logger::warning(_("Failed to preallocate file: %s"), strerror(errno));
+            Logger::warning_fmt(_("Failed to preallocate file: %s"), strerror(errno));
             return false;
         }
     }
-    
-    Logger::debug(_("Preallocated %zu bytes on FD %d"), size, fd);
+
+    Logger::debug_fmt(_("Preallocated %zu bytes on FD %d"), size, fd);
     return true;
 }
 
@@ -199,11 +199,11 @@ bool PerformanceOptimizer::advise_file_access(int fd, bool sequential, bool no_r
     
     if (posix_fadvise(fd, 0, 0, advice) != 0) {
         // Это не ошибка — просто подсказка ОС, которую можно игнорировать
-        Logger::debug(_("posix_fadvise failed (non-critical): %s"), strerror(errno));
+        Logger::debug_fmt(_("posix_fadvise failed (non-critical): %s"), strerror(errno));
         return false;
     }
-    
-    Logger::debug(_("File access advice set: sequential=%d, no_reuse=%d, write_once=%d"),
+
+    Logger::debug_fmt(_("File access advice set: sequential=%d, no_reuse=%d, write_once=%d"),
                               sequential, no_reuse, write_once);
     return true;
 }

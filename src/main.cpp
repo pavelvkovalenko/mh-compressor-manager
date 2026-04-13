@@ -68,7 +68,7 @@ struct PerformanceMetrics {
         auto now = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
 
-        Logger::info("=== Performance Summary ===");
+        Logger::info(_("=== Performance Summary ==="));
         Logger::info_fmt(_("Total tasks: %lu"), total_tasks.load());
         Logger::info_fmt(_("Completed: %lu"), completed_tasks.load());
         Logger::info_fmt(_("Failed: %lu"), failed_tasks.load());
@@ -117,7 +117,7 @@ bool init_signal_fd() {
     
     // Блокируем сигналы для стандартной обработки, чтобы они шли в signalfd
     if (sigprocmask(SIG_BLOCK, &mask, nullptr) == -1) {
-        Logger::error("Failed to block signals");
+        Logger::error(_("Failed to block signals"));
         return false;
     }
     
@@ -127,7 +127,7 @@ bool init_signal_fd() {
         return false;
     }
     
-    Logger::info("Signal FD initialized for safe signal handling");
+    Logger::info(_("Signal FD initialized for safe signal handling"));
     return true;
 }
 
@@ -149,7 +149,7 @@ void handle_signals() {
             // Только сигнализируем о необходимости выхода из главного цикла
             break;
         case SIGHUP:
-            Logger::info("Received SIGHUP, scheduling config reload...");
+            Logger::info(_("Received SIGHUP, scheduling config reload..."));
             g_reload_config = true;
             break;
         default:
@@ -161,31 +161,29 @@ void handle_signals() {
 // Graceful shutdown с таймаутом
 // Останавливает прием новых задач, ждет завершения текущих (не более SHUTDOWN_TIMEOUT)
 void graceful_shutdown_with_timeout() {
-    Logger::info("Starting graceful shutdown sequence...");
+    Logger::info(_("Starting graceful shutdown sequence..."));
     
     auto shutdown_start = std::chrono::steady_clock::now();
     
     // Шаг 0: дождаться окончания фонового начального сканирования (если ещё идёт)
     if (g_initial_scan_thread.joinable()) {
-        Logger::info("Waiting for initial directory scan to finish...");
+        Logger::info(_("Waiting for initial directory scan to finish..."));
         g_initial_scan_thread.join();
     }
     
     // Шаг 1: Останавливаем монитор (если еще не остановлен)
     if (g_monitor) {
-        Logger::info("Stopping monitor to prevent new task submissions...");
+        Logger::info(_("Stopping monitor to prevent new task submissions..."));
         g_monitor->stop();
     }
     
     // Шаг 2: Ждем завершения активных задач с таймаутом
-    Logger::info_fmt(_("Waiting for active tasks to complete (timeout: %ld seconds)..."),
-                             SHUTDOWN_TIMEOUT.count());
+    Logger::info(_("Waiting for active tasks to complete (timeout)..."));
 
     while (g_pool && g_pool->active_count() > 0) {
         auto elapsed = std::chrono::steady_clock::now() - shutdown_start;
         if (elapsed >= SHUTDOWN_TIMEOUT) {
-            Logger::warning_fmt(_("Graceful shutdown timeout reached (%ld seconds). "
-                                       "Active tasks: %zu. Forcing termination."),
+            Logger::warning_fmt(_("Graceful shutdown timeout reached (%ld seconds). Active tasks: %zu. Forcing termination."),
                                        std::chrono::duration_cast<std::chrono::seconds>(elapsed).count(),
                                        g_pool->active_count());
             break;
@@ -203,7 +201,7 @@ void graceful_shutdown_with_timeout() {
     
     // Шаг 3: Останавливаем пул потоков
     if (g_pool) {
-        Logger::info("Stopping thread pool...");
+        Logger::info(_("Stopping thread pool..."));
         g_pool->stop();
     }
     
@@ -216,11 +214,11 @@ void graceful_shutdown_with_timeout() {
 
 // Горячая перезагрузка конфигурации (SIGHUP handler)
 void reload_config() {
-    Logger::info("Reloading configuration...");
+    Logger::info(_("Reloading configuration..."));
     try {
         auto new_cfg = std::make_unique<Config>(load_config(0, nullptr));
 
-        Logger::info("Configuration reloaded successfully");
+        Logger::info(_("Configuration reloaded successfully"));
         Logger::info_fmt(_("New target paths: %zu"), new_cfg->target_paths.size());
 
         // Атомарно заменяем конфигурацию под блокировкой
@@ -234,14 +232,14 @@ void reload_config() {
             auto cfg_copy = get_config();
             if (cfg_copy) {
                 g_monitor->reload_config(*cfg_copy);
-                Logger::info("Monitor configuration updated via hot reload (no restart needed)");
+                Logger::info(_("Monitor configuration updated via hot reload (no restart needed)"));
             }
         }
 
-        Logger::info("Configuration reload completed successfully");
+        Logger::info(_("Configuration reload completed successfully"));
     } catch (const std::exception& e) {
         Logger::error_fmt(_("Failed to reload configuration: %s"), e.what());
-        Logger::warning("Keeping old configuration");
+        Logger::warning(_("Keeping old configuration"));
     }
 }
 
@@ -827,7 +825,7 @@ int main(int argc, char* argv[]) {
 
     // Инициализация логгера ДО сброса привилегий (чтобы логи писались от root)
     Logger::init("mh-compressor-manager", g_cfg->debug);
-    Logger::info("Starting mh-compressor-manager");
+    Logger::info(_("Starting mh-compressor-manager"));
 
     // Определение параметров кэша CPU для оптимизации буферов (ТЗ §3.2.9)
     g_cache = CacheInfo::detect();
@@ -843,14 +841,14 @@ int main(int argc, char* argv[]) {
 
     // Валидация конфигурации
     if (g_cfg->target_paths.empty()) {
-        Logger::error("No target paths configured, exiting");
+        Logger::error(_("No target paths configured, exiting"));
         return 1;
     }
 
     // Инициализация безопасной обработки сигналов через signalfd
     // ВАЖНО: Должно быть ДО seccomp, т.к. seccomp блокирует signalfd4 syscall
     if (!init_signal_fd()) {
-        Logger::error("Failed to initialize signal handling, falling back to basic signals");
+        Logger::error(_("Failed to initialize signal handling, falling back to basic signals"));
         signal(SIGTERM, signal_handler);
         signal(SIGINT, signal_handler);
         signal(SIGHUP, signal_handler);
@@ -859,17 +857,17 @@ int main(int argc, char* argv[]) {
     // Сброс привилегий (только если запущены от root)
     if (security::is_running_as_root()) {
         if (g_cfg->drop_privileges) {
-            Logger::info("Running as root, attempting to drop privileges...");
+            Logger::info(_("Running as root, attempting to drop privileges..."));
             if (!security::drop_privileges(g_cfg->run_as_user, g_cfg->target_paths)) {
-                Logger::error("Failed to drop privileges, exiting for safety");
+                Logger::error(_("Failed to drop privileges, exiting for safety"));
                 return 1;
             }
-            Logger::info("Privileges dropped successfully");
+            Logger::info(_("Privileges dropped successfully"));
         } else {
-            Logger::warning("Running as root with drop_privileges=false (not recommended)");
+            Logger::warning(_("Running as root with drop_privileges=false (not recommended)"));
         }
     } else {
-        Logger::debug("Not running as root, skipping privilege drop and seccomp");
+        Logger::debug(_("Not running as root, skipping privilege drop and seccomp"));
     }
 
     // Настройка пула потоков с ограничением размера очереди и I/O
@@ -907,7 +905,7 @@ int main(int argc, char* argv[]) {
     // sd_notify использует Unix-сокет (socket/connect/sendmsg), которые seccomp блокирует.
     // Монитор уже запущен и готов обрабатывать события — сервис действительно готов.
     sd_notify(0, "READY=1");
-    Logger::info("Service ready (sd_notify sent); initial filesystem scan runs in background");
+    Logger::info(_("Service ready (sd_notify sent); initial filesystem scan runs in background"));
 
     g_initial_scan_thread = std::thread([]() {
         if (g_monitor) {
@@ -917,11 +915,11 @@ int main(int argc, char* argv[]) {
 
     // Инициализация seccomp ПОСЛЕ sd_notify (seccomp блокирует socket/connect/sendmsg)
     if (security::is_running_as_root() && g_cfg->enable_seccomp) {
-        Logger::info("Initializing seccomp sandbox...");
+        Logger::info(_("Initializing seccomp sandbox..."));
         if (!security::init_seccomp()) {
-            Logger::warning("Failed to initialize seccomp, continuing without sandbox");
+            Logger::warning(_("Failed to initialize seccomp, continuing without sandbox"));
         } else {
-            Logger::info("Seccomp sandbox active");
+            Logger::info(_("Seccomp sandbox active"));
         }
     }
 
@@ -936,9 +934,9 @@ int main(int argc, char* argv[]) {
                 ev.events = EPOLLIN;
                 ev.data.fd = g_signal_fd;
                 epoll_ctl(epfd, EPOLL_CTL_ADD, g_signal_fd, &ev);
-                Logger::info("Epoll FD initialized for signal handling");
+                Logger::info(_("Epoll FD initialized for signal handling"));
             } else {
-                Logger::warning("Failed to create epoll FD, using fallback sleep");
+                Logger::warning(_("Failed to create epoll FD, using fallback sleep"));
             }
         }
 
@@ -994,7 +992,7 @@ int main(int argc, char* argv[]) {
     // Вывод метрик производительности
     g_metrics.log_summary();
 
-    Logger::info("Service stopped gracefully");
+    Logger::info(_("Service stopped gracefully"));
     
     // Корректное завершение работы с очисткой глобальных указателей
     // (graceful_shutdown_with_timeout уже остановил monitor и pool)

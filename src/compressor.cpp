@@ -255,7 +255,7 @@ bool Compressor::compress_dual(const fs::path& input,
     z_stream gzip_strm = {};
     int gzip_strategy = (gzip_level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
     if (deflateInit2(&gzip_strm, gzip_level, Z_DEFLATED, 15 + 16, 8, gzip_strategy) != Z_OK) {
-        Logger::error("Failed to init gzip stream");
+        Logger::error(_("Failed to init gzip stream"));
         close(fd_in);
         close(fd_gzip);
         close(fd_brotli);
@@ -263,10 +263,10 @@ bool Compressor::compress_dual(const fs::path& input,
         unlink(brotli_output.c_str());
         return false;
     }
-    
+
     BrotliEncoderState* brotli_state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
     if (!brotli_state) {
-        Logger::error("Failed to create Brotli encoder");
+        Logger::error(_("Failed to create Brotli encoder"));
         deflateEnd(&gzip_strm);
         close(fd_in);
         close(fd_gzip);
@@ -288,7 +288,7 @@ bool Compressor::compress_dual(const fs::path& input,
     uint8_t* brotli_out_buffer = buffer_pool().allocate_raw();
     
     if (!in_buffer || !gzip_out_buffer || !brotli_out_buffer) {
-        Logger::error("Failed to allocate buffers from pool");
+        Logger::error(_("Failed to allocate buffers from pool"));
         deflateEnd(&gzip_strm);
         BrotliEncoderDestroyInstance(brotli_state);
         close(fd_in);
@@ -333,24 +333,24 @@ bool Compressor::compress_dual(const fs::path& input,
                 }
             } while (ret == Z_OK);
         }
-        
+
         if (has_error) gzip_error = true;
     });
-    
+
     // Поток сжатия Brotli
     std::thread brotli_thread([&]() {
         bool has_error = false;
-        
+
         while (!reading_done || total_bytes_read.load() > 0) {
             std::this_thread::yield();
         }
-        
+
         // Завершаем Brotli поток
         if (!has_error) {
             while (!BrotliEncoderIsFinished(brotli_state)) {
                 size_t available_out = buffer_size;
                 uint8_t* next_out = brotli_out_buffer;
-                
+
                 if (!BrotliEncoderCompressStream(brotli_state,
                         BROTLI_OPERATION_FINISH,
                         nullptr, nullptr,
@@ -359,7 +359,7 @@ bool Compressor::compress_dual(const fs::path& input,
                     has_error = true;
                     break;
                 }
-                
+
                 size_t written = buffer_size - available_out;
                 if (written > 0) {
                     ssize_t w = AsyncIO::sync_write(fd_brotli, brotli_out_buffer, written);
@@ -370,10 +370,10 @@ bool Compressor::compress_dual(const fs::path& input,
                 }
             }
         }
-        
+
         if (has_error) brotli_error = true;
     });
-    
+
     // Основной поток: чтение и обработка данных для обоих форматов
     bool has_error = false;
     do {
@@ -384,20 +384,20 @@ bool Compressor::compress_dual(const fs::path& input,
             has_error = true;
             break;
         }
-        
+
         if (bytes_read > 0) {
             total_bytes_read += bytes_read;
-            
+
             // === Сжатие GZIP ===
             gzip_strm.avail_in = bytes_read;
             gzip_strm.next_in = in_buffer;
-            
+
             do {
                 gzip_strm.avail_out = buffer_size;
                 gzip_strm.next_out = gzip_out_buffer;
                 int ret = deflate(&gzip_strm, Z_NO_FLUSH);
                 if (ret == Z_STREAM_ERROR) {
-                    Logger::error("Gzip stream error");
+                    Logger::error(_("Gzip stream error"));
                     has_error = true;
                     break;
                 }
@@ -427,7 +427,7 @@ bool Compressor::compress_dual(const fs::path& input,
                         &available_in, &next_in,
                         &available_out, &next_out,
                         nullptr)) {
-                    Logger::error("Brotli compression stream error");
+                    Logger::error(_("Brotli compression stream error"));
                     has_error = true;
                     break;
                 }
@@ -470,19 +470,19 @@ bool Compressor::compress_dual(const fs::path& input,
     if (!gzip_success || !brotli_success) {
         if (!gzip_success) {
             unlink(gzip_output.c_str());
-            Logger::error("GZIP compression failed");
+            Logger::error(_("GZIP compression failed"));
         }
         if (!brotli_success) {
             unlink(brotli_output.c_str());
-            Logger::error("Brotli compression failed");
+            Logger::error(_("Brotli compression failed"));
         }
         if (gzip_success) {
             unlink(gzip_output.c_str());
-            Logger::info("Removed successful gzip file due to brotli failure");
+            Logger::info(_("Removed successful gzip file due to brotli failure"));
         }
         if (brotli_success) {
             unlink(brotli_output.c_str());
-            Logger::info("Removed successful brotli file due to gzip failure");
+            Logger::info(_("Removed successful brotli file due to gzip failure"));
         }
         return false;
     }
@@ -825,7 +825,7 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
 bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
                                             const fs::path& output_path, int level) {
     if (!data || size == 0) {
-        Logger::error("compress_gzip_from_memory: null data or zero size");
+        Logger::error(_("compress_gzip_from_memory: null data or zero size"));
         return false;
     }
 
@@ -846,7 +846,7 @@ bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
 bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
                                               const fs::path& output_path, int level) {
     if (!data || size == 0) {
-        Logger::error("compress_brotli_from_memory: null data or zero size");
+        Logger::error(_("compress_brotli_from_memory: null data or zero size"));
         return false;
     }
 
@@ -859,7 +859,7 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
     // Создаём кодировщик Brotli
     BrotliEncoderState* state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
     if (!state) {
-        Logger::error("Failed to create Brotli encoder");
+        Logger::error(_("Failed to create Brotli encoder"));
         return false;
     }
 
@@ -918,7 +918,7 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
 
     z_stream strm = {};
     if (deflateInit2(&strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
-        Logger::error("Failed to init gzip stream (zlib)");
+        Logger::error(_("Failed to init gzip stream (zlib)"));
         return false;
     }
 
@@ -1052,7 +1052,7 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
 
     int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
     if (deflateInit2(state.strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
-        Logger::error("gzip_stream_start: deflateInit2 failed");
+        Logger::error(_("gzip_stream_start: deflateInit2 failed"));
         state.has_error = true;
         return false;
     }
@@ -1082,7 +1082,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
 
         last_ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
         if (last_ret == Z_STREAM_ERROR) {
-            Logger::error("gzip_stream_process: Z_STREAM_ERROR");
+            Logger::error(_("gzip_stream_process: Z_STREAM_ERROR"));
             state.has_error = true;
             return false;
         }
@@ -1114,7 +1114,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
             state.strm->next_out = out_buf.data();
             int ret = deflate(state.strm, Z_FINISH);
             if (ret == Z_STREAM_ERROR) {
-                Logger::error("gzip_stream_process: Z_STREAM_ERROR in finalize");
+                Logger::error(_("gzip_stream_process: Z_STREAM_ERROR in finalize"));
                 state.has_error = true;
                 return false;
             }
@@ -1181,7 +1181,7 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
     // Создаём encoder
     state.enc = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
     if (!state.enc) {
-        Logger::error("brotli_stream_start: BrotliEncoderCreateInstance failed");
+        Logger::error(_("brotli_stream_start: BrotliEncoderCreateInstance failed"));
         state.has_error = true;
         return false;
     }
@@ -1201,7 +1201,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
 
     // Защита от двойного flush — encoder уже финализирован
     if (flush && state.finalized) {
-        Logger::warning("brotli_stream_process: flush called twice, ignoring");
+        Logger::warning(_("brotli_stream_process: flush called twice, ignoring"));
         return false;
     }
     if (flush) state.finalized = true;
@@ -1222,7 +1222,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
                                           &available_in, &next_in,
                                           &available_out, &next_out,
                                           nullptr)) {
-            Logger::error("brotli_stream_process: BrotliEncoderCompressStream failed");
+            Logger::error(_("brotli_stream_process: BrotliEncoderCompressStream failed"));
             state.has_error = true;
             return false;
         }

@@ -47,7 +47,7 @@ size_t CacheInfo::parse_size_string(const std::string& str) {
         size_t value = std::stoull(num_str);
         return value * multiplier;
     } catch (const std::exception& e) {
-        Logger::warning(_("Failed to parse cache size string '%s': %s"), str.c_str(), e.what());
+        Logger::warning_fmt(_("Failed to parse cache size string '%s': %s"), str.c_str(), e.what());
         return 0;
     }
 }
@@ -116,7 +116,7 @@ size_t CacheInfo::detect_l3_cache_size() {
             }
         }
     } catch (const std::exception& e) {
-        Logger::warning(_("Error reading sysfs cache info: %s"), e.what());
+        Logger::warning_fmt(_("Error reading sysfs cache info: %s"), e.what());
     }
 
     if (max_l3 == 0) {
@@ -175,16 +175,16 @@ CacheInfo CacheInfo::detect() {
 
     // Логирование
     if (info.l1_dcache_per_core > 0) {
-        Logger::info(_("CPU cache: L1d = %zu KB/core, L2 = %zu KB/core, L3 = %zu MB"),
+        Logger::info_fmt(_("CPU cache: L1d = %zu KB/core, L2 = %zu KB/core, L3 = %zu MB"),
                                   info.l1_dcache_per_core / 1024,
                                   info.l2_per_core / 1024,
                                   info.l3_total / (1024 * 1024));
     } else {
-        Logger::info(_("CPU cache: L3 = %zu MB (L1/L2 undefined)"),
+        Logger::info_fmt(_("CPU cache: L3 = %zu MB (L1/L2 undefined)"),
                                   info.l3_total / (1024 * 1024));
     }
 
-    Logger::info(_("Optimal buffer per thread: %zu KB (threads: %zu)"),
+    Logger::info_fmt(_("Optimal buffer per thread: %zu KB (threads: %zu)"),
                               info.optimal_buffer_size() / 1024,
                               info.thread_count);
 
