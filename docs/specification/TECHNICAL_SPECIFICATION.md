@@ -2712,6 +2712,112 @@ sudo cp translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo \
 | `grep -rn 'Logger::.*std::format' src/` | 0 результатов |
 | `make update-pot` | Генерирует актуальный `.pot` |
 
+### 22.10. Полный цикл управления переводами
+
+**Архитектура перевода:**
+
+```
+Исходный код (.cpp/.h)    translations/                    Установленные файлы
+  Logger::info(_("..."))  ├── mh-compressor-manager.pot    /usr/bin/mh-compressor-manager
+        │                 ├── ru.po                        /usr/share/locale/ru/
+        ├── xgettext ────▶│   (переводчик заполняет)       │   LC_MESSAGES/
+        │                 └── ru.mo ──msgfmt──▶             │       mh-compressor-manager.mo
+        └── компиляция                                     └── ...
+```
+
+**Полный цикл добавления/обновления перевода:**
+
+1. **Генерация шаблона `.pot`:**
+   ```bash
+   # xgettext сканирует все _("...") и N_("...") в исходниках
+   xgettext --from-code=UTF-8 --keyword=_ --keyword=N_ \
+       --output=translations/mh-compressor-manager.pot \
+       src/*.cpp src/*.h
+   ```
+
+2. **Обновление `.po` из `.pot`:**
+   ```bash
+   # msgmerge добавляет новые строки, обновляет позиции, помечает obsolete
+   msgmerge --update --no-fuzzy-matching translations/ru.po translations/mh-compressor-manager.pot
+   ```
+
+3. **Очистка obsolete строк (опционально):**
+   ```bash
+   # Удаляет строки, которых больше нет в исходном коде
+   msgattrib --no-obsolete -o translations/ru.po translations/ru.po
+   ```
+
+4. **Перевод новых строк:**
+   Редактор открывает `translations/ru.po` и заполняет `msgstr` для пустых строк:
+   ```po
+   # Было (после msgmerge):
+   msgid "Starting mh-compressor-manager"
+   msgstr ""
+
+   # Стало (после перевода):
+   msgid "Starting mh-compressor-manager"
+   msgstr "Запуск mh-compressor-manager"
+   ```
+
+5. **Компиляция `.po` → `.mo`:**
+   ```bash
+   msgfmt translations/ru.po -o translations/ru.mo
+   ```
+
+6. **Установка `.mo` в систему:**
+   ```bash
+   sudo cp translations/ru.mo /usr/share/locale/ru/LC_MESSAGES/mh-compressor-manager.mo
+   ```
+
+**Интерактивный скрипт `_translate.sh`:**
+
+Скрипт в корне проекта автоматизирует весь цикл. Запуск без аргументов — интерактивный режим:
+```bash
+./_translate.sh
+```
+
+Меню:
+```
+1) Обновить шаблон (.pot)
+2) Обновить перевод (.po из .pot)
+3) Очистить obsolete строки
+4) Скомпилировать (.po → .mo)
+5) Установить .mo в систему
+6) Протестировать перевод
+7) Полный цикл (pot → update → compile → install → test)
+```
+
+Командная строка:
+```bash
+./_translate.sh pot              # Генерация .pot
+./_translate.sh update ru         # Обновление ru.po
+./_translate.sh clean ru          # Очистка obsolete
+./_translate.sh compile ru        # Компиляция .mo
+./_translate.sh install ru        # Установка в /usr/share/locale/
+./_translate.sh test ru           # Тест: LANG=ru_RU.UTF-8 ./mh-compressor-manager --help
+./_translate.sh all ru            # Полный цикл
+```
+
+**Добавление нового языка:**
+```bash
+./_translate.sh update de   # Создаёт de.po из .pot
+# Редактирует translations/de.po — заполняет msgstr
+./_translate.sh compile de  # Компилирует de.mo
+./_translate.sh install de  # Устанавливает
+```
+
+Изменения в исходном коде **не требуются**.
+
+### 22.11. Ключевые правила перевода
+
+| Правило | Пример | Почему |
+|---------|--------|--------|
+| Английский оригинал | `_("File %s not found")` | gettext ищет по оригинальной строке |
+| printf-style формат | `%s`, `%d`, `%zu` | `vsnprintf` не понимает `{}` |
+| `.c_str()` для std::string | `path.string().c_str()` | `%s` ожидает `const char*` |
+| `%zu` для `size_t` | `_(..., "%zu bytes", size)` | Переносимость 32/64-bit |
+| Порядок аргументов | `%2$s` для перестановки | В некоторых языках порядок слов другой |
+
 ---
 
 **© 2026 MediaHive.ru** | ООО ОКБ "Улей" | Автор: Коваленко Павел
