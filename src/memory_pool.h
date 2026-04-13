@@ -11,6 +11,7 @@
 #include <immintrin.h>
 #include <unordered_set>
 #include "logger.h"
+#include "i18n.h"
 #include "numa_utils.h"
 
 /**

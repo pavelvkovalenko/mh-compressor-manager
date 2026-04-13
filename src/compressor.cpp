@@ -401,10 +401,10 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
     size_t available_in = size;
 
     // Финализация Brotli — может потребовать многократных вызовов (ТЗ §3.2.4)
-    while (true) {
-        size_t available_out = max_compressed_size;
-        uint8_t* next_out = compressed.data();
+    size_t available_out = max_compressed_size;
+    uint8_t* next_out = compressed.data();
 
+    while (true) {
         if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH,
                                           &available_in, &next_in,
                                           &available_out, &next_out,
