@@ -57,3 +57,36 @@ Logger::info("Инициализация мониторинга файловой
 - Не вызывать `const_cast` — использовать `mutable`
 - Не создавать вложенные захваты одного и того же `std::mutex`
 - Detached потоков избегать — использовать joinable
+
+## Управление ресурсами (RAII и умные указатели)
+- **Максимально использовать умные указатели** (`std::unique_ptr`, `std::shared_ptr`) вместо сырых указателей (`new`/`delete`)
+- **Обоснование:**
+  - **Автоматическое освобождение:** Умные указатели гарантируют освобождение ресурсов при выходе из scope, даже при исключениях или раннем return
+  - **Предотвращение утечек:** В коде с множеством точек возврата (error handling) ручной `delete`/`free` легко пропустить — умные указатели исключают эту проблему
+  - **Явное владение:** `std::unique_ptr` явно выражает семантику исключительного владения, `std::shared_ptr` — совместного
+  - **Кастомные deleter:** Для C API (zlib, libbrotli, SELinux) можно использовать custom deleter для автоматического вызова `deflateEnd()`, `BrotliEncoderDestroyInstance()`, `freecon()` и т.д.
+  - **Нулевые накладные расходы:** `std::unique_ptr` имеет те же накладные расходы что и raw pointer — нет penalty за безопасность
+  - **Совместимость с C API:** `.get()` передаёт raw pointer в C API когда требуется
+- **Примеры:**
+```cpp
+// ✅ ПРАВИЛЬНО: unique_ptr с custom deleter для zlib
+struct ZStreamDeleter { void operator()(z_stream* p) { if (p) { deflateEnd(p); delete p; } } };
+struct GzipStreamState {
+    std::unique_ptr<z_stream, ZStreamDeleter> strm;  // автоматический cleanup
+};
+
+// ✅ ПРАВИЛЬНО: unique_ptr для Brotli encoder
+struct BrotliEncoderDeleter { void operator()(BrotliEncoderState* p) { if (p) BrotliEncoderDestroyInstance(p); } };
+struct BrotliStreamState {
+    std::unique_ptr<BrotliEncoderState, BrotliEncoderDeleter> enc;
+};
+
+// ✅ ПРАВИЛЬНО: raw pointer через .get() для C API
+deflate(state.strm.get(), Z_FINISH);  // zlib C API требует raw pointer
+
+// ❌ НЕПРАВИЛЬНО: raw pointer с ручным управлением
+struct GzipStreamState {
+    z_stream* strm;  // требует ручного deflateEnd + delete
+};
+```
+- **Исключения:** Raw pointers допустимы при работе с пулами памяти (`memory_pool.h`) где контроль за выделением/освобождением намеренно централизован

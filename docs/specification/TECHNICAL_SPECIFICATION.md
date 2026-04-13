@@ -1957,18 +1957,64 @@ mh-compressor-manager/
 ├── LICENSE                            ← Лицензия MIT
 ├── CONTRIBUTING.md                    ← Правила Pull Request (стандарт GitHub)
 ├── .gitignore
+├── _local-build.sh / _local-install.sh  ← Скрипты локальной сборки
+├── _rpm-build.sh                        ← Сборка RPM
+├── _rpm-install.sh                      ← Установка RPM-пакета
+├── _translate.sh                        ← Управление переводами (pot/po/mo)
+├── mh-compressor-manager.spec         ← SPEC файл
+│
 ├── docs/                              ← Полная документация
 │   ├── README.md                      ← Оглавление документации
 │   ├── specification/
 │   │   ├── TECHNICAL_SPECIFICATION.md ← ТЕХ. СПЕЦИФИКАЦИЯ (источник требований)
 │   │   └── TECHNICAL_SPECIFICATION.html
 │   └── development/
-│       ├── RULES.md                   ← Правила кода
+│       ├── RULES.md                   ← Правила кода (включая правило об умных указателях)
 │       ├── DEPLOY.md                  ← Сборка и деплой
 │       └── QWEN.md                    ← Контекст AI
+│
+├── translations/                      ← Файлы переводов (gettext)
+│   ├── CMakeLists.txt                 ← Компиляция .po → .mo
+│   ├── mh-compressor-manager.pot      ← Шаблон переводов
+│   └── ru.po                          ← Русский перевод
+│
 ├── src/                               ← Исходный код
 └── tests/                             ← Тесты
 ```
+
+### 20.4. Правило об умных указателях
+
+**Правило:** Максимально использовать умные указатели (`std::unique_ptr`, `std::shared_ptr`) вместо сырых указателей (`new`/`delete`).
+
+**Обоснование:**
+- **Автоматическое освобождение:** Умные указатели гарантируют освобождение ресурсов при выходе из scope, даже при исключениях или раннем return
+- **Предотвращение утечек:** В коде с множеством точек возврата (error handling) ручной `delete`/`free` легко пропустить — умные указатели исключают эту проблему
+- **Явное владение:** `std::unique_ptr` явно выражает семантику исключительного владения
+- **Кастомные deleter:** Для C API (zlib, libbrotli, SELinux) можно использовать custom deleter для автоматического вызова `deflateEnd()`, `BrotliEncoderDestroyInstance()`, `freecon()` и т.д.
+- **Нулевые накладные расходы:** `std::unique_ptr` имеет те же накладные расходы что и raw pointer
+- **Совместимость с C API:** `.get()` передаёт raw pointer в C API когда требуется
+
+**Примеры из кодовой базы:**
+```cpp
+// ✅ ПРАВИЛЬНО: unique_ptr с custom deleter для zlib
+struct ZStreamDeleter { void operator()(z_stream* p) { if (p) { deflateEnd(p); delete p; } } };
+struct GzipStreamState {
+    std::unique_ptr<z_stream, ZStreamDeleter> strm;
+    // автоматический cleanup при выходе из scope
+};
+
+// ✅ ПРАВИЛЬНО: unique_ptr для Brotli encoder
+struct BrotliEncoderDeleter { void operator()(BrotliEncoderState* p) { if (p) BrotliEncoderDestroyInstance(p); } };
+struct BrotliStreamState {
+    std::unique_ptr<BrotliEncoderState, BrotliEncoderDeleter> enc;
+};
+
+// ✅ ПРАВИЛЬНО: raw pointer через .get() для C API
+deflate(state.strm.get(), Z_FINISH);
+BrotliEncoderCompressStream(state.enc.get(), ...);
+```
+
+**Исключения:** Raw pointers допустимы в пулах памяти (`memory_pool.h`) где контроль за выделением/освобождением намеренно централизован для оптимизации производительности.
 
 ---
 
