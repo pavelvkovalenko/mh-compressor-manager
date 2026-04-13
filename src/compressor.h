@@ -1,6 +1,9 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <span>
+#include <memory>
+#include <optional>
 #include <filesystem>
 #include <cstdint>
 #include <sys/stat.h>
@@ -26,24 +29,22 @@ public:
 
     /**
      * @brief Сжатие буфера в памяти форматом gzip
-     * @param data Указатель на данные файла (const, без копирования)
-     * @param size Размер данных в байтах
+     * @param data Данные файла (не владеющий указатель, без копирования)
      * @param output_path Путь для записи .gz файла
      * @param level Уровень сжатия (1-9)
      * @return true при успехе
      */
-    static bool compress_gzip_from_memory(const uint8_t* data, size_t size,
+    static bool compress_gzip_from_memory(std::span<const uint8_t> data,
                                            const fs::path& output_path, int level);
 
     /**
      * @brief Сжатие буфера в памяти форматом brotli
-     * @param data Указатель на данные файла (const, без копирования)
-     * @param size Размер данных в байтах
+     * @param data Данные файла (не владеющий указатель, без копирования)
      * @param output_path Путь для записи .br файла
      * @param level Уровень сжатия (1-11)
      * @return true при успехе
      */
-    static bool compress_brotli_from_memory(const uint8_t* data, size_t size,
+    static bool compress_brotli_from_memory(std::span<const uint8_t> data,
                                              const fs::path& output_path, int level);
 
     // ========================================================================
@@ -51,11 +52,25 @@ public:
     // ========================================================================
 
     /**
+     * @brief Удалитель для z_stream — вызывает deflateEnd при уничтожении
+     */
+    struct ZStreamDeleter {
+        void operator()(z_stream* p) { if (p) { deflateEnd(p); delete p; } }
+    };
+
+    /**
+     * @brief Удалитель для BrotliEncoderState
+     */
+    struct BrotliEncoderDeleter {
+        void operator()(BrotliEncoderState* p) { if (p) BrotliEncoderDestroyInstance(p); }
+    };
+
+    /**
      * @brief Состояние streaming-сжатия gzip
      * Используется для чанковой обработки файлов > optimal_chunk_size
      */
     struct GzipStreamState {
-        z_stream* strm;                          ///< zlib stream (динамическое выделение)
+        std::unique_ptr<z_stream, ZStreamDeleter> strm; ///< zlib stream (RAII)
         int fd_out;                              ///< Файловый дескриптор вывода
         std::string tmp_path;                    ///< Путь временного файла .gz.tmp
         std::string final_path;                  ///< Целевой путь .gz
@@ -64,14 +79,14 @@ public:
         bool has_error;
 
         GzipStreamState() : strm(nullptr), fd_out(-1), initialized(false), has_error(false) {}
-        ~GzipStreamState();
+        // Деструктор не нужен — unique_ptr автоматически вызовет deflateEnd + delete
     };
 
     /**
      * @brief Состояние streaming-сжатия brotli
      */
     struct BrotliStreamState {
-        BrotliEncoderState* enc;                 ///< Brotli encoder
+        std::unique_ptr<BrotliEncoderState, BrotliEncoderDeleter> enc; ///< Brotli encoder (RAII)
         int fd_out;                              ///< Файловый дескриптор вывода
         std::string tmp_path;                    ///< Путь временного файла .br.tmp
         std::string final_path;                  ///< Целевой путь .br
@@ -81,7 +96,7 @@ public:
         bool finalized;                          ///< Защита от двойного flush
 
         BrotliStreamState() : enc(nullptr), fd_out(-1), initialized(false), has_error(false), finalized(false) {}
-        ~BrotliStreamState();
+        // Деструктор не нужен — unique_ptr автоматически вызовет BrotliEncoderDestroyInstance
     };
 
     /**
@@ -94,10 +109,9 @@ public:
      * @brief Передать чанк данных в streaming gzip
      * @param state Состояние потока
      * @param data Данные чанка
-     * @param size Размер чанка
      * @param flush true для последнего чанка (Z_FINISH)
      */
-    static bool gzip_stream_process(GzipStreamState& state, const uint8_t* data, size_t size, bool flush);
+    static bool gzip_stream_process(GzipStreamState& state, std::span<const uint8_t> data, bool flush);
 
     /**
      * @brief Начать streaming сжатие brotli
@@ -107,14 +121,14 @@ public:
     /**
      * @brief Передать чанк данных в streaming brotli
      */
-    static bool brotli_stream_process(BrotliStreamState& state, const uint8_t* data, size_t size, bool flush);
+    static bool brotli_stream_process(BrotliStreamState& state, std::span<const uint8_t> data, bool flush);
 
 private:
-    // Backend-реализации для compress_gzip_from_memory
-    static bool compress_gzip_zlib_from_memory(const uint8_t* data, size_t size,
+    // Backend-реализации для compress_*_from_memory
+    static bool compress_gzip_zlib_from_memory(std::span<const uint8_t> data,
                                                 const fs::path& output_path, int level);
 #ifdef HAVE_LIBDEFLATE
-    static bool compress_gzip_libdeflate_from_memory(const uint8_t* data, size_t size,
+    static bool compress_gzip_libdeflate_from_memory(std::span<const uint8_t> data,
                                                       const fs::path& output_path, int level);
 #endif
 

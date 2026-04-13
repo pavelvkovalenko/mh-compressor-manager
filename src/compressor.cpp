@@ -8,6 +8,7 @@
 #include <libdeflate.h>
 #endif
 #include <vector>
+#include <span>
 #include <zlib.h>
 #include <brotli/encode.h>
 #include <sys/stat.h>
@@ -349,9 +350,9 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
 }
 }  // namespace
 
-bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
+bool Compressor::compress_gzip_from_memory(std::span<const uint8_t> data,
                                             const fs::path& output_path, int level) {
-    if (!data || size == 0) {
+    if (data.empty()) {
         Logger::error(_("compress_gzip_from_memory: null data or zero size"));
         return false;
     }
@@ -364,15 +365,15 @@ bool Compressor::compress_gzip_from_memory(const uint8_t* data, size_t size,
 
     // Определяем стратегию: libdeflate (2x быстрее) или zlib
 #ifdef HAVE_LIBDEFLATE
-    return compress_gzip_libdeflate_from_memory(data, size, output_path, level);
+    return compress_gzip_libdeflate_from_memory(data, output_path, level);
 #else
-    return compress_gzip_zlib_from_memory(data, size, output_path, level);
+    return compress_gzip_zlib_from_memory(data, output_path, level);
 #endif
 }
 
-bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
+bool Compressor::compress_brotli_from_memory(std::span<const uint8_t> data,
                                               const fs::path& output_path, int level) {
-    if (!data || size == 0) {
+    if (data.empty()) {
         Logger::error(_("compress_brotli_from_memory: null data or zero size"));
         return false;
     }
@@ -443,7 +444,7 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
 // zlib backend для compress_*_from_memory (fallback если libdeflate недоступен)
 // ============================================================================
 
-bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size,
+bool Compressor::compress_gzip_zlib_from_memory(std::span<const uint8_t> data,
                                                   const fs::path& output_path, int level) {
     // Проверка диапазона
     if (!validate_compression_level(level, 1, 9)) {
@@ -460,11 +461,11 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
     }
 
     // Выделяем буфер вывода
-    size_t max_compressed_size = compressBound(size);
+    size_t max_compressed_size = compressBound(data.size());
     std::vector<uint8_t> compressed(max_compressed_size);
 
-    strm.avail_in = size;
-    strm.next_in = const_cast<uint8_t*>(data);  // zlib требует не-const, но не модифицирует
+    strm.avail_in = data.size();
+    strm.next_in = const_cast<uint8_t*>(data.data());  // zlib требует не-const, но не модифицирует
     strm.avail_out = max_compressed_size;
     strm.next_out = compressed.data();
 
@@ -490,7 +491,7 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
     }
 
     Logger::debug(_("Gzip compressed from memory (zlib): %zu bytes -> %zu bytes -> %s"),
-                               size, compressed_size, output_path.string().c_str());
+                               data.size(), compressed_size, output_path.string().c_str());
     return true;
 }
 
@@ -499,7 +500,7 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
 // ============================================================================
 
 #ifdef HAVE_LIBDEFLATE
-bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_t size,
+bool Compressor::compress_gzip_libdeflate_from_memory(std::span<const uint8_t> data,
                                                        const fs::path& output_path, int level) {
     // Создаём компрессор ДО вычисления bound (ТЗ §3.2.7 — исправление UB)
     struct libdeflate_compressor* comp = libdeflate_alloc_compressor(level);
@@ -509,11 +510,11 @@ bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_
     }
 
     // Определяем максимальный размер сжатых данных (корректно: с compressor*, не nullptr)
-    size_t max_out_size = libdeflate_gzip_compress_bound(comp, size);
+    size_t max_out_size = libdeflate_gzip_compress_bound(comp, data.size());
     std::vector<uint8_t> compressed(max_out_size);
 
     // Сжимаем
-    size_t actual_out_size = libdeflate_gzip_compress(comp, data, size, compressed.data(), max_out_size);
+    size_t actual_out_size = libdeflate_gzip_compress(comp, data.data(), data.size(), compressed.data(), max_out_size);
     libdeflate_free_compressor(comp);
 
     if (actual_out_size == 0) {
@@ -527,44 +528,15 @@ bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_
     }
 
     Logger::debug(_("Gzip compressed from memory (libdeflate): %zu bytes -> %zu bytes -> %s"),
-                               size, actual_out_size, output_path.string().c_str());
+                               data.size(), actual_out_size, output_path.string().c_str());
     return true;
 }
 #endif  // HAVE_LIBDEFLATE
 
 // ============================================================================
-// Streaming API для чанкового сжатия (ТЗ §3.2.9, §21.3, §21.3-Задача 2.3)
+// Streaming API для чанкового сжатия (ТЗ §3.2.9, §21.3)
 // ============================================================================
-
-// Деструкторы
-Compressor::GzipStreamState::~GzipStreamState() {
-    if (strm) {
-        deflateEnd(strm);
-        delete strm;
-        strm = nullptr;
-    }
-    if (fd_out >= 0) {
-        close(fd_out);
-        fd_out = -1;
-    }
-    if (!tmp_path.empty()) {
-        unlink(tmp_path.c_str());
-    }
-}
-
-Compressor::BrotliStreamState::~BrotliStreamState() {
-    if (enc) {
-        BrotliEncoderDestroyInstance(enc);
-        enc = nullptr;
-    }
-    if (fd_out >= 0) {
-        close(fd_out);
-        fd_out = -1;
-    }
-    if (!tmp_path.empty()) {
-        unlink(tmp_path.c_str());
-    }
-}
+// Деструкторы не нужны — unique_ptr автоматически вызывает deflateEnd/BrotliEncoderDestroyInstance
 
 // GZIP streaming
 bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::path& output_path, mode_t src_mode) {
@@ -584,11 +556,11 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     }
 
     // Инициализируем deflate
-    state.strm = new z_stream();
-    memset(state.strm, 0, sizeof(z_stream));
+    state.strm = std::make_unique<z_stream>();
+    memset(state.strm.get(), 0, sizeof(z_stream));
 
     int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
-    if (deflateInit2(state.strm, level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
+    if (deflateInit2(state.strm.get(), level, Z_DEFLATED, 15 + 16, 8, strategy) != Z_OK) {
         Logger::error(_("gzip_stream_start: deflateInit2 failed"));
         state.has_error = true;
         return false;
@@ -618,7 +590,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         state.strm->avail_out = STREAM_OUT_BUF_SIZE;
         state.strm->next_out = out_buf;
 
-        last_ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
+        last_ret = deflate(state.strm.get(), flush ? Z_FINISH : Z_NO_FLUSH);
         if (last_ret == Z_STREAM_ERROR) {
             Logger::error(_("gzip_stream_process: Z_STREAM_ERROR"));
             state.has_error = true;
@@ -640,7 +612,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         while (true) {
             state.strm->avail_out = STREAM_OUT_BUF_SIZE;
             state.strm->next_out = out_buf;
-            int ret = deflate(state.strm, Z_FINISH);
+            int ret = deflate(state.strm.get(), Z_FINISH);
             if (ret == Z_STREAM_ERROR) {
                 Logger::error(_("gzip_stream_process: Z_STREAM_ERROR in finalize"));
                 state.has_error = true;
@@ -698,16 +670,16 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
         return false;
     }
 
-    // Создаём encoder
-    state.enc = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
+    // Создаём encoder (RAII — unique_ptr автоматически вызовет BrotliEncoderDestroyInstance)
+    state.enc.reset(BrotliEncoderCreateInstance(nullptr, nullptr, nullptr));
     if (!state.enc) {
         Logger::error(_("brotli_stream_start: BrotliEncoderCreateInstance failed"));
         state.has_error = true;
         return false;
     }
 
-    BrotliEncoderSetParameter(state.enc, BROTLI_PARAM_QUALITY, (uint32_t)level);
-    BrotliEncoderSetParameter(state.enc, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
+    BrotliEncoderSetParameter(state.enc.get(), BROTLI_PARAM_QUALITY, (uint32_t)level);
+    BrotliEncoderSetParameter(state.enc.get(), BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
 
     state.initialized = true;
     // Выделяем буфер вывода один раз (ТЗ §3.2.6 — переиспользование буфера)
@@ -736,11 +708,11 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
 
     BrotliEncoderOperation op = flush ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS;
 
-    while (available_in > 0 || (flush && !BrotliEncoderIsFinished(state.enc))) {
+    while (available_in > 0 || (flush && !BrotliEncoderIsFinished(state.enc.get()))) {
         size_t available_out = STREAM_OUT_BUF_SIZE;
         uint8_t* next_out = out_buf;
 
-        if (!BrotliEncoderCompressStream(state.enc, op,
+        if (!BrotliEncoderCompressStream(state.enc.get(), op,
                                           &available_in, &next_in,
                                           &available_out, &next_out,
                                           nullptr)) {
@@ -757,16 +729,16 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
         }
 
         if (available_in == 0 && !flush) break;
-        if (BrotliEncoderIsFinished(state.enc)) break;
+        if (BrotliEncoderIsFinished(state.enc.get())) break;
     }
 
     if (flush) {
         // Убеждаемся что encoder полностью завершил
-        while (!BrotliEncoderIsFinished(state.enc)) {
+        while (!BrotliEncoderIsFinished(state.enc.get())) {
             size_t available_out = STREAM_OUT_BUF_SIZE;
             uint8_t* next_out = out_buf;
 
-            if (!BrotliEncoderCompressStream(state.enc, BROTLI_OPERATION_FINISH,
+            if (!BrotliEncoderCompressStream(state.enc.get(), BROTLI_OPERATION_FINISH,
                                               nullptr, nullptr,
                                               &available_out, &next_out,
                                               nullptr)) {
