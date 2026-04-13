@@ -538,7 +538,7 @@ void compress_task(const fs::path& path) {
             bool prefer_brotli = (cfg->algorithms == "all" || cfg->algorithms == "brotli");
 
             if (prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
-                brotli_success = Compressor::compress_brotli_from_memory(buffer, total_read, path.string() + ".br", brotli_level);
+                brotli_success = Compressor::compress_brotli_from_memory(std::span<const uint8_t>(buffer, total_read), path.string() + ".br", brotli_level);
                 if (brotli_success) {
                     struct stat br_st;
                     if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
@@ -549,7 +549,7 @@ void compress_task(const fs::path& path) {
             }
 
             if (cfg->algorithms == "all" || cfg->algorithms == "gzip") {
-                gzip_success = Compressor::compress_gzip_from_memory(buffer, total_read, path.string() + ".gz", gzip_level);
+                gzip_success = Compressor::compress_gzip_from_memory(std::span<const uint8_t>(buffer, total_read), path.string() + ".gz", gzip_level);
                 if (gzip_success) {
                     struct stat gz_st;
                     if (lstat((path.string() + ".gz").c_str(), &gz_st) == 0 && S_ISREG(gz_st.st_mode)) {
@@ -560,7 +560,7 @@ void compress_task(const fs::path& path) {
             }
 
             if (!prefer_brotli && (cfg->algorithms == "all" || cfg->algorithms == "brotli")) {
-                brotli_success = Compressor::compress_brotli_from_memory(buffer, total_read, path.string() + ".br", brotli_level);
+                brotli_success = Compressor::compress_brotli_from_memory(std::span<const uint8_t>(buffer, total_read), path.string() + ".br", brotli_level);
                 if (brotli_success) {
                     struct stat br_st;
                     if (lstat((path.string() + ".br").c_str(), &br_st) == 0 && S_ISREG(br_st.st_mode)) {
