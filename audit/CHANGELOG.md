@@ -1,5 +1,24 @@
 # Changelog — mh-compressor-manager
 
+## [Раунд 10] — 2026-04-12 — Полный аудит
+
+### Критические исправления
+- **compressor.cpp**: `libdeflate_gzip_compress_bound(nullptr, size)` → `libdeflate_gzip_compress_bound(comp, size)` — UB при передаче nullptr в libdeflate API
+
+### Исправления безопасности
+- **compressor.cpp**: `is_symlink_attack` — blacklist системных путей заменён на полный запрет ВСЕХ symlink (CWE-22 Path Traversal)
+- **security.cpp**: `cap_init()` returning NULL теперь вызывает `return false` вместо продолжения без capabilities (CWE-276)
+- **security.cpp**: хардкод syscall 291 заменён на `__NR_futimens` для кросс-архитектурной совместимости
+- **numa_utils.cpp**: `stat()` → `lstat()` — защита от symlink-following (CWE-22)
+
+### Исправления компиляции
+- **i18n.h**: добавлены `<clocale>` и `<libintl.h>` (условно при HAVE_GETTEXT)
+- **async_io.cpp**: удалена неиспользуемая `g_pending_submissions`
+
+### Локализация
+- **logger.h/cpp**: перегрузка вместо `*_fmt` методов — единый API `Logger::info(str)` и `Logger::info(fmt, ...)`
+- Все `*_fmt` вызовы заменены на `*` (автоматический выбор перегрузки)
+
 ## [Раунд 9] — 2026-04-12 — Инкрементальный полный аудит
 
 ### Критические исправления
