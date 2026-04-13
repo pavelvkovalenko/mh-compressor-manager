@@ -21,10 +21,10 @@
 #endif
 
 // Переименованы макросы для избежания конфликта с <syslog.h>
-#define PIPE_LOG_INFO(msg, ...) Logger::info_fmt(_(msg), ##__VA_ARGS__)
-#define PIPE_LOG_ERROR(msg, ...) Logger::error_fmt(_(msg), ##__VA_ARGS__)
-#define PIPE_LOG_WARN(msg, ...) Logger::warning_fmt(_(msg), ##__VA_ARGS__)
-#define PIPE_LOG_DEBUG(msg, ...) Logger::debug_fmt(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_INFO(msg, ...) Logger::info(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_ERROR(msg, ...) Logger::error(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_WARN(msg, ...) Logger::warning(_(msg), ##__VA_ARGS__)
+#define PIPE_LOG_DEBUG(msg, ...) Logger::debug(_(msg), ##__VA_ARGS__)
 
 /**
  * @brief Конструктор конвейера

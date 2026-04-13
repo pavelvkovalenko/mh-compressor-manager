@@ -136,11 +136,11 @@ void Logger::warning(const std::string& msg) { log(LogLevel::WARNING, msg); }
 void Logger::error(const std::string& msg) { log(LogLevel::ERROR, msg); }
 
 // ============================================================================
-// printf-style методы для локализации (ТЗ §22.4)
+// printf-style перегрузки для локализации (ТЗ §22.4)
 // Используют vsnprintf — совместимы с GCC 14/15, не требуют constexpr строк
 // ============================================================================
 
-void Logger::debug_fmt(const char* fmt, ...) {
+void Logger::debug(const char* fmt, ...) {
     if (!s_debug) return;
     char buf[2048];
     va_list args;
@@ -150,7 +150,7 @@ void Logger::debug_fmt(const char* fmt, ...) {
     log(LogLevel::DEBUG, std::string(buf));
 }
 
-void Logger::info_fmt(const char* fmt, ...) {
+void Logger::info(const char* fmt, ...) {
     char buf[2048];
     va_list args;
     va_start(args, fmt);
@@ -159,7 +159,7 @@ void Logger::info_fmt(const char* fmt, ...) {
     log(LogLevel::INFO, std::string(buf));
 }
 
-void Logger::warning_fmt(const char* fmt, ...) {
+void Logger::warning(const char* fmt, ...) {
     char buf[2048];
     va_list args;
     va_start(args, fmt);
@@ -168,7 +168,7 @@ void Logger::warning_fmt(const char* fmt, ...) {
     log(LogLevel::WARNING, std::string(buf));
 }
 
-void Logger::error_fmt(const char* fmt, ...) {
+void Logger::error(const char* fmt, ...) {
     char buf[2048];
     va_list args;
     va_start(args, fmt);

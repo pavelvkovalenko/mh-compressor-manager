@@ -16,7 +16,7 @@
  *   Logger::info(_("File compressed"));
  *
  *   // Строка с аргументами (printf-style):
- *   Logger::info_fmt(_("Compressed %s: %zu bytes"), path.c_str(), size);
+ *   Logger::info(_("Compressed %s: %zu bytes"), path.c_str(), size);
  *
  * Компиляция с gettext:
  *   -DHAVE_GETTEXT - подключить libintl

@@ -16,10 +16,10 @@
 #include "i18n.h"
 
 // Используем префикс NUMA_ чтобы избежать конфликта с syslog.h
-#define NUMA_LOG_INFO(msg, ...) Logger::info_fmt(_(msg), ##__VA_ARGS__)
-#define NUMA_LOG_ERROR(msg, ...) Logger::error_fmt(_(msg), ##__VA_ARGS__)
-#define NUMA_LOG_WARN(msg, ...) Logger::warning_fmt(_(msg), ##__VA_ARGS__)
-#define NUMA_LOG_DEBUG(msg, ...) Logger::debug_fmt(_(msg), ##__VA_ARGS__)
+#define NUMA_LOG_INFO(msg, ...) Logger::info(_(msg), ##__VA_ARGS__)
+#define NUMA_LOG_ERROR(msg, ...) Logger::error(_(msg), ##__VA_ARGS__)
+#define NUMA_LOG_WARN(msg, ...) Logger::warning(_(msg), ##__VA_ARGS__)
+#define NUMA_LOG_DEBUG(msg, ...) Logger::debug(_(msg), ##__VA_ARGS__)
 
 // Статические члены
 bool NumaUtils::numa_available_ = false;

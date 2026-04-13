@@ -131,13 +131,13 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
     if (!username.empty()) {
         struct passwd* pw = getpwnam(username.c_str());
         if (!pw) {
-            Logger::error_fmt(_("User not found: %s: %s"), username.c_str(),
+            Logger::error(_("User not found: %s: %s"), username.c_str(),
                          (errno ? strerror(errno) : "unknown error"));
             return false;
         }
         target_uid = pw->pw_uid;
         target_gid = pw->pw_gid;
-        Logger::info_fmt(_("Dropping privileges to user: %s (UID=%d, GID=%d)"),
+        Logger::info(_("Dropping privileges to user: %s (UID=%d, GID=%d)"),
                     username.c_str(), (int)target_uid, (int)target_gid);
     } else {
         // Автоматическое определение владельца по целевым директориям
@@ -154,13 +154,13 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         for (const auto& path : target_paths) {
             struct stat st;
             if (lstat(path.c_str(), &st) != 0) {
-                Logger::error_fmt(_("Cannot lstat path for ownership check: %s"), path.c_str());
+                Logger::error(_("Cannot lstat path for ownership check: %s"), path.c_str());
                 return false;
             }
 
             // Проверяем что это не symlink (защита от symlink-атак)
             if (S_ISLNK(st.st_mode)) {
-                Logger::error_fmt(_("Path is a symlink, refusing to use for privilege drop: %s"), path.c_str());
+                Logger::error(_("Path is a symlink, refusing to use for privilege drop: %s"), path.c_str());
                 return false;
             }
             
@@ -170,7 +170,7 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
                 first = false;
             } else {
                 if (st.st_uid != first_uid || st.st_gid != first_gid) {
-                    Logger::warning_fmt(_("Target paths have different owners. "
+                    Logger::warning(_("Target paths have different owners. "
                                    "Path '%s' owner differs from first path. "
                                    "Please specify 'run_as_user' in config explicitly."), path.c_str());
                     Logger::error(_("Automatic privilege drop failed due to conflicting path owners"));
@@ -185,22 +185,22 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
         // Получаем имя пользователя для логирования
         struct passwd* pw = getpwuid(target_uid);
         if (!pw) {
-            Logger::error_fmt(_("Failed to get username for UID %d: %s"), (int)target_uid, strerror(errno));
+            Logger::error(_("Failed to get username for UID %d: %s"), (int)target_uid, strerror(errno));
             return false;
         }
         std::string user_info = pw->pw_name;
-        Logger::info_fmt(_("Auto-detected owner: %s (UID=%d, GID=%d)"), user_info.c_str(), (int)target_uid, (int)target_gid);
+        Logger::info(_("Auto-detected owner: %s (UID=%d, GID=%d)"), user_info.c_str(), (int)target_uid, (int)target_gid);
     }
     
     // Сбрасываем дополнительные группы
     if (setgroups(0, NULL) != 0) {
-        Logger::error_fmt(_("Failed to clear supplementary groups: %s"), strerror(errno));
+        Logger::error(_("Failed to clear supplementary groups: %s"), strerror(errno));
         return false;
     }
 
     // Устанавливаем GID
     if (setgid(target_gid) != 0) {
-        Logger::error_fmt(_("Failed to set GID: %s"), strerror(errno));
+        Logger::error(_("Failed to set GID: %s"), strerror(errno));
         return false;
     }
 
@@ -210,16 +210,16 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
 #if HAVE_LIBCAP
     cap_t caps = cap_init();  // Создаем пустую структуру capabilities
     if (caps == NULL) {
-        Logger::warning_fmt(_("Failed to initialize capabilities structure: %s"), strerror(errno));
+        Logger::warning(_("Failed to initialize capabilities structure: %s"), strerror(errno));
     } else {
         // Добавляем необходимые capabilities для чтения файлов независимо от Unix-прав
         cap_value_t cap_list[] = {CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH};
         if (cap_set_flag(caps, CAP_EFFECTIVE, 2, cap_list, CAP_SET) != 0) {
-            Logger::warning_fmt(_("Failed to set effective capabilities: %s"), strerror(errno));
+            Logger::warning(_("Failed to set effective capabilities: %s"), strerror(errno));
         } else if (cap_set_flag(caps, CAP_PERMITTED, 2, cap_list, CAP_SET) != 0) {
-            Logger::warning_fmt(_("Failed to set permitted capabilities: %s"), strerror(errno));
+            Logger::warning(_("Failed to set permitted capabilities: %s"), strerror(errno));
         } else if (cap_set_proc(caps) != 0) {
-            Logger::warning_fmt(_("Failed to set process capabilities: %s"), strerror(errno));
+            Logger::warning(_("Failed to set process capabilities: %s"), strerror(errno));
         } else {
             Logger::info(_("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)"));
         }
@@ -229,13 +229,13 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
 
     // Устанавливаем UID (capabilities сохраняются благодаря установке ДО этого вызова)
     if (setuid(target_uid) != 0) {
-        Logger::error_fmt(_("Failed to set UID: %s"), strerror(errno));
+        Logger::error(_("Failed to set UID: %s"), strerror(errno));
         return false;
     }
 
     // Запрещаем получение привилегий через execve
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
-        Logger::error_fmt(_("Failed to set NO_NEW_PRIVS: %s"), strerror(errno));
+        Logger::error(_("Failed to set NO_NEW_PRIVS: %s"), strerror(errno));
         return false;
     }
 
@@ -521,25 +521,25 @@ bool validate_file_for_compression(const std::string& path) {
     
     // Проверяем что путь не является symlink (защита от symlink-атак)
     if (lstat(path.c_str(), &st) != 0) {
-        Logger::error_fmt(_("Cannot lstat file: %s: %s"), path.c_str(), strerror(errno));
+        Logger::error(_("Cannot lstat file: %s: %s"), path.c_str(), strerror(errno));
         return false;
     }
 
     // Отказываемся сжимать symlink
     if (S_ISLNK(st.st_mode)) {
-        Logger::error_fmt(_("Refusing to compress symlink: %s"), path.c_str());
+        Logger::error(_("Refusing to compress symlink: %s"), path.c_str());
         return false;
     }
 
     // Проверяем что это обычный файл
     if (!S_ISREG(st.st_mode)) {
-        Logger::error_fmt(_("Not a regular file, refusing to compress: %s"), path.c_str());
+        Logger::error(_("Not a regular file, refusing to compress: %s"), path.c_str());
         return false;
     }
 
     // Проверяем права доступа - файл должен быть доступен для чтения владельцем
     if (!(st.st_mode & S_IRUSR)) {
-        Logger::error_fmt(_("File is not readable by owner: %s"), path.c_str());
+        Logger::error(_("File is not readable by owner: %s"), path.c_str());
         return false;
     }
     
@@ -553,20 +553,20 @@ int safe_open_file(const std::string& path, int flags) {
     // Открываем файл через /proc/self/fd/ для дополнительной проверки
     int fd = open(path.c_str(), safe_flags, 0644);
     if (fd < 0) {
-        Logger::error_fmt(_("Failed to open file: %s: %s"), path.c_str(), strerror(errno));
+        Logger::error(_("Failed to open file: %s: %s"), path.c_str(), strerror(errno));
         return -1;
     }
 
     // Дополнительная проверка через fstat что это действительно файл
     struct stat st;
     if (fstat(fd, &st) != 0) {
-        Logger::error_fmt(_("fstat failed: %s"), strerror(errno));
+        Logger::error(_("fstat failed: %s"), strerror(errno));
         close(fd);
         return -1;
     }
 
     if (!S_ISREG(st.st_mode)) {
-        Logger::error_fmt(_("Opened file is not a regular file: %s"), path.c_str());
+        Logger::error(_("Opened file is not a regular file: %s"), path.c_str());
         close(fd);
         errno = EINVAL;
         return -1;

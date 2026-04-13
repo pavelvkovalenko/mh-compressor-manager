@@ -15,17 +15,19 @@ public:
     static void init(const std::string& ident, bool debug);
     static void shutdown();
     static void log(LogLevel level, const std::string& message);
+
+    // Перегрузка 1: готовая строка (без форматирования)
     static void debug(const std::string& msg);
     static void info(const std::string& msg);
     static void warning(const std::string& msg);
     static void error(const std::string& msg);
 
-    // printf-style методы для локализации (ТЗ §22.4)
+    // Перегрузка 2: printf-style форматирование (для локализации)
     // __attribute__((format(printf, 1, 2)) — компилятор проверяет соответствие аргументов
-    static void debug_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-    static void info_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-    static void warning_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-    static void error_fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void debug(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void info(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void warning(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+    static void error(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
 private:
     static bool s_debug;
