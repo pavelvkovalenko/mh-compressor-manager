@@ -1,6 +1,18 @@
 # Changelog — mh-compressor-manager
 
-## [Раунд 10] — 2026-04-12 — Полный аудит
+## [Раунд 12] — 2026-04-13 — Полный аудит с тестированием
+
+### Критические исправления
+- **compressor.cpp**: Brotli one-shot финализация в цикле `while(!BrotliEncoderIsFinished)` — один вызов `BrotliEncoderCompressStream` мог не финализировать все данные, приводя к неполным `.br` файлам
+
+### Исправления логики
+- **compressor.cpp**: `stream_error` в streaming теперь удаляет полузаписанные `.gz`/`.br` через `safe_remove_compressed()` — предотвращение orphan-файлов при ошибке чтения чанка
+- **main.cpp**: partial read в one-shot ветке теперь отменяет сжатие и удаляет stale-копии — если файл усечён во время чтения (race condition), результат отбрасывается
+
+### Документация
+- **memory_pool.h**: добавлена документация `cleanup_thread_cache()` для NUMA-систем
+
+## [Раунд 11] — 2026-04-12 — Инкрементальный аудит (синхронизация)
 
 ### Критические исправления
 - **compressor.cpp**: `libdeflate_gzip_compress_bound(nullptr, size)` → `libdeflate_gzip_compress_bound(comp, size)` — UB при передаче nullptr в libdeflate API
