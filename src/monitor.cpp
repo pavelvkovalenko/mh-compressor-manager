@@ -94,11 +94,11 @@ void Monitor::update_compressed_extensions() {
 
     if (use_gzip) {
         m_compressed_extensions.insert("gz");
-        Logger::debug("Monitoring for .gz files (gzip algorithm enabled)");
+        Logger::debug(_("Monitoring for .gz files (gzip algorithm enabled)"));
     }
     if (use_brotli) {
         m_compressed_extensions.insert("br");
-        Logger::debug("Monitoring for .br files (brotli algorithm enabled)");
+        Logger::debug(_("Monitoring for .br files (brotli algorithm enabled)"));
     }
 }
 
@@ -124,7 +124,7 @@ void Monitor::update_compressed_extensions_unlocked() {
 void Monitor::reload_config(const Config& new_cfg) {
     std::unique_lock<std::shared_mutex> lock(m_config_mutex);
 
-    Logger::info("Reloading monitor configuration...");
+    Logger::info(_("Reloading monitor configuration..."));
 
     // Определяем новые и удалённые пути
     std::vector<std::string> old_paths = m_cfg.target_paths;

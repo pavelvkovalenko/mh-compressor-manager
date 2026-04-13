@@ -195,7 +195,7 @@ public:
         // O(1) защита от double-free с использованием unordered_set
         if (allocated_set_.find(buffer) == allocated_set_.end()) {
             // Буфер не был выделен из этого пула или уже был освобожден
-            Logger::error("Double-free or invalid buffer detected in MemoryPool - ignoring");
+            Logger::error(_("Double-free or invalid buffer detected in MemoryPool - ignoring"));
             return;
         }
         
