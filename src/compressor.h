@@ -55,10 +55,11 @@ public:
      * Используется для чанковой обработки файлов > optimal_chunk_size
      */
     struct GzipStreamState {
-        z_stream* strm;            ///< zlib stream (динамическое выделение)
-        int fd_out;                ///< Файловый дескриптор вывода
-        std::string tmp_path;      ///< Путь временного файла .gz.tmp
-        std::string final_path;    ///< Целевой путь .gz
+        z_stream* strm;                          ///< zlib stream (динамическое выделение)
+        int fd_out;                              ///< Файловый дескриптор вывода
+        std::string tmp_path;                    ///< Путь временного файла .gz.tmp
+        std::string final_path;                  ///< Целевой путь .gz
+        std::vector<uint8_t> out_buf;            ///< Буфер вывода (выделяется один раз, ТЗ §3.2.6)
         bool initialized;
         bool has_error;
 
@@ -70,13 +71,14 @@ public:
      * @brief Состояние streaming-сжатия brotli
      */
     struct BrotliStreamState {
-        BrotliEncoderState* enc;   ///< Brotli encoder
-        int fd_out;                ///< Файловый дескриптор вывода
-        std::string tmp_path;      ///< Путь временного файла .br.tmp
-        std::string final_path;    ///< Целевой путь .br
+        BrotliEncoderState* enc;                 ///< Brotli encoder
+        int fd_out;                              ///< Файловый дескриптор вывода
+        std::string tmp_path;                    ///< Путь временного файла .br.tmp
+        std::string final_path;                  ///< Целевой путь .br
+        std::vector<uint8_t> out_buf;            ///< Буфер вывода (выделяется один раз, ТЗ §3.2.6)
         bool initialized;
         bool has_error;
-        bool finalized;            ///< Защита от двойного flush
+        bool finalized;                          ///< Защита от двойного flush
 
         BrotliStreamState() : enc(nullptr), fd_out(-1), initialized(false), has_error(false), finalized(false) {}
         ~BrotliStreamState();

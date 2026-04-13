@@ -57,18 +57,23 @@ ByteBufferPool& buffer_pool() {
 }
 
 /**
- * Вычисляет оптимальный размер буфера на основе размера файла
+ * @brief Полная запись буфера в файловый дескриптор (EINTR-safe)
+ * Используется во всех streaming-функциях вместо дублирования цикла записи.
+ * @return true если все байты записаны, false при ошибке
  */
-static size_t calculate_buffer_size(uint64_t file_size) {
-    if (file_size <= COMPRESS_SMALL_FILE_THRESHOLD) {
-        return COMPRESS_MIN_BUFFER_SIZE;
-    } else if (file_size <= COMPRESS_MEDIUM_FILE_THRESHOLD) {
-        return COMPRESS_BASE_BUFFER_SIZE / 2;
-    } else if (file_size <= COMPRESS_LARGE_FILE_THRESHOLD) {
-        return COMPRESS_BASE_BUFFER_SIZE;
-    } else {
-        return COMPRESS_MAX_BUFFER_SIZE;
+namespace {
+bool write_full(int fd, const uint8_t* data, size_t size) {
+    size_t total_written = 0;
+    while (total_written < size) {
+        ssize_t n = ::write(fd, data + total_written, size - total_written);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        total_written += static_cast<size_t>(n);
     }
+    return true;
+}
 }
 
 // ============================================================================
@@ -580,6 +585,8 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     }
 
     state.initialized = true;
+    // Выделяем буфер вывода один раз (ТЗ §3.2.6 — переиспользование буфера)
+    state.out_buf.resize(STREAM_OUT_BUF_SIZE);
     Logger::debug(_("gzip_stream_start: %s"), output_path.string().c_str());
     return true;
 }
@@ -589,9 +596,8 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         return false;
     }
 
-    // Буфер вывода — 128 КБ (достаточно для большинства чанков)
-    // Using STREAM_OUT_BUF_SIZE
-    std::vector<uint8_t> out_buf(STREAM_OUT_BUF_SIZE);
+    // Буфер вывода — переиспользуется из state (выделен один раз в start)
+    uint8_t* out_buf = state.out_buf.data();
 
     state.strm->avail_in = size;
     state.strm->next_in = const_cast<uint8_t*>(data);
@@ -610,30 +616,20 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
         }
 
         size_t have = STREAM_OUT_BUF_SIZE - state.strm->avail_out;
-        if (have > 0) {
-            size_t total_written = 0;
-            while (total_written < have) {
-                ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
-                if (n < 0) {
-                    if (errno == EINTR) continue;
-                    Logger::error(_("gzip_stream_process: write failed: %s"), strerror(errno));
-                    state.has_error = true;
-                    return false;
-                }
-                total_written += n;
-            }
+        if (have > 0 && !write_full(state.fd_out, out_buf, have)) {
+            Logger::error(_("gzip_stream_process: write failed: %s"), strerror(errno));
+            state.has_error = true;
+            return false;
         }
 
         if (last_ret == Z_STREAM_END) break;
     } while (state.strm->avail_out == 0);
 
     // Отдельный цикл финализации при flush — Z_FINISH может требовать много вызовов.
-    // Пропускаем если первый цикл уже завершил stream (Z_STREAM_END) — иначе
-    // повторный deflate(Z_FINISH) на завершённом stream вернёт Z_STREAM_ERROR.
     if (flush && last_ret != Z_STREAM_END) {
         while (true) {
             state.strm->avail_out = STREAM_OUT_BUF_SIZE;
-            state.strm->next_out = out_buf.data();
+            state.strm->next_out = out_buf;
             int ret = deflate(state.strm, Z_FINISH);
             if (ret == Z_STREAM_ERROR) {
                 Logger::error(_("gzip_stream_process: Z_STREAM_ERROR in finalize"));
@@ -642,18 +638,10 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
             }
 
             size_t have = STREAM_OUT_BUF_SIZE - state.strm->avail_out;
-            if (have > 0) {
-                size_t total_written = 0;
-                while (total_written < have) {
-                    ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
-                    if (n < 0) {
-                        if (errno == EINTR) continue;
-                        Logger::error(_("gzip_stream_process: write failed in finalize: %s"), strerror(errno));
-                        state.has_error = true;
-                        return false;
-                    }
-                    total_written += n;
-                }
+            if (have > 0 && !write_full(state.fd_out, out_buf, have)) {
+                Logger::error(_("gzip_stream_process: write failed in finalize: %s"), strerror(errno));
+                state.has_error = true;
+                return false;
             }
 
             if (ret == Z_STREAM_END) break;
@@ -712,6 +700,8 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
     BrotliEncoderSetParameter(state.enc, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
 
     state.initialized = true;
+    // Выделяем буфер вывода один раз (ТЗ §3.2.6 — переиспользование буфера)
+    state.out_buf.resize(STREAM_OUT_BUF_SIZE);
     Logger::debug(_("brotli_stream_start: %s"), output_path.string().c_str());
     return true;
 }
@@ -728,17 +718,17 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
     }
     if (flush) state.finalized = true;
 
-    // Using STREAM_OUT_BUF_SIZE
-    std::vector<uint8_t> out_buf(STREAM_OUT_BUF_SIZE);
+    // Буфер вывода — переиспользуется из state (выделен один раз в start)
+    uint8_t* out_buf = state.out_buf.data();
 
     const uint8_t* next_in = data;
     size_t available_in = size;
 
     BrotliEncoderOperation op = flush ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS;
 
-    while (available_in > 0 || !BrotliEncoderIsFinished(state.enc)) {
+    while (available_in > 0 || (flush && !BrotliEncoderIsFinished(state.enc))) {
         size_t available_out = STREAM_OUT_BUF_SIZE;
-        uint8_t* next_out = out_buf.data();
+        uint8_t* next_out = out_buf;
 
         if (!BrotliEncoderCompressStream(state.enc, op,
                                           &available_in, &next_in,
@@ -750,18 +740,10 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
         }
 
         size_t have = STREAM_OUT_BUF_SIZE - available_out;
-        if (have > 0) {
-            size_t total_written = 0;
-            while (total_written < have) {
-                ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
-                if (n < 0) {
-                    if (errno == EINTR) continue;
-                    Logger::error(_("brotli_stream_process: write failed: %s"), strerror(errno));
-                    state.has_error = true;
-                    return false;
-                }
-                total_written += n;
-            }
+        if (have > 0 && !write_full(state.fd_out, out_buf, have)) {
+            Logger::error(_("brotli_stream_process: write failed: %s"), strerror(errno));
+            state.has_error = true;
+            return false;
         }
 
         if (available_in == 0 && !flush) break;
@@ -772,7 +754,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
         // Убеждаемся что encoder полностью завершил
         while (!BrotliEncoderIsFinished(state.enc)) {
             size_t available_out = STREAM_OUT_BUF_SIZE;
-            uint8_t* next_out = out_buf.data();
+            uint8_t* next_out = out_buf;
 
             if (!BrotliEncoderCompressStream(state.enc, BROTLI_OPERATION_FINISH,
                                               nullptr, nullptr,
@@ -783,17 +765,9 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
             }
 
             size_t have = STREAM_OUT_BUF_SIZE - available_out;
-            if (have > 0) {
-                size_t total_written = 0;
-                while (total_written < have) {
-                    ssize_t n = write(state.fd_out, out_buf.data() + total_written, have - total_written);
-                    if (n < 0) {
-                        if (errno == EINTR) continue;
-                        state.has_error = true;
-                        return false;
-                    }
-                    total_written += n;
-                }
+            if (have > 0 && !write_full(state.fd_out, out_buf, have)) {
+                state.has_error = true;
+                return false;
             }
         }
 
