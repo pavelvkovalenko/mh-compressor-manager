@@ -6,8 +6,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: mh-compressor-manager 1.0.88\n"
-"Report-Msgid-Bugs-To: https://github.com/pavelvkovalenko/mh-compressor-manager/issues\n"
-"POT-Creation-Date: 2026-04-12\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-13 20:30+0300\n"
 "PO-Revision-Date: 2026-04-12\n"
 "Last-Translator: Pavel Kovalenko\n"
 "Language-Team: Russian\n"
@@ -15,3 +15,1486 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:50
+#, c-format
+msgid "Failed to parse cache size string '%s': %s"
+msgstr "Не удалось разобрать строку размера кэша '%s': %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:74
+msgid "sysfs cache info not available, using fallback L3 = 2 MB"
+msgstr "Информация о кэше sysfs недоступна, используется fallback L3 = 2 МБ"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:119
+#, c-format
+msgid "Error reading sysfs cache info: %s"
+msgstr "Ошибка чтения информации о кэше sysfs: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:123
+msgid ""
+"Failed to determine CPU cache size (sysfs unavailable), using fallback: L3 = "
+"2 MB"
+msgstr ""
+"Не удалось определить размер кэша CPU (sysfs недоступен), используется fallback: L3 = "
+"2 МБ"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:178
+#, c-format
+msgid "CPU cache: L1d = %zu KB/core, L2 = %zu KB/core, L3 = %zu MB"
+msgstr "Кэш CPU: L1d = %zu КБ/ядро, L2 = %zu КБ/ядро, L3 = %zu МБ"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:183
+#, c-format
+msgid "CPU cache: L3 = %zu MB (L1/L2 undefined)"
+msgstr "Кэш CPU: L3 = %zu МБ (L1/L2 не определены)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/cache_info.cpp:187
+#, c-format
+msgid "Optimal buffer per thread: %zu KB (threads: %zu)"
+msgstr "Оптимальный буфер на поток: %zu КБ (потоков: %zu)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:90
+#, c-format
+msgid "Failed to stat source file %s: %s"
+msgstr "Не удалось выполнить stat для исходного файла %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:104
+#, c-format
+msgid "Failed to open directory %s for metadata copy: %s"
+msgstr "Не удалось открыть директорию %s для копирования метаданных: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:113
+#, c-format
+msgid "Failed to open destination file %s for metadata copy: %s"
+msgstr "Не удалось открыть целевой файл %s для копирования метаданных: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:120
+#, c-format
+msgid "Failed to set permissions on %s: %s"
+msgstr "Не удалось установить права доступа на %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:129
+#, c-format
+msgid "No permission to change ownership of %s (running as non-root?)"
+msgstr "Нет прав на смену владельца %s (запущено не от root?)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:132
+#, c-format
+msgid "Failed to set ownership on %s: %s"
+msgstr "Не удалось установить владельца для %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:143
+#, c-format
+msgid "Failed to set timestamps on %s: %s"
+msgstr "Не удалось установить временные метки на %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:154
+#, c-format
+msgid "Failed to set SELinux context on %s: %s"
+msgstr "Не удалось установить контекст SELinux на %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:160
+#, c-format
+msgid "Metadata copied: %s -> %s (mode=%u, uid=%u, gid=%u)"
+msgstr "Метаданные скопированы: %s -> %s (mode=%u, uid=%u, gid=%u)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:172
+#, c-format
+msgid "Failed to lstat %s: %s"
+msgstr "Не удалось выполнить lstat для %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:178
+#, c-format
+msgid "Refusing to process symlink: %s"
+msgstr "Отказ от обработки symlink: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:190
+#, c-format
+msgid "Failed to stat %s: %s"
+msgstr "Не удалось выполнить stat для %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:199
+#, c-format
+msgid "File ownership mismatch for %s: expected uid=%u, actual uid=%u (%s)"
+msgstr "Несоответствие владельца файла %s: ожидается uid=%u, фактический uid=%u (%s)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:213
+#, c-format
+msgid "Refusing to remove compressed copies: potential symlink attack for %s"
+msgstr "Отказ от удаления сжатых копий: возможна symlink-атака для %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:224
+#, c-format
+msgid ""
+"Original file does not exist, skipping ownership check for compressed copies "
+"of %s"
+msgstr ""
+"Исходный файл не существует, пропуск проверки владельца для сжатых копий "
+"%s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:238
+#, c-format
+msgid "Failed to open directory %s for %s removal: %s"
+msgstr "Не удалось открыть директорию %s для удаления %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:248
+#, c-format
+msgid "%s file does not exist: %s"
+msgstr "Файл %s не существует: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:251
+#, c-format
+msgid "Failed to unlink %s %s: %s"
+msgstr "Не удалось удалить %s %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:256
+#, c-format
+msgid "Removed %s copy: %s"
+msgstr "Удалена копия %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:266
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:283
+#, c-format
+msgid "SECURITY: Refusing to remove %s: potential symlink attack"
+msgstr "БЕЗОПАСНОСТЬ: Отказ от удаления %s: возможна symlink-атака"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:272
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:289
+#, c-format
+msgid "Ownership check failed for %s, skipping removal"
+msgstr "Проверка владельца не пройдена для %s, удаление пропущено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:310
+#, c-format
+msgid "Refusing to write file with invalid name: %s"
+msgstr "Отказ от записи файла с недопустимым именем: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:321
+#, c-format
+msgid "Failed to open temp file %s: %s"
+msgstr "Не удалось открыть временный файл %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:334
+#, c-format
+msgid "Failed to write temp file %s: %s"
+msgstr "Не удалось записать временный файл %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:345
+#, c-format
+msgid "fsync failed for %s: %s"
+msgstr "fsync не выполнен для %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:354
+#, c-format
+msgid "rename failed %s -> %s: %s"
+msgstr "Переименование не выполнено %s -> %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:365
+msgid "compress_gzip_from_memory: null data or zero size"
+msgstr "compress_gzip_from_memory: нулевые данные или нулевой размер"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:371
+#, c-format
+msgid "Invalid gzip level %d, using default 6"
+msgstr "Недопустимый уровень gzip %d, используется значение по умолчанию 6"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:386
+msgid "compress_brotli_from_memory: null data or zero size"
+msgstr "compress_brotli_from_memory: нулевые данные или нулевой размер"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:392
+#, c-format
+msgid "Invalid brotli level %d, using default 4"
+msgstr "Недопустимый уровень brotli %d, используется значение по умолчанию 4"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:399
+msgid "Failed to create Brotli encoder"
+msgstr "Не удалось создать кодировщик Brotli"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:422
+#, c-format
+msgid "Brotli compression stream error for output: %s"
+msgstr "Ошибка потока сжатия Brotli для вывода: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:438
+#, c-format
+msgid "Brotli produced zero bytes for output: %s"
+msgstr "Brotli выдал ноль байт для вывода: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:447
+#, c-format
+msgid "Brotli compressed from memory: %zu bytes -> %zu bytes -> %s"
+msgstr "Brotli сжал из памяти: %zu байт -> %zu байт -> %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:468
+msgid "Failed to init gzip stream (zlib)"
+msgstr "Не удалось инициализировать поток gzip (zlib)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:484
+#, c-format
+msgid "Gzip deflate error (zlib), ret=%d"
+msgstr "Ошибка deflate gzip (zlib), ret=%d"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:493
+#, c-format
+msgid "Gzip produced zero bytes (zlib) for output: %s"
+msgstr "Gzip выдал ноль байт (zlib) для вывода: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:502
+#, c-format
+msgid "Gzip compressed from memory (zlib): %zu bytes -> %zu bytes -> %s"
+msgstr "Gzip сжал из памяти (zlib): %zu байт -> %zu байт -> %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:517
+#, c-format
+msgid "libdeflate_alloc_compressor failed for %s"
+msgstr "libdeflate_alloc_compressor не выполнен для %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:530
+#, c-format
+msgid "libdeflate_gzip_compress failed for %s"
+msgstr "libdeflate_gzip_compress не выполнен для %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:539
+#, c-format
+msgid "Gzip compressed from memory (libdeflate): %zu bytes -> %zu bytes -> %s"
+msgstr "Gzip сжал из памяти (libdeflate): %zu байт -> %zu байт -> %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:562
+#, c-format
+msgid "gzip_stream_start: failed to open temp file %s: %s"
+msgstr "gzip_stream_start: не удалось открыть временный файл %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:573
+msgid "gzip_stream_start: deflateInit2 failed"
+msgstr "gzip_stream_start: deflateInit2 не выполнен"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:581
+#, c-format
+msgid "gzip_stream_start: %s"
+msgstr "gzip_stream_start: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:604
+msgid "gzip_stream_process: Z_STREAM_ERROR"
+msgstr "gzip_stream_process: Z_STREAM_ERROR"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:611
+#, c-format
+msgid "gzip_stream_process: write failed: %s"
+msgstr "gzip_stream_process: запись не удалась: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:626
+msgid "gzip_stream_process: Z_STREAM_ERROR in finalize"
+msgstr "gzip_stream_process: Z_STREAM_ERROR при завершении"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:633
+#, c-format
+msgid "gzip_stream_process: write failed in finalize: %s"
+msgstr "gzip_stream_process: запись не удалась при завершении: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:646
+#, c-format
+msgid "gzip_stream_process: fsync failed: %s"
+msgstr "gzip_stream_process: fsync не выполнен: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:654
+#, c-format
+msgid "gzip_stream_process: rename failed: %s -> %s (errno: %s)"
+msgstr "gzip_stream_process: переименование не выполнено: %s -> %s (errno: %s)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:659
+#, c-format
+msgid "gzip_stream_process: finished, renamed to %s"
+msgstr "gzip_stream_process: завершено, переименовано в %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:677
+#, c-format
+msgid "brotli_stream_start: failed to open temp file %s: %s"
+msgstr "brotli_stream_start: не удалось открыть временный файл %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:685
+msgid "brotli_stream_start: BrotliEncoderCreateInstance failed"
+msgstr "brotli_stream_start: BrotliEncoderCreateInstance не выполнен"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:696
+#, c-format
+msgid "brotli_stream_start: %s"
+msgstr "brotli_stream_start: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:707
+msgid "brotli_stream_process: flush called twice, ignoring"
+msgstr "brotli_stream_process: flush вызван дважды, игнорируется"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:728
+msgid "brotli_stream_process: BrotliEncoderCompressStream failed"
+msgstr "brotli_stream_process: BrotliEncoderCompressStream не выполнен"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:735
+#, c-format
+msgid "brotli_stream_process: write failed: %s"
+msgstr "brotli_stream_process: запись не удалась: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:766
+#, c-format
+msgid "brotli_stream_process: fsync failed: %s"
+msgstr "brotli_stream_process: fsync не выполнен: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:774
+#, c-format
+msgid "brotli_stream_process: rename failed: %s -> %s (errno: %s)"
+msgstr "brotli_stream_process: переименование не выполнено: %s -> %s (errno: %s)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/compressor.cpp:779
+#, c-format
+msgid "brotli_stream_process: finished, renamed to %s"
+msgstr "brotli_stream_process: завершено, переименовано в %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:166
+#, c-format
+msgid "Invalid --min-size value '%s' (must be >= 256), ignoring"
+msgstr "Недопустимое значение --min-size '%s' (должно быть >= 256), игнорируется"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:175
+#, c-format
+msgid "Config file %s not found, using defaults"
+msgstr "Файл конфигурации %s не найден, используются значения по умолчанию"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:196
+#, c-format
+msgid "folder_overrides disabled, skipping section: %s"
+msgstr "folder_overrides отключено, раздел пропускается: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:206
+#, c-format
+msgid "Unsafe path in folder_override section: %s, skipping"
+msgstr "Небезопасный путь в разделе folder_override: %s, пропускается"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:252
+msgid "Invalid threads value format, using auto-detect"
+msgstr "Недопустимый формат значения threads, используется автоопределение"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:257
+#, c-format
+msgid "Invalid threads value %d, using auto-detect"
+msgstr "Недопустимое значение threads %d, используется автоопределение"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:273
+msgid "Invalid gzip_level format, using default 6"
+msgstr "Недопустимый формат gzip_level, используется значение по умолчанию 6"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:276
+#, c-format
+msgid "Invalid gzip_level %d, using default 6"
+msgstr "Недопустимый уровень gzip_level %d, используется значение по умолчанию 6"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:285
+msgid "Invalid brotli_level format, using default 4"
+msgstr "Недопустимый формат brotli_level, используется значение по умолчанию 4"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:288
+#, c-format
+msgid "Invalid brotli_level %d, using default 4"
+msgstr "Недопустимый уровень brotli_level %d, используется значение по умолчанию 4"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:297
+msgid "Invalid debounce_delay format, using default 2"
+msgstr "Недопустимый формат debounce_delay, используется значение по умолчанию 2"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:300
+#, c-format
+msgid "Invalid debounce_delay %d, using default 2"
+msgstr "Недопустимое значение debounce_delay %d, используется значение по умолчанию 2"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:309
+msgid "Invalid min_compress_size format, using default 1024"
+msgstr "Недопустимый формат min_compress_size, используется значение по умолчанию 1024"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:312
+#, c-format
+msgid "min_compress_size %zu below minimum (%zu bytes), using %zu"
+msgstr "min_compress_size %zu ниже минимума (%zu байт), используется %zu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:321
+msgid "Invalid io_delay_us format, using default 0"
+msgstr "Недопустимый формат io_delay_us, используется значение по умолчанию 0"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:324
+#, c-format
+msgid "Invalid io_delay_us %d, using default 0"
+msgstr "Недопустимое значение io_delay_us %d, используется значение по умолчанию 0"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:333
+msgid "Invalid max_active_ios format, using unlimited"
+msgstr "Недопустимый формат max_active_ios, используется без ограничений"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:338
+#, c-format
+msgid "max_active_ios %zu too high, limiting to 10000"
+msgstr "max_active_ios %zu слишком велико, ограничивается до 10000"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:363
+#, c-format
+msgid "Invalid gzip_level %d in folder_override, must be 1-9"
+msgstr "Недопустимый gzip_level %d в folder_override, должно быть 1-9"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:366
+msgid "Invalid compression_level_gzip format in folder_override"
+msgstr "Недопустимый формат compression_level_gzip в folder_override"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:376
+#, c-format
+msgid "Invalid brotli_level %d in folder_override, must be 1-11"
+msgstr "Недопустимый brotli_level %d в folder_override, должно быть 1-11"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:379
+msgid "Invalid compression_level_brotli format in folder_override"
+msgstr "Недопустимый формат compression_level_brotli в folder_override"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:405
+msgid "Invalid rate_limit format in folder_override"
+msgstr "Недопустимый формат rate_limit в folder_override"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:415
+#, c-format
+msgid "Invalid io_delay_us %d in folder_override"
+msgstr "Недопустимое значение io_delay_us %d в folder_override"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:418
+msgid "Invalid io_delay_us format in folder_override"
+msgstr "Недопустимый формат io_delay_us в folder_override"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:428
+#, c-format
+msgid "max_active_ios %zu too high in folder_override, limiting to 10000"
+msgstr "max_active_ios %zu слишком велико в folder_override, ограничивается до 10000"
+
+#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:432
+msgid "Invalid max_active_ios format in folder_override"
+msgstr "Недопустимый формат max_active_ios в folder_override"
+
+#: /home/kane/Projects/mh-compressor-manager/src/logger.cpp:93
+msgid "Log queue still has messages after timeout, flushing remaining..."
+msgstr "В очереди логов всё ещё есть сообщения после таймаута, сбрасываются оставшиеся..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:70
+msgid "=== Performance Summary ==="
+msgstr "=== Сводка производительности ==="
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:71
+#, c-format
+msgid "Total tasks: %lu"
+msgstr "Всего задач: %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:72
+#, c-format
+msgid "Completed: %lu"
+msgstr "Завершено: %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:73
+#, c-format
+msgid "Failed: %lu"
+msgstr "Ошибки: %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:74
+#, c-format
+msgid "Skipped (too small): %lu"
+msgstr "Пропущено (слишком маленькие): %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:75
+#, c-format
+msgid "Bytes skipped (small): %lu"
+msgstr "Байт пропущено (маленькие): %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:76
+#, c-format
+msgid "Bytes processed: %lu"
+msgstr "Байт обработано: %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:77
+#, c-format
+msgid "Bytes compressed: %lu"
+msgstr "Байт сжато: %lu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:80
+#, c-format
+msgid "Compression ratio: %.1f%%"
+msgstr "Коэффициент сжатия: %.1f%%"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:82
+#, c-format
+msgid "Duration: %ld seconds"
+msgstr "Длительность: %ld секунд"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:84
+#, c-format
+msgid "Tasks/sec: %.2f"
+msgstr "Задач/сек: %.2f"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:119
+msgid "Failed to block signals"
+msgstr "Не удалось заблокировать сигналы"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:125
+#, c-format
+msgid "Failed to create signalfd: %s"
+msgstr "Не удалось создать signalfd: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:129
+msgid "Signal FD initialized for safe signal handling"
+msgstr "Signal FD инициализирован для безопасной обработки сигналов"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:144
+#, c-format
+msgid "Received signal %d (%s), initiating graceful shutdown"
+msgstr "Получен сигнал %d (%s), инициируется корректное завершение работы"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:151
+msgid "Received SIGHUP, scheduling config reload..."
+msgstr "Получен SIGHUP, запланирована перезагрузка конфигурации..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:155
+#, c-format
+msgid "Received unexpected signal: %d"
+msgstr "Получен неожиданный сигнал: %d"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:163
+msgid "Starting graceful shutdown sequence..."
+msgstr "Запуск последовательности корректного завершения работы..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:169
+msgid "Waiting for initial directory scan to finish..."
+msgstr "Ожидание завершения начального сканирования директории..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:175
+msgid "Stopping monitor to prevent new task submissions..."
+msgstr "Остановка мониторинга для предотвращения новых задач..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:180
+msgid "Waiting for active tasks to complete (timeout)..."
+msgstr "Ожидание завершения активных задач (таймаут)..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:185
+#, c-format
+msgid ""
+"Graceful shutdown timeout reached (%ld seconds). Active tasks: %zu. Forcing "
+"termination."
+msgstr ""
+"Достигнут таймаут корректного завершения (%ld секунд). Активных задач: %zu. Принудительное "
+"завершение."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:195
+#, c-format
+msgid "Waiting for tasks: %zu active, %zu queued"
+msgstr "Ожидание задач: %zu активных, %zu в очереди"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:203
+msgid "Stopping thread pool..."
+msgstr "Остановка пула потоков..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:211
+#, c-format
+msgid "Graceful shutdown completed in %ld ms"
+msgstr "Корректное завершение выполнено за %ld мс"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:216
+msgid "Reloading configuration..."
+msgstr "Перезагрузка конфигурации..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:220
+msgid "Configuration reloaded successfully"
+msgstr "Конфигурация успешно перезагружена"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:221
+#, c-format
+msgid "New target paths: %zu"
+msgstr "Новых целевых путей: %zu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:234
+msgid "Monitor configuration updated via hot reload (no restart needed)"
+msgstr "Конфигурация мониторинга обновлена горячей перезагрузкой (перезапуск не требуется)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:238
+msgid "Configuration reload completed successfully"
+msgstr "Перезагрузка конфигурации успешно завершена"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:240
+#, c-format
+msgid "Failed to reload configuration: %s"
+msgstr "Не удалось перезагрузить конфигурацию: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:241
+msgid "Keeping old configuration"
+msgstr "Сохраняется старая конфигурация"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:250
+#, c-format
+msgid "File does not exist or inaccessible: %s"
+msgstr "Файл не существует или недоступен: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:256
+#, c-format
+msgid "SECURITY: Path is a symlink (potential attack): %s"
+msgstr "БЕЗОПАСНОСТЬ: Путь — symlink (возможная атака): %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:262
+#, c-format
+msgid "Path is not a regular file: %s"
+msgstr "Путь не является обычным файлом: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:289
+#, c-format
+msgid "Extension not in list: %s.%s"
+msgstr "Расширение не в списке: %s.%s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:313
+#, c-format
+msgid "File already compressed and up-to-date: %s"
+msgstr "Файл уже сжат и актуален: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:317
+#, c-format
+msgid "Error checking file times: %s"
+msgstr "Ошибка проверки временных меток файла: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:341
+#, c-format
+msgid "Filesystem error getting file size: %s - %s"
+msgstr "Ошибка файловой системы при получении размера файла: %s - %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:345
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:393
+#, c-format
+msgid "Error getting file size: %s - %s"
+msgstr "Ошибка получения размера файла: %s - %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:377
+#, c-format
+msgid "Processing task for: %s"
+msgstr "Обработка задачи для: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:380
+#, c-format
+msgid "Skipping compression (up-to-date or invalid): %s"
+msgstr "Пропуск сжатия (актуален или недопустим): %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:391
+#, c-format
+msgid "Cannot get file size: %s - %s"
+msgstr "Не удалось получить размер файла: %s - %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:400
+#, c-format
+msgid "Skipping file %s: size %zu bytes < minimum threshold (%zu bytes)"
+msgstr "Пропуск файла %s: размер %zu байт < минимального порога (%zu байт)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:413
+#, c-format
+msgid "Skipping file with invalid name: %s"
+msgstr "Пропуск файла с недопустимым именем: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:419
+#, c-format
+msgid "Compressing: %s"
+msgstr "Сжатие: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:437
+#, c-format
+msgid "Failed to open file for reading: %s - %s"
+msgstr "Не удалось открыть файл для чтения: %s - %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:445
+#, c-format
+msgid "Not a regular file: %s"
+msgstr "Не является обычным файлом: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:469
+#, c-format
+msgid "Failed to allocate buffer for reading: %s"
+msgstr "Не удалось выделить буфер для чтения: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:482
+#, c-format
+msgid "Failed to read file %s: %zu bytes remaining - %s"
+msgstr "Не удалось прочитать файл %s: осталось %zu байт - %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:493
+#, c-format
+msgid ""
+"Partial read: expected %zu bytes, got %zd bytes for %s — file truncated "
+"during read, cancelling compression"
+msgstr ""
+"Частичное чтение: ожидалось %zu байт, получено %zd байт для %s — файл усечён "
+"во время чтения, сжатие отменено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:505
+#, c-format
+msgid "Race condition: file %s deleted during read, compression cancelled"
+msgstr "Race condition: файл %s удалён во время чтения, сжатие отменено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:512
+#, c-format
+msgid ""
+"Race condition: file %s modified during read (mtime changed), compression "
+"cancelled"
+msgstr ""
+"Race condition: файл %s изменён во время чтения (mtime изменён), сжатие "
+"отменено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:519
+#, c-format
+msgid ""
+"Race condition: file %s inode changed during read, compression cancelled"
+msgstr ""
+"Race condition: inode файла %s изменён во время чтения, сжатие отменено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:527
+#, c-format
+msgid ""
+"Race condition: file %s size dropped below threshold (%zu < %zu) during "
+"read, compression cancelled"
+msgstr ""
+"Race condition: размер файла %s стал ниже порога (%zu < %zu) во время "
+"чтения, сжатие отменено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:577
+#, c-format
+msgid "Using streaming compression for %s (%zu bytes, chunk = %zu bytes)"
+msgstr "Используется потоковое сжатие для %s (%zu байт, чанк = %zu байт)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:599
+#, c-format
+msgid "No compression algorithms enabled for %s"
+msgstr "Для %s не включено ни одного алгоритма сжатия"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:608
+#, c-format
+msgid "Failed to allocate streaming buffer: %s"
+msgstr "Не удалось выделить буфер для потокового сжатия: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:627
+#, c-format
+msgid "Streaming read error at offset %zu: %s"
+msgstr "Ошибка потокового чтения по смещению %zu: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:642
+#, c-format
+msgid "Premature EOF for %s: read %zu of %zu bytes"
+msgstr "Преждевременный EOF для %s: прочитано %zu из %zu байт"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:654
+#, c-format
+msgid "Brotli streaming error for %s"
+msgstr "Ошибка потокового сжатия Brotli для %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:661
+#, c-format
+msgid "Gzip streaming error for %s"
+msgstr "Ошибка потокового сжатия Gzip для %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:672
+#, c-format
+msgid "Streaming read error for %s, discarding partial results"
+msgstr "Ошибка потокового чтения для %s, частичные результаты отбрасываются"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:685
+#, c-format
+msgid ""
+"Race condition: streaming file %s deleted during compression, discarding "
+"results"
+msgstr ""
+"Race condition: потоковый файл %s удалён во время сжатия, результаты "
+"отбрасываются"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:694
+#, c-format
+msgid ""
+"Race condition: streaming file %s modified during compression (mtime "
+"changed), discarding results"
+msgstr ""
+"Race condition: потоковый файл %s изменён во время сжатия (mtime "
+"изменён), результаты отбрасываются"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:703
+#, c-format
+msgid ""
+"Race condition: streaming file %s inode changed during compression, "
+"discarding results"
+msgstr ""
+"Race condition: inode потокового файла %s изменён во время сжатия, "
+"результаты отбрасываются"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:713
+#, c-format
+msgid ""
+"Race condition: streaming file %s size dropped below threshold (%zu < %zu) "
+"during compression, discarding results"
+msgstr ""
+"Race condition: размер потокового файла %s стал ниже порога (%zu < %zu) "
+"во время сжатия, результаты отбрасываются"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:745
+#, c-format
+msgid "Compression completed: %s"
+msgstr "Сжатие завершено: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:750
+#, c-format
+msgid "Compression failed: %s"
+msgstr "Сжатие не удалось: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:755
+#, c-format
+msgid "[DRY RUN] Would compress: %s"
+msgstr "[DRY RUN] Будет сжат: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:756
+#, c-format
+msgid "[DRY RUN] Original size: %zu bytes"
+msgstr "[DRY RUN] Исходный размер: %zu байт"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:764
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:772
+#, c-format
+msgid "[DRY RUN] Estimated gzip size: %zu bytes (~%d%% savings)"
+msgstr "[DRY RUN] Примерный размер gzip: %zu байт (~%d%% экономии)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:766
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:776
+#, c-format
+msgid "[DRY RUN] Estimated brotli size: %zu bytes (~%d%% savings)"
+msgstr "[DRY RUN] Примерный размер brotli: %zu байт (~%d%% экономии)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:768
+#, c-format
+msgid "[DRY RUN] Total estimated savings: %zu bytes (~%d%%)"
+msgstr "[DRY RUN] Общая примерная экономия: %zu байт (~%d%%)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:774
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:778
+#, c-format
+msgid "[DRY RUN] Total estimated savings: %zu bytes"
+msgstr "[DRY RUN] Общая примерная экономия: %zu байт"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:790
+#, c-format
+msgid "Task completed in %ld ms"
+msgstr "Задача завершена за %ld мс"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:798
+#, c-format
+msgid "Removing compressed copies for: %s"
+msgstr "Удаление сжатых копий для: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:803
+#, c-format
+msgid "[DRY RUN] Would remove compressed copies for: %s"
+msgstr "[DRY RUN] Будут удалены сжатые копии для: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:812
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:815
+#, c-format
+msgid "[DRY RUN] Would remove: %s (%zu bytes)"
+msgstr "[DRY RUN] Будет удалён: %s (%zu байт)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:818
+#, c-format
+msgid "[DRY RUN] Error checking files: %s"
+msgstr "[DRY RUN] Ошибка проверки файлов: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:849
+msgid "Starting mh-compressor-manager"
+msgstr "Запуск mh-compressor-manager"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:853
+#, c-format
+msgid "CPU cache: L3 = %zu MB, threads = %zu, buffer per thread = %zu KB"
+msgstr "Кэш CPU: L3 = %zu МБ, потоков = %zu, буфер на поток = %zu КБ"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:858
+#, c-format
+msgid "Target paths: %zu"
+msgstr "Целевых путей: %zu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:860
+#, c-format
+msgid "  - %s"
+msgstr "  - %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:865
+msgid "No target paths configured, exiting"
+msgstr "Целевые пути не настроены, выход"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:872
+msgid "Failed to initialize signal handling, falling back to basic signals"
+msgstr "Не удалось инициализировать обработку сигналов, используется базовая обработка"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:881
+msgid "Running as root, attempting to drop privileges..."
+msgstr "Запущено от root, попытка сброса привилегий..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:883
+msgid "Failed to drop privileges, exiting for safety"
+msgstr "Не удалось сбросить привилегии, выход в целях безопасности"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:886
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:250
+msgid "Privileges dropped successfully"
+msgstr "Привилегии успешно сброшены"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:888
+msgid "Running as root with drop_privileges=false (not recommended)"
+msgstr "Запущено от root с drop_privileges=false (не рекомендуется)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:891
+msgid "Not running as root, skipping privilege drop and seccomp"
+msgstr "Запущено не от root, пропуск сброса привилегий и seccomp"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:900
+#, c-format
+msgid "Thread pool size: %d, max queue size: %zu, max active I/O: %zu"
+msgstr "Размер пула потоков: %d, макс. размер очереди: %zu, макс. активный I/O: %zu"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:912
+#, c-format
+msgid "Task queue full, skipping: %s"
+msgstr "Очередь задач заполнена, пропуск: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:918
+#, c-format
+msgid "Delete task queue full, skipping: %s"
+msgstr "Очередь задач удаления заполнена, пропуск: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:929
+msgid ""
+"Service ready (sd_notify sent); initial filesystem scan runs in background"
+msgstr ""
+"Служба готова (sd_notify отправлен); начальное сканирование файловой системы выполняется в фоне"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:939
+msgid "Initializing seccomp sandbox..."
+msgstr "Инициализация seccomp sandbox..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:941
+msgid "Failed to initialize seccomp, continuing without sandbox"
+msgstr "Не удалось инициализировать seccomp, продолжение без sandbox"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:943
+msgid "Seccomp sandbox active"
+msgstr "Seccomp sandbox активен"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:958
+msgid "Epoll FD initialized for signal handling"
+msgstr "Epoll FD инициализирован для обработки сигналов"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:960
+msgid "Failed to create epoll FD, using fallback sleep"
+msgstr "Не удалось создать epoll FD, используется fallback sleep"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:1001
+#, c-format
+msgid "Exception in main loop: %s"
+msgstr "Исключение в главном цикле: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/main.cpp:1016
+msgid "Service stopped gracefully"
+msgstr "Служба остановлена корректно"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:77
+#, c-format
+msgid ""
+"Initialized monitor with %zu source extensions, %zu compressed extensions "
+"based on algorithms: %s"
+msgstr ""
+"Мониторинг инициализирован: %zu исходных расширений, %zu сжатых расширений "
+"на основе алгоритмов: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:97
+msgid "Monitoring for .gz files (gzip algorithm enabled)"
+msgstr "Мониторинг файлов .gz (алгоритм gzip включён)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:101
+msgid "Monitoring for .br files (brotli algorithm enabled)"
+msgstr "Мониторинг файлов .br (алгоритм brotli включён)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:127
+msgid "Reloading monitor configuration..."
+msgstr "Перезагрузка конфигурации мониторинга..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:146
+#, c-format
+msgid ""
+"Monitor configuration reloaded: %zu source extensions, %zu compressed "
+"extensions"
+msgstr ""
+"Конфигурация мониторинга перезагружена: %zu исходных расширений, %zu сжатых "
+"расширений"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:165
+#, c-format
+msgid "Adding watch for new path: %s"
+msgstr "Добавление watch для нового пути: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:176
+#, c-format
+msgid "Removing watch for old path: %s"
+msgstr "Удаление watch для старого пути: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:182
+#, c-format
+msgid "Watches updated: %zu added, %zu removed"
+msgstr "Watches обновлены: %zu добавлено, %zu удалено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:250
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:418
+#, c-format
+msgid "Path does not exist or inaccessible: %s"
+msgstr "Путь не существует или недоступен: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:256
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:424
+#, c-format
+msgid "SECURITY: Base path is a symlink (potential attack): %s"
+msgstr "БЕЗОПАСНОСТЬ: Базовый путь — symlink (возможная атака): %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:261
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:429
+#, c-format
+msgid "Path is not a directory: %s"
+msgstr "Путь не является директорией: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:278
+#, c-format
+msgid "Skipping symlink: %s (potential security risk)"
+msgstr "Пропуск symlink: %s (потенциальный риск безопасности)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:286
+#, c-format
+msgid "Skipping file with invalid name during scan: %s"
+msgstr "Пропуск файла с недопустимым именем при сканировании: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:316
+#, c-format
+msgid "Removed stale gzip copy: %s (original %zu bytes < threshold %zu bytes)"
+msgstr "Удалена stale-копия gzip: %s (оригинал %zu байт < порог %zu байт)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:323
+#, c-format
+msgid ""
+"Removed stale brotli copy: %s (original %zu bytes < threshold %zu bytes)"
+msgstr ""
+"Удалена stale-копия brotli: %s (оригинал %zu байт < порог %zu байт)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:363
+#, c-format
+msgid "Missing compressed file(s) for %s: queued for re-compression (%s)"
+msgstr "Отсутствуют сжатые файлы для %s: поставлено в очередь на повторное сжатие (%s)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:367
+#, c-format
+msgid "Error checking times for %s: %s"
+msgstr "Ошибка проверки временных меток для %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:385
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:485
+#, c-format
+msgid "Directory access error: %s"
+msgstr "Ошибка доступа к директории: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:387
+#, c-format
+msgid "Unexpected error during directory scan: %s"
+msgstr "Неожиданная ошибка при сканировании директории: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:391
+#, c-format
+msgid ""
+"Initial scan completed: %d files scanned, %d queued for compression (%d with "
+"missing compressed versions)"
+msgstr ""
+"Начальное сканирование завершено: %d файлов просканировано, %d поставлено в очередь на сжатие (%d с "
+"отсутствующими сжатыми версиями)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:410
+#, c-format
+msgid "Maximum recursion depth (%zu) exceeded at: %s - skipping subdirectories"
+msgstr "Превышена максимальная глубина рекурсии (%zu) на: %s — поддиректории пропускаются"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:438
+#, c-format
+msgid "Watching directory: %s (depth: %zu)"
+msgstr "Добавлен watch для директории: %s (глубина: %zu)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:442
+#, c-format
+msgid ""
+"Permission denied, cannot watch: %s (check file permissions, SELinux, or "
+"container mounts)"
+msgstr ""
+"Отказано в доступе, невозможно добавить watch: %s (проверьте права доступа, SELinux или "
+"монтирования контейнера)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:444
+#, c-format
+msgid ""
+"Operation not permitted for: %s (check SELinux context, seccomp, or "
+"container security)"
+msgstr ""
+"Операция не разрешена для: %s (проверьте контекст SELinux, seccomp или "
+"безопасность контейнера)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:446
+#, c-format
+msgid "Directory removed before watch could be added: %s"
+msgstr "Директория удалена до добавления watch: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:448
+#, c-format
+msgid ""
+"Inotify watch limit exceeded for: %s (increase fs.inotify.max_user_watches)"
+msgstr ""
+"Превышен лимит inotify watch для: %s (увеличьте fs.inotify.max_user_watches)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:450
+#, c-format
+msgid "Failed to add watch for: %s: %s"
+msgstr "Не удалось добавить watch для: %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:472
+#, c-format
+msgid "Permission denied, cannot watch: %s (owner=%u:%u, mode=%o)"
+msgstr "Отказано в доступе, невозможно добавить watch: %s (owner=%u:%u, mode=%o)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:475
+#, c-format
+msgid "Operation not permitted for: %s (check seccomp or container security)"
+msgstr "Операция не разрешена для: %s (проверьте seccomp или безопасность контейнера)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:498
+#, c-format
+msgid "Removed watch: %s"
+msgstr "Удалён watch: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:558
+#, c-format
+msgid ""
+"inotify buffer truncated: %d bytes remaining, need at least %zu for event "
+"header"
+msgstr ""
+"Буфер inotify усечён: осталось %d байт, требуется минимум %zu для заголовка события"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:567
+msgid "inotify buffer truncated: event name extends beyond buffer boundary"
+msgstr "Буфер inotify усечён: имя события выходит за границу буфера"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:582
+msgid ""
+"inotify queue overflow detected — some events may have been lost. Initiating "
+"rescan."
+msgstr ""
+"Обнаружено переполнение очереди inotify — некоторые события могли быть потеряны. Инициируется "
+"повторное сканирование."
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:591
+msgid "Rescanning directories after inotify overflow (background)..."
+msgstr "Повторное сканирование директорий после переполнения inotify (в фоне)..."
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:610
+msgid "Too many concurrent rescan threads, skipping"
+msgstr "Слишком много одновременных потоков повторного сканирования, пропуск"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:633
+msgid "Rescan completed after inotify overflow"
+msgstr "Повторное сканирование после переполнения inotify завершено"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:635
+#, c-format
+msgid "Rescan after inotify overflow failed: %s"
+msgstr "Повторное сканирование после переполнения inotify не удалось: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:651
+#, c-format
+msgid "Move timeout expired for compressed file: %s, treating as deletion"
+msgstr "Истёк таймаут перемещения для сжатого файла: %s, трактуется как удаление"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:663
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:916
+#, c-format
+msgid "Rate limit exceeded, skipping re-compression: %s"
+msgstr "Превышен лимит скорости, пропуск повторного сжатия: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:685
+#, c-format
+msgid "inotify buffer overflow detected (count: %d), events may be lost"
+msgstr "Обнаружено переполнение буфера inotify (count: %d), события могли быть потеряны"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:690
+#, c-format
+msgid "Increased inotify buffer to %zu bytes"
+msgstr "Буфер inotify увеличен до %zu байт"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:721
+#, c-format
+msgid "Debounce expired for: %s"
+msgstr "Debounce истёк для: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:727
+#, c-format
+msgid "Rate limit exceeded, skipping compression after debounce: %s"
+msgstr "Превышен лимит скорости, пропуск сжатия после debounce: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:741
+#, c-format
+msgid "Invalid filename detected (possible null-byte injection): %s"
+msgstr "Обнаружено недопустимое имя файла (возможна null-byte инъекция): %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:849
+#, c-format
+msgid "Unknown wd: %d, name: %s"
+msgstr "Неизвестный wd: %d, имя: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:862
+#, c-format
+msgid "Path normalization failed for %s: %s"
+msgstr "Нормализация пути не удалась для %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:872
+#, c-format
+msgid "SECURITY: Path traversal attempt detected: %s (base: %s)"
+msgstr "БЕЗОПАСНОСТЬ: Обнаружена попытка path traversal: %s (base: %s)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:893
+#, c-format
+msgid "Skipping symlink event: %s"
+msgstr "Пропуск события symlink: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:897
+#, c-format
+msgid "Event detected: mask=%u, path=%s, type=%s, cookie=%u"
+msgstr "Обнаружено событие: mask=%u, path=%s, type=%s, cookie=%u"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:908
+#, c-format
+msgid "Compressed file deleted: %s, queuing original for re-compression: %s"
+msgstr "Сжатый файл удалён: %s, оригинал поставлен в очередь на повторное сжатие: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:927
+#, c-format
+msgid "IN_MOVED_FROM for compressed file: %s (cookie: %u)"
+msgstr "IN_MOVED_FROM для сжатого файла: %s (cookie: %u)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:935
+#, c-format
+msgid "Compressed file moved within monitored directory: %s -> %s"
+msgstr "Сжатый файл перемещён внутри monitored-директории: %s -> %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:940
+#, c-format
+msgid "Compressed file moved into directory from outside: %s"
+msgstr "Сжатый файл перемещён в директорию извне: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:957
+#, c-format
+msgid "File moved out of monitored directory: %s"
+msgstr "Файл перемещён из monitored-директории: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/monitor.cpp:986
+#, c-format
+msgid "Scheduled compression for: %s (delay: %ds)"
+msgstr "Запланировано сжатие для: %s (задержка: %dс)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/performance_optimizer.cpp:13
+#, c-format
+msgid "Invalid CPU core ID: %d"
+msgstr "Недопустимый идентификатор ядра CPU: %d"
+
+#: /home/kane/Projects/mh-compressor-manager/src/performance_optimizer.cpp:20
+#, c-format
+msgid "Failed to set CPU affinity to core %d: %s"
+msgstr "Не удалось установить CPU affinity для ядра %d: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/performance_optimizer.cpp:25
+#, c-format
+msgid "CPU affinity set to core %d"
+msgstr "CPU affinity установлено для ядра %d"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:134
+#, c-format
+msgid "User not found: %s: %s"
+msgstr "Пользователь не найден: %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:140
+#, c-format
+msgid "Dropping privileges to user: %s (UID=%d, GID=%d)"
+msgstr "Сброс привилегий до пользователя: %s (UID=%d, GID=%d)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:145
+msgid "No target paths specified for automatic privilege drop"
+msgstr "Целевые пути не указаны для автоматического сброса привилегий"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:157
+#, c-format
+msgid "Cannot lstat path for ownership check: %s"
+msgstr "Не удалось выполнить lstat пути для проверки владельца: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:163
+#, c-format
+msgid "Path is a symlink, refusing to use for privilege drop: %s"
+msgstr "Путь — symlink, отказ от использования для сброса привилегий: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:173
+#, c-format
+msgid ""
+"Target paths have different owners. Path '%s' owner differs from first path. "
+"Please specify 'run_as_user' in config explicitly."
+msgstr ""
+"Целевые пути имеют разных владельцев. Путь '%s' имеет владельца, отличного от первого пути. "
+"Укажите 'run_as_user' в конфигурации явно."
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:176
+msgid "Automatic privilege drop failed due to conflicting path owners"
+msgstr "Автоматический сброс привилегий не удался из-за конфликта владельцев путей"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:188
+#, c-format
+msgid "Failed to get username for UID %d: %s"
+msgstr "Не удалось получить имя пользователя для UID %d: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:192
+#, c-format
+msgid "Auto-detected owner: %s (UID=%d, GID=%d)"
+msgstr "Автоматически определённый владелец: %s (UID=%d, GID=%d)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:197
+#, c-format
+msgid "Failed to clear supplementary groups: %s"
+msgstr "Не удалось очистить дополнительные группы: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:203
+#, c-format
+msgid "Failed to set GID: %s"
+msgstr "Не удалось установить GID: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:213
+#, c-format
+msgid ""
+"Failed to initialize capabilities structure: %s — aborting privilege drop"
+msgstr ""
+"Не удалось инициализировать структуру capabilities: %s — прерывание сброса привилегий"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:220
+#, c-format
+msgid "Failed to set effective capabilities: %s"
+msgstr "Не удалось установить эффективные capabilities: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:225
+#, c-format
+msgid "Failed to set permitted capabilities: %s"
+msgstr "Не удалось установить разрешённые capabilities: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:230
+#, c-format
+msgid "Failed to set process capabilities: %s"
+msgstr "Не удалось установить capabilities процесса: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:235
+msgid "Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)"
+msgstr "Capabilities установлены: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (до setuid)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:240
+#, c-format
+msgid "Failed to set UID: %s"
+msgstr "Не удалось установить UID: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:246
+#, c-format
+msgid "Failed to set NO_NEW_PRIVS: %s"
+msgstr "Не удалось установить NO_NEW_PRIVS: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:295
+msgid "Failed to initialize seccomp context"
+msgstr "Не удалось инициализировать контекст seccomp"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:300
+msgid "Failed to initialize seccomp wrapper"
+msgstr "Не удалось инициализировать обёртку seccomp"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:515
+msgid "Failed to load seccomp filter"
+msgstr "Не удалось загрузить фильтр seccomp"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:519
+msgid "Seccomp sandbox initialized successfully (minimal syscall whitelist)"
+msgstr "Seccomp sandbox успешно инициализирован (минимальный whitelist syscall)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:522
+msgid "Seccomp support not available (libseccomp not installed)"
+msgstr "Поддержка seccomp недоступна (libseccomp не установлена)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:532
+#, c-format
+msgid "Cannot lstat file: %s: %s"
+msgstr "Не удалось выполнить lstat файла: %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:538
+#, c-format
+msgid "Refusing to compress symlink: %s"
+msgstr "Отказ от сжатия symlink: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:544
+#, c-format
+msgid "Not a regular file, refusing to compress: %s"
+msgstr "Не является обычным файлом, отказ от сжатия: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:550
+#, c-format
+msgid "File is not readable by owner: %s"
+msgstr "Файл не доступен для чтения владельцем: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:565
+#, c-format
+msgid "Failed to open file: %s: %s"
+msgstr "Не удалось открыть файл: %s: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:572
+#, c-format
+msgid "fstat failed: %s"
+msgstr "fstat не выполнен: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/security.cpp:578
+#, c-format
+msgid "Opened file is not a regular file: %s"
+msgstr "Открытый файл не является обычным файлом: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/memory_pool.h:199
+msgid "Double-free or invalid buffer detected in MemoryPool - ignoring"
+msgstr "Обнаружен двойной free или недопустимый буфер в MemoryPool — игнорируется"
+
+#: /home/kane/Projects/mh-compressor-manager/src/threadpool.h:67
+#, c-format
+msgid "Failed to set CPU affinity for thread %zu (core %d)"
+msgstr "Не удалось установить CPU affinity для потока %zu (ядро %d)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/threadpool.h:73
+#, c-format
+msgid "Worker thread %zu CPU nice set to 10 (lower priority)"
+msgstr "CPU nice рабочего потока %zu установлен в 10 (пониженный приоритет)"
+
+#: /home/kane/Projects/mh-compressor-manager/src/threadpool.h:75
+#, c-format
+msgid "Failed to set CPU nice for worker %zu: %s"
+msgstr "Не удалось установить CPU nice для рабочего потока %zu: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/threadpool.h:81
+#, c-format
+msgid "Worker thread %zu I/O priority set to idle"
+msgstr "Приоритет I/O рабочего потока %zu установлен в idle"
+
+#: /home/kane/Projects/mh-compressor-manager/src/threadpool.h:83
+#, c-format
+msgid "Failed to set I/O priority for worker %zu: %s"
+msgstr "Не удалось установить приоритет I/O для рабочего потока %zu: %s"
+
+#: /home/kane/Projects/mh-compressor-manager/src/threadpool.h:227
+#, c-format
+msgid "Thread still running after %ds"
+msgstr "Поток всё ещё выполняется после %dс"
