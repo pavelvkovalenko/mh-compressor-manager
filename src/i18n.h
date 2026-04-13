@@ -1,7 +1,12 @@
 #pragma once
 #include <cstdlib>
 #include <cstring>
+#include <clocale>
 #include <string_view>
+
+#ifdef HAVE_GETTEXT
+#include <libintl.h>
+#endif
 
 /**
  * @brief Локализация приложения (i18n) — единый файл для всего проекта.

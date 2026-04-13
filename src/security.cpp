@@ -210,21 +210,29 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
 #if HAVE_LIBCAP
     cap_t caps = cap_init();  // Создаем пустую структуру capabilities
     if (caps == NULL) {
-        Logger::warning(_("Failed to initialize capabilities structure: %s"), strerror(errno));
-    } else {
-        // Добавляем необходимые capabilities для чтения файлов независимо от Unix-прав
-        cap_value_t cap_list[] = {CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH};
-        if (cap_set_flag(caps, CAP_EFFECTIVE, 2, cap_list, CAP_SET) != 0) {
-            Logger::warning(_("Failed to set effective capabilities: %s"), strerror(errno));
-        } else if (cap_set_flag(caps, CAP_PERMITTED, 2, cap_list, CAP_SET) != 0) {
-            Logger::warning(_("Failed to set permitted capabilities: %s"), strerror(errno));
-        } else if (cap_set_proc(caps) != 0) {
-            Logger::warning(_("Failed to set process capabilities: %s"), strerror(errno));
-        } else {
-            Logger::info(_("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)"));
-        }
-        cap_free(caps);  // Освобождаем память
+        Logger::error(_("Failed to initialize capabilities structure: %s — aborting privilege drop"), strerror(errno));
+        return false;  // Продолжать без capabilities опасно — потеряем доступ к файлам после setuid
     }
+
+    // Добавляем необходимые capabilities для чтения файлов независимо от Unix-прав
+    cap_value_t cap_list[] = {CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH};
+    if (cap_set_flag(caps, CAP_EFFECTIVE, 2, cap_list, CAP_SET) != 0) {
+        Logger::error(_("Failed to set effective capabilities: %s"), strerror(errno));
+        cap_free(caps);
+        return false;
+    }
+    if (cap_set_flag(caps, CAP_PERMITTED, 2, cap_list, CAP_SET) != 0) {
+        Logger::error(_("Failed to set permitted capabilities: %s"), strerror(errno));
+        cap_free(caps);
+        return false;
+    }
+    if (cap_set_proc(caps) != 0) {
+        Logger::error(_("Failed to set process capabilities: %s"), strerror(errno));
+        cap_free(caps);
+        return false;
+    }
+    cap_free(caps);
+    Logger::info(_("Capabilities set: CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH (before setuid)"));
 #endif
 
     // Устанавливаем UID (capabilities сохраняются благодаря установке ДО этого вызова)

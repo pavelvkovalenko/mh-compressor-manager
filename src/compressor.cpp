@@ -572,84 +572,24 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     return true;
 }
 
-// Проверка: является ли путь символической ссылкой, указывающей за пределы разрешённых директорий
-// Удалена небезопасная проверка с атомарным флагом - используется openat() для защиты от TOCTOU
+// Проверка: является ли путь символической ссылкой.
+// Отклоняем ВСЕ symlink — не только указывающие на системные пути (ТЗ §8.4).
 bool Compressor::is_symlink_attack(const fs::path& path) {
     struct stat st;
-    
+
     // Проверяем, является ли файл символической ссылкой
     if (lstat(path.c_str(), &st) != 0) {
         Logger::warning(_("Failed to lstat %s: %s"), path.string().c_str(), strerror(errno));
         return false;  // Не можем проверить - считаем безопасным для логирования
     }
-    
-    // Если это не symlink, атаки нет
-    if (!S_ISLNK(st.st_mode)) {
-        return false;
-    }
-    
-    // Это symlink - проверяем, куда он указывает
-    char target[PATH_MAX];
-    ssize_t len = readlink(path.c_str(), target, sizeof(target) - 1);
-    if (len < 0) {
-        Logger::warning(_("Failed to readlink %s: %s"), path.string().c_str(), strerror(errno));
-        return true;  // Считаем потенциальной атакой
-    }
-    target[len] = '\0';
 
-    Logger::warning(_("Symlink detected: %s -> %s"), path.string().c_str(), target);
-    
-    // Проверяем, указывает ли ссылка на файл вне типичных пользовательских директорий
-    std::string target_str(target);
-    if (target_str.find("/etc/") == 0 || 
-        target_str.find("/usr/") == 0 || 
-        target_str.find("/var/log/") == 0 ||
-        target_str.find("/proc/") == 0 ||
-        target_str.find("/sys/") == 0 ||
-        target_str.find("/root/") == 0) {
-        Logger::error(_("Potential symlink attack detected: %s points to system directory"), path.string().c_str());
-        return true;
-    }
-    
-    // Дополнительная проверка: resolving пути и проверка что он в допустимой зоне
-    // Используем безопасную альтернативу realpath() с O_PATH для защиты от TOCTOU
-    // Открываем файл через O_PATH|O_NOFOLLOW, затем используем /proc/self/fd/ для readlink
-    int fd = open(target, O_PATH|O_NOFOLLOW);
-    if (fd < 0) {
-        // Файл может не существовать - это нормально для некоторых случаев
-        Logger::warning(_("Cannot open target %s for verification: %s"), target, strerror(errno));
-        return false;  // Не можем проверить - считаем безопасным
-    }
-    
-    // Читаем symlink через /proc/self/fd/ для получения канонического пути
-    char proc_path[64];
-    int ret = snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd);
-    if (ret < 0 || static_cast<size_t>(ret) >= sizeof(proc_path)) {
-        close(fd);
-        Logger::warning(_("snprintf failed for proc path in verify_no_symlink_attack: %s"), strerror(errno));
-        return false;
-    }
-    
-    char resolved_target[PATH_MAX];
-    ssize_t resolved_len = readlink(proc_path, resolved_target, sizeof(resolved_target) - 1);
-    close(fd);
-    
-    if (resolved_len > 0) {
-        resolved_target[resolved_len] = '\0';
-        std::string resolved_str(resolved_target);
-        // Проверяем что целевой путь не ведет к системным файлам после разрешения symlink
-        if (resolved_str.find("/etc/") == 0 || 
-            resolved_str.find("/usr/") == 0 || 
-            resolved_str.find("/var/log/") == 0 ||
-            resolved_str.find("/proc/") == 0 ||
-            resolved_str.find("/sys/") == 0 ||
-            resolved_str.find("/root/") == 0) {
-            Logger::error(_("Potential symlink attack detected: %s resolves to system file %s"), path.string().c_str(), resolved_str.c_str());
-            return true;
-        }
+    // Любой symlink отклоняется — защита от symlink-атак (ТЗ §8.4)
+    if (S_ISLNK(st.st_mode)) {
+        Logger::error(_("Refusing to process symlink: %s"), path.string().c_str());
+        return true;  // Атака — symlink запрещён
     }
 
-    return false;  // Symlink существует, но не указывает на системные директории
+    return false;  // Не symlink — безопасно
 }
 
 // Проверка владельца файла
@@ -964,16 +904,16 @@ bool Compressor::compress_gzip_zlib_from_memory(const uint8_t* data, size_t size
 #ifdef HAVE_LIBDEFLATE
 bool Compressor::compress_gzip_libdeflate_from_memory(const uint8_t* data, size_t size,
                                                        const fs::path& output_path, int level) {
-    // Определяем максимальный размер сжатых данных
-    size_t max_out_size = libdeflate_gzip_compress_bound(nullptr, size);
-    std::vector<uint8_t> compressed(max_out_size);
-
-    // Создаём компрессор
+    // Создаём компрессор ДО вычисления bound (ТЗ §3.2.7 — исправление UB)
     struct libdeflate_compressor* comp = libdeflate_alloc_compressor(level);
     if (!comp) {
         Logger::error(_("libdeflate_alloc_compressor failed for %s"), output_path.string().c_str());
         return false;
     }
+
+    // Определяем максимальный размер сжатых данных (корректно: с compressor*, не nullptr)
+    size_t max_out_size = libdeflate_gzip_compress_bound(comp, size);
+    std::vector<uint8_t> compressed(max_out_size);
 
     // Сжимаем
     size_t actual_out_size = libdeflate_gzip_compress(comp, data, size, compressed.data(), max_out_size);

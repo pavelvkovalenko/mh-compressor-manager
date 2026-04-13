@@ -26,7 +26,6 @@ namespace {
 namespace {
     io_uring g_ring = {};
     std::mutex g_ring_mutex;  // Мьютекс для защиты доступа к g_ring
-    std::atomic<size_t> g_pending_submissions{0};
 
     // Структура для хранения контекста асинхронной операции
     struct AsyncIOContext {

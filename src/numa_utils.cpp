@@ -67,7 +67,7 @@ int NumaUtils::get_file_numa_node(const fs::path& path) {
     try {
         // Получаем информацию о файле
         struct stat st;
-        if (stat(path.c_str(), &st) < 0) {
+        if (lstat(path.c_str(), &st) < 0) {
             NUMA_LOG_WARN("Не удалось получить stat для {}: {}", path.string(), strerror(errno));
             return 0;
         }
