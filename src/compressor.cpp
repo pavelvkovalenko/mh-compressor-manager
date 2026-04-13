@@ -399,19 +399,29 @@ bool Compressor::compress_brotli_from_memory(const uint8_t* data, size_t size,
 
     const uint8_t* next_in = data;
     size_t available_in = size;
-    uint8_t* next_out = compressed.data();
-    size_t available_out = max_compressed_size;
 
-    if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH,
-                                      &available_in, &next_in,
-                                      &available_out, &next_out,
-                                      nullptr)) {
-        Logger::error(_("Brotli compression stream error for output: %s"), output_path.string().c_str());
-        BrotliEncoderDestroyInstance(state);
-        return false;
+    // Финализация Brotli — может потребовать многократных вызовов (ТЗ §3.2.4)
+    while (true) {
+        size_t available_out = max_compressed_size;
+        uint8_t* next_out = compressed.data();
+
+        if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH,
+                                          &available_in, &next_in,
+                                          &available_out, &next_out,
+                                          nullptr)) {
+            Logger::error(_("Brotli compression stream error for output: %s"), output_path.string().c_str());
+            BrotliEncoderDestroyInstance(state);
+            return false;
+        }
+
+        // Проверяем завершён ли encoder
+        if (BrotliEncoderIsFinished(state)) break;
+
+        // Encoder не завершён — нужно вызвать ещё раз с пустым входом
+        available_in = 0;
     }
 
-    size_t compressed_size = max_compressed_size - available_out;
+    size_t compressed_size = static_cast<size_t>(next_out - compressed.data());
     BrotliEncoderDestroyInstance(state);
 
     if (compressed_size == 0) {

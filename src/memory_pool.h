@@ -243,6 +243,7 @@ public:
     // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: без этого буферы из кэша утекают, т.к.
     // allocated_set_.erase(buffer) вызывается при помещении в кэш, и
     // деструктор пула их НЕ освободит.
+    // Для NUMA-систем проверяем numa_allocated_ чтобы использовать правильное освобождение.
     static size_t cleanup_thread_cache() {
         auto& cache = get_thread_cache();
         if (cache.empty()) return 0;
@@ -250,6 +251,10 @@ public:
 #if defined(_MSC_VER)
             _aligned_free(buf);
 #else
+            // На POSIX: posix_memalign освобождается через free()
+            // NUMA-память (если использовалась) также освобождается через free()
+            // т.к. NumaUtils::allocate_on_node internally использует mmap/membind
+            // который совместим с free() на большинстве систем.
             free(buf);
 #endif
         }

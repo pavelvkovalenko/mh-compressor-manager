@@ -480,7 +480,10 @@ void compress_task(const fs::path& path) {
             close(fd);
 
             if (static_cast<size_t>(total_read) != file_size) {
-                Logger::warning(_("Partial read: expected %zu bytes, got %zd bytes for %s"), file_size, total_read, path.string().c_str());
+                Logger::warning(_("Partial read: expected %zu bytes, got %zd bytes for %s — file truncated during read, cancelling compression"), file_size, total_read, path.string().c_str());
+                Compressor::safe_remove_compressed(path);
+                g_metrics.failed_tasks++;
+                return;
             }
 
             // === RACE CONDITION CHECK (ТЗ §3.1.8) ===
@@ -653,6 +656,16 @@ void compress_task(const fs::path& path) {
 
             close(fd);
             buffer_pool().release_raw(buffer);
+
+            // При ошибке чтения — удаляем полузаписанные сжатые файлы (ТЗ §3.1.8)
+            if (stream_error) {
+                Logger::warning(_("Streaming read error for %s, discarding partial results"), path.string().c_str());
+                Compressor::safe_remove_compressed(path);
+                gzip_success = false;
+                brotli_success = false;
+                g_metrics.failed_tasks++;
+                return;
+            }
 
             // === RACE CONDITION CHECK для streaming (ТЗ §3.1.8) ===
             // После завершения чтения всех чанков проверяем, что файл не изменился
