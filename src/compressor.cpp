@@ -3,6 +3,7 @@
 #include "memory_pool.h"
 #include "async_io.h"
 #include "performance_optimizer.h"
+#include "security.h"
 #include "i18n.h"
 #ifdef HAVE_LIBDEFLATE
 #include <libdeflate.h>
@@ -99,7 +100,8 @@ bool Compressor::copy_metadata(const fs::path& source, const fs::path& dest) {
     
     int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (dir_fd < 0) {
-        Logger::warning(_("Failed to open directory %s for metadata copy: %s"), parent_dir.string().c_str(), strerror(errno));
+        int saved_errno = errno;
+        Logger::warning(_("Failed to open directory %s for metadata copy: %s"), parent_dir.string().c_str(), strerror(saved_errno));
         return false;
     }
     
@@ -302,6 +304,13 @@ bool Compressor::safe_remove_compressed(const fs::path& original_path) {
  */
 namespace {
 bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t size, mode_t mode) {
+    // Проверка имени файла на безопасность (ТЗ §8.4)
+    std::string filename = output_path.filename().string();
+    if (!security::validate_filename(filename)) {
+        Logger::error(_("Refusing to write file with invalid name: %s"), output_path.string().c_str());
+        return false;
+    }
+
     // Создаём временный файл
     std::string tmp_path_str = output_path.string() + ".tmp";
     fs::path tmp_path = tmp_path_str;

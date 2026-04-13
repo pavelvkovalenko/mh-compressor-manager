@@ -561,7 +561,8 @@ int safe_open_file(const std::string& path, int flags) {
     // Открываем файл через /proc/self/fd/ для дополнительной проверки
     int fd = open(path.c_str(), safe_flags, 0644);
     if (fd < 0) {
-        Logger::error(_("Failed to open file: %s: %s"), path.c_str(), strerror(errno));
+        int saved_errno = errno;
+        Logger::error(_("Failed to open file: %s: %s"), path.c_str(), strerror(saved_errno));
         return -1;
     }
 

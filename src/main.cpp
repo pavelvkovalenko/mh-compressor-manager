@@ -406,6 +406,14 @@ void compress_task(const fs::path& path) {
         return;
     }
 
+    // Проверка имени файла на безопасность (ТЗ §8.4)
+    std::string filename = path.filename().string();
+    if (!security::validate_filename(filename)) {
+        Logger::warning(_("Skipping file with invalid name: %s"), path.string().c_str());
+        g_metrics.failed_tasks++;
+        return;
+    }
+
     if (!cfg->dry_run) {
         Logger::info(_("Compressing: %s"), path.string().c_str());
 
@@ -424,7 +432,8 @@ void compress_task(const fs::path& path) {
         // Открываем файл один раз, читаем в буфер, сжимаем из буфера оба формата
         int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
         if (fd < 0) {
-            Logger::error(_("Failed to open file for reading: %s - %s"), path.string().c_str(), strerror(errno));
+            int saved_errno = errno;
+            Logger::error(_("Failed to open file for reading: %s - %s"), path.string().c_str(), strerror(saved_errno));
             g_metrics.failed_tasks++;
             return;
         }

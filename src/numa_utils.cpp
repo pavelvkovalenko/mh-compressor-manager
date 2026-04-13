@@ -213,9 +213,9 @@ int NumaUtils::get_optimal_node_for_device(const fs::path& device_path) {
         // Получаем канонический путь
         fs::path canonical = fs::canonical(device_path);
 
-        // Пытаемся определить устройство через stat
+        // Пытаемся определить устройство через lstat (единообразие с остальным кодом)
         struct stat st;
-        if (stat(canonical.c_str(), &st) < 0) {
+        if (lstat(canonical.c_str(), &st) < 0) {
             return 0;
         }
 
