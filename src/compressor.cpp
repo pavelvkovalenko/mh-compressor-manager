@@ -565,7 +565,7 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     }
 
     // Инициализируем deflate
-    state.strm = std::make_unique<z_stream>();
+    state.strm.reset(new z_stream());
     memset(state.strm.get(), 0, sizeof(z_stream));
 
     int strategy = (level <= 3) ? Z_HUFFMAN_ONLY : Z_DEFAULT_STRATEGY;
