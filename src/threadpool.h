@@ -88,7 +88,14 @@ public:
                     {
                         std::unique_lock<std::mutex> lock(queue_mutex);
                         condition.wait(lock, [this] { return stop_flag || !tasks.empty(); });
-                        if (stop_flag && tasks.empty()) return;
+                        if (stop_flag && tasks.empty()) {
+                            // Очищаем thread_local кэш пула буферов перед выходом из потока
+                            // Без этого буферы, помещённые в thread_local кэш (и удалённые
+                            // из allocated_set_), утекают — вектор уничтожается, но raw
+                            // указатели НЕ освобождаются.
+                            ByteBufferPool::cleanup_thread_cache();
+                            return;
+                        }
                         
                         // Ждем доступного I/O слота если установлен лимит (с таймаутом для предотвращения блокировок)
                         if (m_max_active_ios > 0) {
