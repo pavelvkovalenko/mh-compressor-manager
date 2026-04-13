@@ -445,7 +445,7 @@ bool Compressor::compress_brotli_from_memory(std::span<const uint8_t> data,
     }
 
     Logger::debug(_("Brotli compressed from memory: %zu bytes -> %zu bytes -> %s"),
-                               size, compressed_size, output_path.string().c_str());
+                               data.size(), compressed_size, output_path.string().c_str());
     return true;
 }
 

@@ -8,9 +8,8 @@
 #include <cstdint>
 #include <sys/stat.h>
 
-// Forward-объявление для zlib
-struct z_stream_s;
-typedef z_stream_s z_stream;
+// zlib — нужен полный заголовок для deflateEnd, deflateInit2 и т.д.
+#include <zlib.h>
 
 // Brotli — нельзя forward-declare, нужен полный заголовок
 #include <brotli/encode.h>
