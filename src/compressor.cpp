@@ -606,7 +606,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     int last_ret = Z_OK;
     do {
         state.strm->avail_out = STREAM_OUT_BUF_SIZE;
-        state.strm->next_out = out_buf.data();
+        state.strm->next_out = out_buf;
 
         last_ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
         if (last_ret == Z_STREAM_ERROR) {
