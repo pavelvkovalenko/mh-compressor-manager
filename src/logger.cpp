@@ -13,9 +13,9 @@ namespace std {
 #include <chrono>
 
 // Максимальный размер очереди логов для предотвращения DoS через переполнение памяти
-constexpr size_t MAX_LOG_QUEUE_SIZE = 10000;
+static constexpr size_t MAX_LOG_QUEUE_SIZE = 10000;
 // Максимальное время ожидания перед сбросом старых логов (мс)
-constexpr int LOG_FLUSH_TIMEOUT_MS = 5000;
+static constexpr int LOG_FLUSH_TIMEOUT_MS = 5000;
 
 bool Logger::s_debug = false;
 std::thread Logger::s_async_thread;

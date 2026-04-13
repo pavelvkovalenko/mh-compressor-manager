@@ -34,73 +34,41 @@ namespace std {
 #include <selinux/selinux.h>
 #endif
 
-// Базовый размер буфера для потоковой обработки (1MB - оптимизировано для производительности)
-constexpr size_t BASE_BUFFER_SIZE = 1048576;
+// Базовый размер буфера для потоковой обработки (1MB)
+static constexpr size_t COMPRESS_BASE_BUFFER_SIZE = 1048576;
 
-// Минимальный размер буфера для маленьких файлов (64KB)
-constexpr size_t MIN_BUFFER_SIZE = 65536;
-
-// Максимальный размер буфера (4MB)
-constexpr size_t MAX_BUFFER_SIZE = 4194304;
+// Минимальный/максимальный размер буфера для сжатия (64KB / 4MB)
+static constexpr size_t COMPRESS_MIN_BUFFER_SIZE = 65536;
+static constexpr size_t COMPRESS_MAX_BUFFER_SIZE = 4194304;
 
 // Порог размера файла для выбора размера буфера
-constexpr uint64_t SMALL_FILE_THRESHOLD = 256 * 1024;      // 256KB
-constexpr uint64_t MEDIUM_FILE_THRESHOLD = 4 * 1024 * 1024; // 4MB
-constexpr uint64_t LARGE_FILE_THRESHOLD = 16 * 1024 * 1024; // 16MB
+static constexpr uint64_t COMPRESS_SMALL_FILE_THRESHOLD = 256 * 1024;
+static constexpr uint64_t COMPRESS_MEDIUM_FILE_THRESHOLD = 4 * 1024 * 1024;
+static constexpr uint64_t COMPRESS_LARGE_FILE_THRESHOLD = 16 * 1024 * 1024;
 
-// Максимальное количество попыток при проверке пути для предотвращения DoS
-constexpr int MAX_PATH_VALIDATION_RETRIES = 3;
-
-// Буфер для /proc/self/fd/<fd> путей (достаточно для большинства систем)
-// Размер буфера для пути /proc/self/fd/NNN (достаточно для больших PID)
-// Формат: "/proc/self/fd/" + номер FD (до 10 цифр) + '\0' = ~25 байт
-// Увеличено до 128 для запаса и защиты от переполнения
-constexpr size_t PROC_FD_PATH_SIZE = 128;
-
-// Максимальный размер файла для сжатия (100MB) - защита от DoS атак
-constexpr uint64_t MAX_FILE_SIZE = 100 * 1024 * 1024;
+// Размер выходного буфера для streaming-сжатия (128KB)
+// Используется в gzip_stream_process и brotli_stream_process
+static constexpr size_t STREAM_OUT_BUF_SIZE = 128 * 1024;
 
 // Пул буферов создаётся при первом сжатии (lazy), а не при старте процесса.
-// Иначе до main() выполнялась тяжёлая инициализация (mmap / NUMA), и даже
-// «mh-compressor-manager --help» зависал на заметное время.
-// Сделана публичной для использования из main.cpp (однократное чтение, ТЗ §3.2.4)
 ByteBufferPool& buffer_pool() {
     static ByteBufferPool pool(16, -1, ByteBufferPool::MAX_POOL_SIZE);
     return pool;
 }
 
-// Счётчик для периодического освобождения буферов пула
-std::atomic<size_t>& pool_shrink_counter() {
-    static std::atomic<size_t> counter{0};
-    return counter;
-}
-
-// Выравнивание для O_DIRECT (должно быть кратно размеру сектора, обычно 512 байт)
-constexpr size_t DIRECT_IO_ALIGNMENT = 4096;
-
 /**
  * Вычисляет оптимальный размер буфера на основе размера файла
- * Адаптивный подход улучшает производительность:
- * - Маленькие файлы: меньшие буферы для экономии памяти
- * - Большие файлы: большие буферы для уменьшения количества системных вызовов
  */
-inline size_t calculate_buffer_size(uint64_t file_size) {
-    if (file_size <= SMALL_FILE_THRESHOLD) {
-        return MIN_BUFFER_SIZE;
-    } else if (file_size <= MEDIUM_FILE_THRESHOLD) {
-        return BASE_BUFFER_SIZE / 2;
-    } else if (file_size <= LARGE_FILE_THRESHOLD) {
-        return BASE_BUFFER_SIZE;
+static size_t calculate_buffer_size(uint64_t file_size) {
+    if (file_size <= COMPRESS_SMALL_FILE_THRESHOLD) {
+        return COMPRESS_MIN_BUFFER_SIZE;
+    } else if (file_size <= COMPRESS_MEDIUM_FILE_THRESHOLD) {
+        return COMPRESS_BASE_BUFFER_SIZE / 2;
+    } else if (file_size <= COMPRESS_LARGE_FILE_THRESHOLD) {
+        return COMPRESS_BASE_BUFFER_SIZE;
     } else {
-        return MAX_BUFFER_SIZE;
+        return COMPRESS_MAX_BUFFER_SIZE;
     }
-}
-
-/**
- * Выравнивает размер по границе для O_DIRECT
- */
-inline size_t align_for_direct_io(size_t size) {
-    return (size + DIRECT_IO_ALIGNMENT - 1) & ~(DIRECT_IO_ALIGNMENT - 1);
 }
 
 // ============================================================================
@@ -622,8 +590,8 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     }
 
     // Буфер вывода — 128 КБ (достаточно для большинства чанков)
-    constexpr size_t OUT_BUF_SIZE = 128 * 1024;
-    std::vector<uint8_t> out_buf(OUT_BUF_SIZE);
+    // Using STREAM_OUT_BUF_SIZE
+    std::vector<uint8_t> out_buf(STREAM_OUT_BUF_SIZE);
 
     state.strm->avail_in = size;
     state.strm->next_in = const_cast<uint8_t*>(data);
@@ -631,7 +599,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     // Основной цикл: сжатие данных
     int last_ret = Z_OK;
     do {
-        state.strm->avail_out = OUT_BUF_SIZE;
+        state.strm->avail_out = STREAM_OUT_BUF_SIZE;
         state.strm->next_out = out_buf.data();
 
         last_ret = deflate(state.strm, flush ? Z_FINISH : Z_NO_FLUSH);
@@ -641,7 +609,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
             return false;
         }
 
-        size_t have = OUT_BUF_SIZE - state.strm->avail_out;
+        size_t have = STREAM_OUT_BUF_SIZE - state.strm->avail_out;
         if (have > 0) {
             size_t total_written = 0;
             while (total_written < have) {
@@ -664,7 +632,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     // повторный deflate(Z_FINISH) на завершённом stream вернёт Z_STREAM_ERROR.
     if (flush && last_ret != Z_STREAM_END) {
         while (true) {
-            state.strm->avail_out = OUT_BUF_SIZE;
+            state.strm->avail_out = STREAM_OUT_BUF_SIZE;
             state.strm->next_out = out_buf.data();
             int ret = deflate(state.strm, Z_FINISH);
             if (ret == Z_STREAM_ERROR) {
@@ -673,7 +641,7 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
                 return false;
             }
 
-            size_t have = OUT_BUF_SIZE - state.strm->avail_out;
+            size_t have = STREAM_OUT_BUF_SIZE - state.strm->avail_out;
             if (have > 0) {
                 size_t total_written = 0;
                 while (total_written < have) {
@@ -760,8 +728,8 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
     }
     if (flush) state.finalized = true;
 
-    constexpr size_t OUT_BUF_SIZE = 128 * 1024;
-    std::vector<uint8_t> out_buf(OUT_BUF_SIZE);
+    // Using STREAM_OUT_BUF_SIZE
+    std::vector<uint8_t> out_buf(STREAM_OUT_BUF_SIZE);
 
     const uint8_t* next_in = data;
     size_t available_in = size;
@@ -769,7 +737,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
     BrotliEncoderOperation op = flush ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS;
 
     while (available_in > 0 || !BrotliEncoderIsFinished(state.enc)) {
-        size_t available_out = OUT_BUF_SIZE;
+        size_t available_out = STREAM_OUT_BUF_SIZE;
         uint8_t* next_out = out_buf.data();
 
         if (!BrotliEncoderCompressStream(state.enc, op,
@@ -781,7 +749,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
             return false;
         }
 
-        size_t have = OUT_BUF_SIZE - available_out;
+        size_t have = STREAM_OUT_BUF_SIZE - available_out;
         if (have > 0) {
             size_t total_written = 0;
             while (total_written < have) {
@@ -803,7 +771,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
     if (flush) {
         // Убеждаемся что encoder полностью завершил
         while (!BrotliEncoderIsFinished(state.enc)) {
-            size_t available_out = OUT_BUF_SIZE;
+            size_t available_out = STREAM_OUT_BUF_SIZE;
             uint8_t* next_out = out_buf.data();
 
             if (!BrotliEncoderCompressStream(state.enc, BROTLI_OPERATION_FINISH,
@@ -814,7 +782,7 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
                 return false;
             }
 
-            size_t have = OUT_BUF_SIZE - available_out;
+            size_t have = STREAM_OUT_BUF_SIZE - available_out;
             if (have > 0) {
                 size_t total_written = 0;
                 while (total_written < have) {

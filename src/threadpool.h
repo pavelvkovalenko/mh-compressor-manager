@@ -16,6 +16,10 @@
 #include "performance_optimizer.h"
 #include "i18n.h"
 
+// I/O приоритет для worker-потоков (idle class — минимальное влияние на диск)
+static constexpr int THREADPOOL_IOPRIO_CLASS_IDLE = 3;
+static constexpr int THREADPOOL_IOPRIO_WHO_PROCESS = 1;
+
 // Приоритеты задач
 enum class TaskPriority : uint8_t {
     LOW = 0,
@@ -71,11 +75,8 @@ public:
                 }
 
                 // Понижаем I/O приоритет (idle class = 3) — минимальное влияние на диск
-                // ioprio_set(IOPRIO_WHO_PROCESS, 0, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_IDLE, 0))
-                constexpr int IOPRIO_CLASS_IDLE = 3;
-                constexpr int IOPRIO_WHO_PROCESS = 1;
-                int ioprio = IOPRIO_CLASS_IDLE << 13;  // level 0 within idle class
-                if (syscall(SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, ioprio) == 0) {
+                int ioprio = THREADPOOL_IOPRIO_CLASS_IDLE << 13;
+                if (syscall(SYS_ioprio_set, THREADPOOL_IOPRIO_WHO_PROCESS, 0, ioprio) == 0) {
                     Logger::debug(_("Worker thread %zu I/O priority set to idle"), i);
                 } else {
                     Logger::debug(_("Failed to set I/O priority for worker %zu: %s"), i, strerror(errno));

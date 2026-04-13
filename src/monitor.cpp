@@ -7,6 +7,11 @@
 #include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
+
+// Размеры буфера inotify
+static constexpr size_t MONITOR_INITIAL_BUFFER_SIZE = 262144;   // 256KB начальный
+static constexpr int MONITOR_MAX_OVERFLOW_COUNT = 3;             // Переполнений до увеличения
+static constexpr size_t MONITOR_MAX_BUFFER_SIZE = 1048576;      // 1MB максимум
 #if __has_include(<format>)
 #include <format>
 #else
@@ -502,8 +507,8 @@ void Monitor::run() {
     // ОПТИМИЗАЦИЯ: Увеличенный буфер для обработки массовых событий inotify
     // 256KB вместо 64KB для лучшей производительности при большом количестве событий
     // Также добавлена поддержка динамического увеличения при переполнении
-    constexpr size_t INITIAL_BUFFER_SIZE = 262144;  // 256KB
-    std::vector<char> buffer(INITIAL_BUFFER_SIZE);
+    // Using MONITOR_INITIAL_BUFFER_SIZE  // 256KB
+    std::vector<char> buffer(MONITOR_INITIAL_BUFFER_SIZE);
     
     // ОПТИМИЗАЦИЯ: Выносим вектор событий наружу для переиспользования памяти
     struct BatchEvent {
@@ -520,8 +525,8 @@ void Monitor::run() {
     
     // Счётчик переполнений для адаптивного увеличения буфера
     int overflow_count = 0;
-    constexpr int MAX_OVERFLOW_BEFORE_RESIZE = 3;
-    constexpr size_t MAX_BUFFER_SIZE = 1048576;  // 1MB максимум
+    // Using MONITOR_MAX_OVERFLOW_COUNT
+    // Using MONITOR_MAX_BUFFER_SIZE  // 1MB максимум
     
     while (m_running) {
         fd_set readfds;
@@ -679,8 +684,8 @@ void Monitor::run() {
                     overflow_count++;
                     Logger::warning(_("inotify buffer overflow detected (count: %d), events may be lost"), overflow_count);
                     
-                    if (overflow_count >= MAX_OVERFLOW_BEFORE_RESIZE && buffer.size() < MAX_BUFFER_SIZE) {
-                        size_t new_size = std::min(buffer.size() * 2, MAX_BUFFER_SIZE);
+                    if (overflow_count >= MONITOR_MAX_OVERFLOW_COUNT && buffer.size() < MONITOR_MAX_BUFFER_SIZE) {
+                        size_t new_size = std::min(buffer.size() * 2, MONITOR_MAX_BUFFER_SIZE);
                         buffer.resize(new_size);
                         Logger::info(_("Increased inotify buffer to %zu bytes"), new_size);
                         overflow_count = 0;
