@@ -582,7 +582,7 @@ bool Compressor::gzip_stream_start(GzipStreamState& state, int level, const fs::
     return true;
 }
 
-bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data, size_t size, bool flush) {
+bool Compressor::gzip_stream_process(GzipStreamState& state, std::span<const uint8_t> data, bool flush) {
     if (state.has_error || !state.initialized || !state.strm) {
         return false;
     }
@@ -590,8 +590,8 @@ bool Compressor::gzip_stream_process(GzipStreamState& state, const uint8_t* data
     // Буфер вывода — переиспользуется из state (выделен один раз в start)
     uint8_t* out_buf = state.out_buf.data();
 
-    state.strm->avail_in = size;
-    state.strm->next_in = const_cast<uint8_t*>(data);
+    state.strm->avail_in = data.size();
+    state.strm->next_in = const_cast<uint8_t*>(data.data());
 
     // Основной цикл: сжатие данных
     int last_ret = Z_OK;
@@ -697,7 +697,7 @@ bool Compressor::brotli_stream_start(BrotliStreamState& state, int level, const 
     return true;
 }
 
-bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* data, size_t size, bool flush) {
+bool Compressor::brotli_stream_process(BrotliStreamState& state, std::span<const uint8_t> data, bool flush) {
     if (state.has_error || !state.initialized || !state.enc) {
         return false;
     }
@@ -712,8 +712,8 @@ bool Compressor::brotli_stream_process(BrotliStreamState& state, const uint8_t* 
     // Буфер вывода — переиспользуется из state (выделен один раз в start)
     uint8_t* out_buf = state.out_buf.data();
 
-    const uint8_t* next_in = data;
-    size_t available_in = size;
+    const uint8_t* next_in = data.data();
+    size_t available_in = data.size();
 
     BrotliEncoderOperation op = flush ? BROTLI_OPERATION_FINISH : BROTLI_OPERATION_PROCESS;
 
