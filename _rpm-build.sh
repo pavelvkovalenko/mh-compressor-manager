@@ -39,9 +39,19 @@ done
 PROJECT_NAME="mh-compressor-manager"
 SPEC_FILE="${PROJECT_NAME}.spec"
 
-# Получение версии из SPEC если не указана
+# Получение версии: приоритет — CMakeLists.txt, затем SPEC, затем 1.0.0
 if [ -z "$VERSION" ]; then
-    if [ -f "$SPEC_FILE" ]; then
+    # Сначала пробуем CMakeLists.txt
+    if [ -f "src/CMakeLists.txt" ]; then
+        CMAKE_MAJOR=$(grep 'PROJECT_VERSION_MAJOR' src/CMakeLists.txt | head -1 | grep -oP '\d+')
+        CMAKE_MINOR=$(grep 'PROJECT_VERSION_MINOR' src/CMakeLists.txt | head -1 | grep -oP '\d+')
+        CMAKE_PATCH=$(grep 'PROJECT_VERSION_PATCH' src/CMakeLists.txt | head -1 | grep -oP '\d+')
+        if [ -n "$CMAKE_MAJOR" ] && [ -n "$CMAKE_MINOR" ] && [ -n "$CMAKE_PATCH" ]; then
+            VERSION="${CMAKE_MAJOR}.${CMAKE_MINOR}.${CMAKE_PATCH}"
+        fi
+    fi
+    # Если не получилось — из SPEC
+    if [ -z "$VERSION" ] && [ -f "$SPEC_FILE" ]; then
         VERSION=$(grep '^Version:' "$SPEC_FILE" | awk '{print $2}')
     fi
     VERSION=${VERSION:-1.0.0}
