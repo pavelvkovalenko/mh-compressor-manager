@@ -222,7 +222,7 @@ audit\check_context_changes.bat <timestamp>
    git fetch origin
    git show origin/main:src/CMakeLists.txt | grep PROJECT_VERSION_PATCH
    ```
-   Это — **базовое число** (количество уже запушенных коммитов).
+   Это — **базовое число** (количество уже запушенных коммитов на GitHub).
 
 2. **Посчитай количество локальных коммитов ahead of origin/main:**
    ```bash
@@ -232,7 +232,17 @@ audit\check_context_changes.bat <timestamp>
 
 3. **Рассчитай новую версию:**
    ```
-   PROJECT_VERSION_PATCH = (базовое число с GitHub) + (локальные коммиты)
+   PROJECT_VERSION_PATCH = (коммитов на origin/main) + (локальные коммиты ahead) + 1
+   ```
+   **+1** — это сам коммит обновления версии, который будет запушен.
+   После пуша: `TOTAL == PATCH` — совпадает.
+
+   Пример:
+   ```
+   origin/main: 440 коммитов
+   local ahead: 0 (коммит ещё не создан)
+   PATCH = 440 + 0 + 1 = 441
+   После пуша: origin/main = 441, PATCH = 441 ✓
    ```
 
 4. **Обнови файлы перед пушем:**
@@ -245,13 +255,27 @@ audit\check_context_changes.bat <timestamp>
 
 **Пример расчёта:**
 ```
-GitHub (origin/main): PROJECT_VERSION_PATCH = 434
-Локальные коммиты ahead: 3 (commit1, commit2, commit3)
-Новая версия: 434 + 3 = 437
-→ Установить PROJECT_VERSION_PATCH = 437 перед push
+GitHub (origin/main): PROJECT_VERSION_PATCH = 436
+Локальные коммиты ahead: 2
+Новая версия: 436 + 2 + 1 = 439
+→ Установить PROJECT_VERSION_PATCH = 439 перед push
 ```
 
-**Исключение:** Если пушится только обновление версии (без других изменений) — достаточно одного коммита.
+**Проверка после пуша:**
+```bash
+git fetch origin
+TOTAL=$(git rev-list --count origin/main)
+PATCH=$(git show origin/main:src/CMakeLists.txt | grep PROJECT_VERSION_PATCH | grep -oP '\d+')
+# TOTAL и PATCH должны совпадать
+```
+
+**Формула перед пушем:**
+```
+PATCH = (коммитов на GitHub) + (локальные коммиты, включая текущий)
+```
+После пуша: `TOTAL = PATCH` — совпадает.
+
+**Исключение:** Если пушится только обновление версии (без других изменений) — достаточно одного коммита, расчёт: базовое + 1.
 
 **Важно:** PROJECT_VERSION_PATCH = количество закрытых PR (запушенных коммитов в main).
 Это число должно **всегда совпадать** с реальным количеством коммитов в ветке main на GitHub.
