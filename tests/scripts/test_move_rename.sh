@@ -56,7 +56,8 @@ sleep 5
 
 check "[ -f '$BASEDIR/big.txt.gz' ]" "MOVE-2a: .gz создана"
 
-# Заменяем содержимым ниже порога при переименовании
+# Переименование + замена содержимого на файл ниже порога
+mv "$BASEDIR/big.txt" "$BASEDIR/small.txt"
 python3 -c "print('C' * 100)" > "$BASEDIR/small.txt"
 sleep 5
 

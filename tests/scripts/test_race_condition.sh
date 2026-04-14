@@ -80,6 +80,15 @@ check "[ ! -f '$BASEDIR/race_move_out.txt.gz' ]" "RACE-4a: .gz в monitored не
 check "[ ! -f '/tmp/race_moved_out.txt.gz' ]" "RACE-4b: .gz вне monitored не создана"
 
 # ===========================================================================
+log "=== RACE-5: Маленький файл перемещён внутрь извне во время сжатия ==="
+python3 -c "print('E' * 5000)" > /tmp/race_move_in.txt
+sleep 0.2
+mv /tmp/race_move_in.txt "$BASEDIR/race_moved_in.txt"
+sleep 5
+
+check "[ -f '$BASEDIR/race_moved_in.txt.gz' ]" "RACE-5a: .gz создана после перемещения внутрь"
+
+# ===========================================================================
 log "=== RACE-6: Маленький файл уменьшен до < порога во время сжатия ==="
 python3 -c "print('F' * 5000)" > "$BASEDIR/race_shrink.txt"
 sleep 0.2
@@ -117,6 +126,50 @@ sleep 15
 
 # Файл должен быть сжат (возможно, дважды — текущее + повторное)
 check "[ -f '$BASEDIR/race_big_modify.txt.gz' ]" "RACE-9a: .gz создана после модификации большого файла"
+
+# ===========================================================================
+log "=== RACE-10: Большой файл (10 МБ) переименован во время сжатия ==="
+python3 -c "print('N' * 10000000)" > "$BASEDIR/race_big_rename.txt"
+sleep 1
+mv "$BASEDIR/race_big_rename.txt" "$BASEDIR/race_big_renamed.txt"
+sleep 15
+
+check "[ ! -f '$BASEDIR/race_big_rename.txt.gz' ]" "RACE-10a: старый путь чист"
+# Файл на новом пути должен быть сжат
+check "[ -f '$BASEDIR/race_big_renamed.txt.gz' ]" "RACE-10b: .gz создана на новом пути"
+
+# ===========================================================================
+log "=== RACE-11: Большой файл (10 МБ) перемещён в другую monitored-директорию ==="
+mkdir -p "$BASEDIR/other_monitored"
+python3 -c "print('O' * 10000000)" > "$BASEDIR/race_big_move.txt"
+sleep 1
+mv "$BASEDIR/race_big_move.txt" "$BASEDIR/other_monitored/race_big_moved.txt"
+sleep 15
+
+check "[ -f '$BASEDIR/other_monitored/race_big_moved.txt.gz' ]" "RACE-11a: .gz создана на новом месте"
+
+# ===========================================================================
+log "=== RACE-12: Большой файл (10 МБ) перемещён наружу из monitored-директории ==="
+python3 -c "print('P' * 10000000)" > "$BASEDIR/race_big_out.txt"
+sleep 1
+mv "$BASEDIR/race_big_out.txt" /tmp/race_big_external.txt
+sleep 15
+
+check "[ ! -f '$BASEDIR/race_big_out.txt.gz' ]" "RACE-12a: .gz в monitored не создана"
+rm -f /tmp/race_big_external.txt /tmp/race_big_external.txt.gz /tmp/race_big_external.txt.br
+
+# ===========================================================================
+log "=== RACE-13: Большой файл (10 МБ) изменён 3 раза подряд во время сжатия ==="
+python3 -c "print('Q' * 10000000)" > "$BASEDIR/race_big_triple.txt"
+sleep 0.5
+python3 -c "print('R' * 10000000)" > "$BASEDIR/race_big_triple.txt"
+sleep 0.5
+python3 -c "print('S' * 10000000)" > "$BASEDIR/race_big_triple.txt"
+sleep 0.5
+python3 -c "print('T' * 10000000)" > "$BASEDIR/race_big_triple.txt"
+sleep 15
+
+check "[ -f '$BASEDIR/race_big_triple.txt.gz' ]" "RACE-13a: .gz создана после серии модификаций"
 
 # ===========================================================================
 log "=== RACE-14: 10 файлов одновременно удалены во время сжатия ==="

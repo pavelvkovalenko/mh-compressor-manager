@@ -216,6 +216,7 @@ check "[ $BR_FAIL -eq 0 ]" "Brotli валидация: $BR_OK/$BR_CHECK OK, $BR_
 # Проверка что stale-файлы пережаты (mtime новее оригинала)
 STALE_FIXED=0
 STALE_TOTAL=0
+> /tmp/stale_check.txt  # создать/очистить файл ДО subshell
 echo "$FILES_TO_STALE" | head -20 | while read -r f; do
     [ -f "$f" ] || continue
     if [ -f "${f}.gz" ]; then
@@ -228,7 +229,13 @@ echo "$FILES_TO_STALE" | head -20 | while read -r f; do
         fi
     fi
 done
-rm -f /tmp/stale_check.txt
+# Анализ результатов
+if [[ -f /tmp/stale_check.txt ]]; then
+    STALE_FIXED=$(grep -c "OK" /tmp/stale_check.txt 2>/dev/null || echo 0)
+    STALE_TOTAL=$(wc -l < /tmp/stale_check.txt 2>/dev/null || echo 0)
+    log "  Stale-check: $STALE_FIXED/$STALE_TOTAL файлов пережаты корректно"
+    rm -f /tmp/stale_check.txt
+fi
 
 # ===========================================================================
 # ЭТАП 6: Стресс-тест — 100 новых файлов за раз

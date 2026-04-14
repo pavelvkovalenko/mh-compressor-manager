@@ -238,7 +238,7 @@ EOF
     eval "STRATEGY_${strategy_name}_ELAPSED=$elapsed"
     eval "STRATEGY_${strategy_name}_PEAK_MEM=$peak_mem_kb"
     eval "STRATEGY_${strategy_name}_AVG_MEM=$avg_mem_kb"
-    eval "STRATEGY_${strategy_NAME}_TOTAL_GZ=$total_gz"
+    eval "STRATEGY_${strategy_name}_TOTAL_GZ=$total_gz"
     eval "STRATEGY_${strategy_name}_TOTAL_BR=$total_br"
 }
 

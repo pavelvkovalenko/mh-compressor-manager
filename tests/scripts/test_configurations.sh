@@ -26,6 +26,10 @@ check() {
 
 cleanup() {
     sudo systemctl stop "$SERVICE" 2>/dev/null || true
+    # Восстановить оригинальный конфиг из бэкапа
+    if [[ -f /etc/mediahive/compressor-manager.conf.bak ]]; then
+        sudo cp /etc/mediahive/compressor-manager.conf.bak /etc/mediahive/compressor-manager.conf
+    fi
     sudo rm -rf "$BASEDIR" "$TMP_CONF"
 }
 trap cleanup EXIT

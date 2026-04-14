@@ -67,6 +67,40 @@ check "[ ! -f '$BASEDIR/exactly_255.js.gz' ]" "EDGE-4a: файл 255 байт Н
 check "[ ! -f '$BASEDIR/exactly_255.js.br' ]" "EDGE-4b: файл 255 байт НЕ сжат (.br)"
 
 # ===========================================================================
+log "=== EDGE-5: Диск заполнен на 100% (симуляция через tmpfs 1K) ==="
+TINY_DISK="/tmp/edge5_tinydisk"
+MOUNT_POINT="$BASEDIR/disk_full_test"
+mkdir -p "$MOUNT_POINT"
+# Попытка создать tmpfs 1K (требует root)
+if sudo mount -t tmpfs -o size=1K tmpfs "$MOUNT_POINT" 2>/dev/null; then
+    python3 -c "print('X' * 500)" > "$MOUNT_POINT/test.js" 2>/dev/null || true
+    sleep 3
+    # Файл не должен быть сжат — нет места
+    GZ_COUNT=$(sudo find "$MOUNT_POINT" -name "*.gz" 2>/dev/null | wc -l)
+    check "[ $GZ_COUNT -eq 0 ]" "EDGE-5a: при заполненном диске .gz не создан"
+    sudo umount "$MOUNT_POINT" 2>/dev/null || true
+    rm -rf "$TINY_DISK" "$MOUNT_POINT"
+else
+    log "  ⏭️ SKIP: EDGE-5 — mount не доступен (контейнер/нет прав)"
+    rm -rf "$MOUNT_POINT"
+fi
+
+# ===========================================================================
+log "=== EDGE-6: Переполнение inotify (inotify overflow) ==="
+# Генерируем больше событий чем inotify может обработать
+OVERFLOW_DIR="$BASEDIR/inotify_overflow"
+mkdir -p "$OVERFLOW_DIR"
+# Создаём 5000 файлов быстро — может вызвать inotify queue overflow
+for i in $(seq 1 5000); do
+    echo "file $i" > "$OVERFLOW_DIR/overflow_${i}.txt"
+done
+sleep 10
+# Сервис должен обработать все файлы (возможно с задержкой)
+GZ_COUNT=$(sudo find "$OVERFLOW_DIR" -name "*.gz" 2>/dev/null | wc -l)
+# Хотя бы часть файлов должна быть сжата
+check "[ $GZ_COUNT -gt 0 ]" "EDGE-6a: после overflow хотя бы часть файлов сжата ($GZ_COUNT)"
+
+# ===========================================================================
 log "=== EDGE-7: Файл с пробелами и спецсимволами в имени ==="
 python3 -c "print('test')" > "$BASEDIR/file with spaces & (special).js"
 sleep 3
