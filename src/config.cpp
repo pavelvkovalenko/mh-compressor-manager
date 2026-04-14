@@ -425,7 +425,7 @@ Config load_config(int argc, char* argv[]) {
                         if (value <= 10000) {
                             override.max_active_ios = value;
                         } else {
-                            Logger::warning(_("max_active_ios %zu too high in folder_override, limiting to 10000"), value);
+                            Logger::warning(_("max_active_ios %llu too high in folder_override, limiting to 10000"), value);
                             override.max_active_ios = 10000;
                         }
                     } else {
