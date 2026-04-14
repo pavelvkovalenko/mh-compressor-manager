@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================================
 set(PROJECT_VERSION_MAJOR 1)
 set(PROJECT_VERSION_MINOR 0)
-set(PROJECT_VERSION_PATCH 441)  # Количество закрытых PR (обновлять при мерже)
+set(PROJECT_VERSION_PATCH 443)  # Количество закрытых PR (обновлять при мерже)
 set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
 
 project(mh-compressor-manager
@@ -400,6 +400,7 @@ endif()
 
 message(STATUS "")
 message(STATUS "=== mh-compressor-manager Build Configuration ===")
+message(STATUS "Version:              ${PROJECT_VERSION}")
 message(STATUS "CMake Version:        ${CMAKE_VERSION}")
 message(STATUS "C++ Standard:         ${CMAKE_CXX_STANDARD}")
 message(STATUS "Compiler:             ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
