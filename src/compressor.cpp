@@ -34,18 +34,6 @@ namespace std {
 #include <selinux/selinux.h>
 #endif
 
-// Базовый размер буфера для потоковой обработки (1MB)
-static constexpr size_t COMPRESS_BASE_BUFFER_SIZE = 1048576;
-
-// Минимальный/максимальный размер буфера для сжатия (64KB / 4MB)
-static constexpr size_t COMPRESS_MIN_BUFFER_SIZE = 65536;
-static constexpr size_t COMPRESS_MAX_BUFFER_SIZE = 4194304;
-
-// Порог размера файла для выбора размера буфера
-static constexpr uint64_t COMPRESS_SMALL_FILE_THRESHOLD = 256 * 1024;
-static constexpr uint64_t COMPRESS_MEDIUM_FILE_THRESHOLD = 4 * 1024 * 1024;
-static constexpr uint64_t COMPRESS_LARGE_FILE_THRESHOLD = 16 * 1024 * 1024;
-
 // Размер выходного буфера для streaming-сжатия (128KB)
 // Используется в gzip_stream_process и brotli_stream_process
 static constexpr size_t STREAM_OUT_BUF_SIZE = 128 * 1024;

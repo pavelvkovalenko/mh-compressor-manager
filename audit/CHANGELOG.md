@@ -59,6 +59,11 @@
 - **security.cpp**: `cap_set_proc` перенесён ДО `setuid()` — ранее вызов после setuid возвращал EPERM silently, capabilities не устанавливались
 - **monitor.cpp**: Bounds check для inotify buffer — проверка `i + sizeof(inotify_event) <= len` перед cast указателя
 
+## [1.0.464] — 2026-04-14
+
+### Очистка мёртвого кода
+- **compressor.cpp**: удалены неиспользуемые константы `COMPRESS_BASE_BUFFER_SIZE`, `COMPRESS_MIN_BUFFER_SIZE`, `COMPRESS_MAX_BUFFER_SIZE`, `COMPRESS_SMALL_FILE_THRESHOLD`, `COMPRESS_MEDIUM_FILE_THRESHOLD`, `COMPRESS_LARGE_FILE_THRESHOLD`
+
 ## [1.0.462] — 2026-04-14
 
 ### Критические исправления
