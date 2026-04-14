@@ -38,8 +38,12 @@ bool NumaUtils::initialize() {
         numa_node_count_ = numa_num_configured_nodes();
         NUMA_LOG_INFO("NUMA available: %d nodes", numa_node_count_);
 
-        // Инициализация политик NUMA
-        numa_set_interleave_mask(numa_all_nodes_ptr);
+        // Инициализация политик NUMA — проверяем что указатель валиден
+        if (numa_all_nodes_ptr) {
+            numa_set_interleave_mask(numa_all_nodes_ptr);
+        } else {
+            NUMA_LOG_INFO("numa_all_nodes_ptr is NULL, skipping interleave mask");
+        }
         return true;
     } else {
         numa_available_ = false;

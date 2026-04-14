@@ -8,7 +8,9 @@
 #include <atomic>
 #include <cstdint>
 #include <sys/mman.h>
+#ifdef __x86_64__
 #include <immintrin.h>
+#endif
 #include <unordered_set>
 #include "logger.h"
 #include "i18n.h"
@@ -98,19 +100,23 @@ public:
             T* buf = local_cache.back();
             local_cache.pop_back();
             // Prefetch данных для снижения латентности
+#ifdef __x86_64__
             _mm_prefetch(reinterpret_cast<char*>(buf), _MM_HINT_T0);
+#endif
             return buf;
         }
-        
+
         // Если per-thread кэш пуст, берем из глобального пула
         std::unique_lock<std::mutex> lock(mutex_);
-        
+
         if (!free_buffers_.empty()) {
             auto* buf = free_buffers_.front();
             free_buffers_.pop();
             lock.unlock();
             // Prefetch данных
+#ifdef __x86_64__
             _mm_prefetch(reinterpret_cast<char*>(buf), _MM_HINT_T0);
+#endif
             return buf;
         }
         

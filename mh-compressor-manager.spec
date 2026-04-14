@@ -1,5 +1,5 @@
 Name:           mh-compressor-manager
-Version:        1.0.88
+Version:        1.0.458
 Release:        1%{?dist}
 Summary:        Автоматическое сжатие статического контента для nginx
 
@@ -98,6 +98,14 @@ fi
 %license LICENSE
 
 %changelog
+* Вт 14 апр 2026 Павел Коваленко <dev@mediahive.ru> - 1.0.458-1
+- Полная локализация (gettext, русский перевод 292+ сообщений)
+- Man-страницы на английском и русском языках
+- Bash completion для командной строки
+- Оптимизации сжатия: однократное чтение, libdeflate, streaming чанки по L3
+- CPU affinity, адаптивный буфер по кэшу CPU
+- Интеграция systemd с seccomp и NUMA
+
 * Mon Jan 01 2026 Pavel Kovalenko <dev@mediahive.ru> - 1.0.0-1
 - Initial package release для Fedora 43
 - © 2026 MediaHive.ru, ООО ОКБ "Улей"

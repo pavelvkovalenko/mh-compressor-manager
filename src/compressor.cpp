@@ -391,15 +391,19 @@ bool Compressor::compress_brotli_from_memory(std::span<const uint8_t> data,
         level = 4;
     }
 
-    // Создаём кодировщик Brotli
-    BrotliEncoderState* state = BrotliEncoderCreateInstance(nullptr, nullptr, nullptr);
-    if (!state) {
+    // Создаём кодировщик Brotli (RAII через unique_ptr с custom deleter)
+    struct BrotliEncoderDeleter {
+        void operator()(BrotliEncoderState* p) { if (p) BrotliEncoderDestroyInstance(p); }
+    };
+    std::unique_ptr<BrotliEncoderState, BrotliEncoderDeleter> enc(
+        BrotliEncoderCreateInstance(nullptr, nullptr, nullptr));
+    if (!enc) {
         Logger::error(_("Failed to create Brotli encoder"));
         return false;
     }
 
-    BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, (uint32_t)level);
-    BrotliEncoderSetParameter(state, BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
+    BrotliEncoderSetParameter(enc.get(), BROTLI_PARAM_QUALITY, (uint32_t)level);
+    BrotliEncoderSetParameter(enc.get(), BROTLI_PARAM_MODE, BROTLI_MODE_TEXT);
 
     // Выделяем буфер вывода
     size_t max_compressed_size = BrotliEncoderMaxCompressedSize(data.size());
@@ -413,24 +417,23 @@ bool Compressor::compress_brotli_from_memory(std::span<const uint8_t> data,
     uint8_t* next_out = compressed.data();
 
     while (true) {
-        if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH,
+        if (!BrotliEncoderCompressStream(enc.get(), BROTLI_OPERATION_FINISH,
                                           &available_in, &next_in,
                                           &available_out, &next_out,
                                           nullptr)) {
             Logger::error(_("Brotli compression stream error for output: %s"), output_path.string().c_str());
-            BrotliEncoderDestroyInstance(state);
             return false;
         }
 
         // Проверяем завершён ли encoder
-        if (BrotliEncoderIsFinished(state)) break;
+        if (BrotliEncoderIsFinished(enc.get())) break;
 
         // Encoder не завершён — нужно вызвать ещё раз с пустым входом
         available_in = 0;
     }
 
     size_t compressed_size = static_cast<size_t>(next_out - compressed.data());
-    BrotliEncoderDestroyInstance(state);
+    // enc уничтожается автоматически (RAII)
 
     if (compressed_size == 0) {
         Logger::error(_("Brotli produced zero bytes for output: %s"), output_path.string().c_str());
