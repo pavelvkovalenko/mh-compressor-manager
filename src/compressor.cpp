@@ -335,7 +335,14 @@ bool write_atomic_file(const fs::path& output_path, const uint8_t* data, size_t 
         total_written += written;
     }
 
-    // Синхронизируем и закрываем
+    // Синхронизируем и закрываем — права явно через fchmod (umask не влияет)
+    if (fchmod(fd_out, mode) != 0) {
+        int saved_errno = errno;
+        close(fd_out);
+        unlink(tmp_path_str.c_str());
+        Logger::error(_("fchmod failed for %s: %s"), tmp_path_str.c_str(), strerror(saved_errno));
+        return false;
+    }
     if (fsync(fd_out) != 0) {
         int saved_errno = errno;
         close(fd_out);

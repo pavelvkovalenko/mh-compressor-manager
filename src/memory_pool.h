@@ -257,11 +257,21 @@ public:
         for (auto* buf : cache) {
 #if defined(_MSC_VER)
             _aligned_free(buf);
+#elif HAVE_NUMA
+            // На POSIX проверяем была ли память выделена через NUMA
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                if (numa_allocated_.count(buf)) {
+                    // NUMA-память — используем numa_free
+                    NumaUtils::free_on_node(buf, 0);
+                    numa_allocated_.erase(buf);
+                    continue;
+                }
+            }
+            // Обычная память — free()
+            free(buf);
 #else
-            // На POSIX: posix_memalign освобождается через free()
-            // NUMA-память (если использовалась) также освобождается через free()
-            // т.к. NumaUtils::allocate_on_node internally использует mmap/membind
-            // который совместим с free() на большинстве систем.
+            // Без NUMA: posix_memalign освобождается через free()
             free(buf);
 #endif
         }

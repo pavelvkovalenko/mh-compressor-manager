@@ -207,6 +207,9 @@ bool NumaUtils::bind_memory_to_node(void* ptr, size_t size, int node_id) {
 #endif
 }
 
+// TODO: реализовать парсинг /sys/block/*/device/numa_node для определения
+// оптимального NUMA-узла для блочных устройств. Сейчас возвращаем 0 (узел по умолчанию).
+// Это не критично — влияет только на оптимизацию выделения памяти.
 int NumaUtils::get_optimal_node_for_device(const fs::path& device_path) {
 #if HAVE_NUMA
     if (!numa_available_) {

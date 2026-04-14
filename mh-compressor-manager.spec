@@ -1,5 +1,5 @@
 Name:           mh-compressor-manager
-Version:        1.0.458
+Version:        1.0.464
 Release:        1%{?dist}
 Summary:        Автоматическое сжатие статического контента для nginx
 
@@ -98,7 +98,7 @@ fi
 %license LICENSE
 
 %changelog
-* Вт 14 апр 2026 Павел Коваленко <dev@mediahive.ru> - 1.0.458-1
+* Вт 14 апр 2026 Павел Коваленко <dev@mediahive.ru> - 1.0.464-1
 - Полная локализация (gettext, русский перевод 292+ сообщений)
 - Man-страницы на английском и русском языках
 - Bash completion для командной строки
