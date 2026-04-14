@@ -1,0 +1,95 @@
+.TH MH-COMPRESSOR-MANAGER 1 "April 2026" "mh-compressor-manager 1.0.431" "General Commands Manual"
+.SH NAME
+mh-compressor-manager \- automatic static content compression for nginx
+.SH SYNOPSIS
+.B mh-compressor-manager
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+\fBmh-compressor-manager\fP is a background service (daemon) for automatic compression of static web content for the nginx web server. The program monitors file system changes in real time and creates compressed copies of files in Gzip (.gz) and Brotli (.br) formats.
+.PP
+It uses \fBinotify\fP for real-time file system monitoring and a thread pool for parallel compression. Compressed files inherit metadata from the originals: permissions, owner/group, SELinux context, and modification time.
+.SH OPTIONS
+.TP
+.BR \-\-config " \fIPATH\fR"
+Path to configuration file (default: \fI/etc/mediahive/compressor-manager.conf\fR)
+.TP
+.BR \-\-dir " \fIPATH\fR"
+Target directory (overrides \fBtarget_path\fR from config)
+.TP
+.BR \-\-ext " \fILIST\fR"
+List of file extensions for compression (overrides \fBlist\fR from config, space-separated)
+.TP
+.BR \-\-gzip\-level " \fIN\fR"
+Gzip compression level (1\-9, default: 9)
+.TP
+.BR \-\-brotli\-level " \fIN\fR"
+Brotli compression level (1\-11, default: 11)
+.TP
+.BR \-\-min\-size " \fIN\fR"
+Minimum file size for compression in bytes (default: 256, minimum: 256)
+.TP
+.BR \-\-min\-compress\-size " \fIN\fR"
+Alias for \fB\-\-min\-size\fR
+.TP
+.B \-\-dry\-run
+Dry run mode (show plans without actual compression)
+.TP
+.B \-\-debug
+Debug logging mode (overrides \fBdebug\fR from config)
+.TP
+.BR \-\-process\-without\-ext
+Process files without extensions
+.TP
+.BR \-h ", " \-\-help
+Show help and exit
+.TP
+.BR \-v ", " \-\-version
+Show version and exit
+.SH FILES
+.TP
+.I /etc/mediahive/compressor-manager.conf
+Production configuration file (minimal, no comments)
+.TP
+.I /etc/mediahive/compressor-manager.conf.full
+Full reference configuration (all parameters with documentation)
+.SH EXAMPLES
+.TP
+Run with default settings:
+.RS
+.nf
+mh-compressor-manager
+.fi
+.RE
+.TP
+Run with custom target directory:
+.RS
+.nf
+mh-compressor-manager --dir /var/www/mysite
+.fi
+.RE
+.TP
+Dry run (no actual compression):
+.RS
+.nf
+mh-compressor-manager --dry-run
+.fi
+.RE
+.TP
+Maximum compression:
+.RS
+.nf
+mh-compressor-manager --gzip-level 9 --brotli-level 11
+.fi
+.RE
+.SH "SEE ALSO"
+.BR gzip (1),
+.BR brotli (1),
+.BR nginx (8),
+.BR inotify (7),
+.BR systemd.service (5)
+.SH AUTHORS
+Pavel Kovalenko <pavelvkovalenko@github.com>
+.PP
+MediaHive.ru © 2026, owner: OOO OKB "Uley"
+.PP
+Distributed under the MIT License.

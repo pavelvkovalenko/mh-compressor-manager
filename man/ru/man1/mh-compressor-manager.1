@@ -1,0 +1,95 @@
+.TH MH-COMPRESSOR-MANAGER 1 "Апрель 2026" "mh-compressor-manager 1.0.431" "Руководство пользователя"
+.SH НАЗВАНИЕ
+mh-compressor-manager \- автоматическое сжатие статического контента для nginx
+.SH ОБЗОР
+.B mh-compressor-manager
+[\fIОПЦИИ\fR]
+.SH ОПИСАНИЕ
+\fBmh-compressor-manager\fP — фоновая служба (демон) для автоматического сжатия статического контента веб-сервера nginx. Программа отслеживает изменения в файловой системе в реальном времени и создаёт сжатые копии файлов в форматах Gzip (.gz) и Brotli (.br).
+.PP
+Использует \fBinotify\fP для мониторинга файловой системы и пул потоков для параллельного сжатия. Сжатые файлы наследуют метаданные оригинала: права доступа, владелец/группа, контекст SELinux и время модификации.
+.SH ОПЦИИ
+.TP
+.BR \-\-config " \fIПУТЬ\fR"
+Путь к файлу конфигурации (по умолчанию: \fI/etc/mediahive/compressor-manager.conf\fR)
+.TP
+.BR \-\-dir " \fIПУТЬ\fR"
+Целевая директория (переопределяет \fBtarget_path\fR из конфига)
+.TP
+.BR \-\-ext " \fIСПИСОК\fR"
+Список расширений файлов для сжатия (переопределяет \fBlist\fR из конфига, через пробел)
+.TP
+.BR \-\-gzip\-level " \fIN\fR"
+Уровень сжатия Gzip (1\-9, по умолчанию: 9)
+.TP
+.BR \-\-brotli\-level " \fIN\fR"
+Уровень сжатия Brotli (1\-11, по умолчанию: 11)
+.TP
+.BR \-\-min\-size " \fIN\fR"
+Минимальный размер файла для сжатия в байтах (по умолчанию: 256, минимум: 256)
+.TP
+.BR \-\-min\-compress\-size " \fIN\fR"
+Алиас для \fB\-\-min\-size\fR
+.TP
+.B \-\-dry\-run
+Режим проверки (показать планы без реального сжатия)
+.TP
+.B \-\-debug
+Режим отладочного логирования (переопределяет \fBdebug\fR из конфига)
+.TP
+.BR \-\-process\-without\-ext
+Обрабатывать файлы без расширений
+.TP
+.BR \-h ", " \-\-help
+Вывести справку и завершить работу
+.TP
+.BR \-v ", " \-\-version
+Вывести версию и завершить работу
+.SH ФАЙЛЫ
+.TP
+.I /etc/mediahive/compressor-manager.conf
+Боевой файл конфигурации (минимальный, без комментариев)
+.TP
+.I /etc/mediahive/compressor-manager.conf.full
+Полная конфигурация-справочник (все параметры с документацией)
+.SH ПРИМЕРЫ
+.TP
+Запуск с настройками по умолчанию:
+.RS
+.nf
+mh-compressor-manager
+.fi
+.RE
+.TP
+Запуск с пользовательской директорией:
+.RS
+.nf
+mh-compressor-manager --dir /var/www/mysite
+.fi
+.RE
+.TP
+Тестовый запуск (без сжатия):
+.RS
+.nf
+mh-compressor-manager --dry-run
+.fi
+.RE
+.TP
+Максимальное сжатие:
+.RS
+.nf
+mh-compressor-manager --gzip-level 9 --brotli-level 11
+.fi
+.RE
+.SH "СМОТРИТЕ ТАКЖЕ"
+.BR gzip (1),
+.BR brotli (1),
+.BR nginx (8),
+.BR inotify (7),
+.BR systemd.service (5)
+.SH АВТОРЫ
+Коваленко Павел <pavelvkovalenko@github.com>
+.PP
+MediaHive.ru © 2026, владелец: ООО ОКБ "Улей"
+.PP
+Распространяется под лицензией MIT.

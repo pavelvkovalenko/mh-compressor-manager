@@ -366,6 +366,23 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/mh-compressor-manager.service
 )
 
 # ============================================================================
+# Man-страницы (ТЗ §6.2)
+# ============================================================================
+# Английская man-страница (оригинал)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../man/en/man1/mh-compressor-manager.1
+    DESTINATION /usr/share/man/man1
+    PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    RENAME mh-compressor-manager.1
+)
+
+# Русская man-страница (перевод)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../man/ru/man1/mh-compressor-manager.1
+    DESTINATION /usr/share/man/ru/man1
+    PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    RENAME mh-compressor-manager.1
+)
+
+# ============================================================================
 # Вывод информации о сборке
 # ============================================================================
 # Определяем библиотеку форматирования

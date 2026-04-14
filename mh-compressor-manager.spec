@@ -57,6 +57,12 @@ if [ -f build/translations/locale/ru/LC_MESSAGES/mh-compressor-manager.mo ]; the
         %{buildroot}/%{_datadir}/locale/ru/LC_MESSAGES/
 fi
 
+# Man-страницы (ТЗ §6.2)
+mkdir -p %{buildroot}/%{_mandir}/man1
+install -m 644 ../man/en/man1/mh-compressor-manager.1 %{buildroot}/%{_mandir}/man1/
+mkdir -p %{buildroot}/%{_datadir}/man/ru/man1
+install -m 644 ../man/ru/man1/mh-compressor-manager.1 %{buildroot}/%{_datadir}/man/ru/man1/
+
 %post
 if [ $1 -eq 1 ]; then
     /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
@@ -79,6 +85,9 @@ fi
 %{_unitdir}/mh-compressor-manager.service
 # Файлы переводов (ТЗ §22.7)
 %{_datadir}/locale/ru/LC_MESSAGES/mh-compressor-manager.mo
+# Man-страницы (ТЗ §6.2)
+/usr/share/man/man1/mh-compressor-manager.1*
+/usr/share/man/ru/man1/mh-compressor-manager.1*
 %doc README.md
 %doc README.html
 %license LICENSE

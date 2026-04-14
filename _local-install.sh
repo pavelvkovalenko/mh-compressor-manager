@@ -42,7 +42,21 @@ fi
 # 4. Установка systemd-юнита
 sudo cp mh-compressor-manager.service /usr/lib/systemd/system/
 
-# 5. Перезагрузка демонов systemd
+# 5. Установка man-страниц (ТЗ §6.2)
+if [[ -d "../man/en/man1" ]]; then
+    sudo mkdir -p /usr/share/man/man1
+    sudo cp ../man/en/man1/mh-compressor-manager.1 /usr/share/man/man1/
+    sudo chmod 644 /usr/share/man/man1/mh-compressor-manager.1
+fi
+if [[ -d "../man/ru/man1" ]]; then
+    sudo mkdir -p /usr/share/man/ru/man1
+    sudo cp ../man/ru/man1/mh-compressor-manager.1 /usr/share/man/ru/man1/
+    sudo chmod 644 /usr/share/man/ru/man1/mh-compressor-manager.1
+fi
+# Обновить кэш man-db
+sudo mandb 2>/dev/null || true
+
+# 6. Перезагрузка демонов systemd
 sudo systemctl daemon-reload
 
 
