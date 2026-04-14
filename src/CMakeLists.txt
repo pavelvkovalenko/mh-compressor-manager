@@ -203,7 +203,11 @@ find_package(Gettext QUIET)
 if(Gettext_FOUND AND GETTEXT_MSGFMT_EXECUTABLE)
     message(STATUS "Gettext found — localization enabled")
     target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_GETTEXT)
-    target_link_libraries(${PROJECT_NAME} PRIVATE intl)
+    # На Linux/glibc libintl встроена в libc, отдельная линковка не нужна.
+    # На macOS/MinGW требуется отдельная libintl.
+    if(APPLE OR WIN32)
+        target_link_libraries(${PROJECT_NAME} PRIVATE intl)
+    endif()
 else()
     message(STATUS "Gettext NOT found — localization disabled, English only")
     # Fallback: макрос _() возвращает строку как есть (определено в i18n.h)
