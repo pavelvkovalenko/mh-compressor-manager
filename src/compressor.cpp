@@ -26,8 +26,6 @@ namespace std {
 }
 #endif
 #include <algorithm>
-#include <cerrno>
-#include <cstring>      // Для strerror()
 #include <pwd.h>        // Для getpwuid()
 #include <grp.h>        // Для getgrgid()
 #include <climits>      // Для PATH_MAX
