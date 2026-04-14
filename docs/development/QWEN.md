@@ -213,6 +213,30 @@ audit\check_context_changes.bat <timestamp>
 **Пример триггера:** При изменении `PROJECT_VERSION_PATCH` в CMakeLists.txt с 431 на 434 —
 обнови все таблицы, статусы, списки файлов и версии в разделе 21.
 
+## Правило: Обновление SPEC-файла при изменении версии
+
+**При КАЖДОМ обновлении `PROJECT_VERSION_PATCH` в CMakeLists.txt — ОБЯЗАТЕЛЬНО:**
+
+1. **Обнови `mh-compressor-manager.spec`:**
+   - Строка `Version:` должна совпадать с версией из CMakeLists.txt (формат MAJOR.MINOR.PATCH)
+   - Примечание: `_rpm-build.sh` автоматически подставляет версию из CMakeLists.txt через sed перед сборкой, но SPEC всё равно должен быть актуален для ручной сборки и чтения
+
+2. **Обнови `%changelog` в SPEC-файле:**
+   - Добавь новую запись с текущей датой, версией и кратким описанием изменений
+   - Формат: `* <день недели> <месяц> <день> <год> <Автор> <email> - <VERSION>-1`
+   - Пример: `* Вт 14 апр 2026 Павел Коваленко <dev@mediahive.ru> - 1.0.455-1`
+
+3. **Проверь консистентность:**
+   - `CMakeLists.txt`: PROJECT_VERSION_MAJOR.MINOR.PATCH
+   - `SPEC`: Version: MAJOR.MINOR.PATCH
+   - `README.md`: бейдж, таблица, футер
+   - `translations/ru.po`: Project-Id-Version
+   - Все четыре должны совпадать
+
+4. **Проверь пути в SPEC:**
+   - Все относительные пути (`../../`) корректны при сборке из `src/build/`
+   - `%files` содержит все устанавливаемые файлы (binary, config, man, completion, locale, doc, license)
+
 ## Правило: Подсчёт коммитов и обновление PROJECT_VERSION_PATCH перед пушем
 
 **Перед КАЖДЫМ пушем в ветку `main` — ОБЯЗАТЕЛЬНО:**
