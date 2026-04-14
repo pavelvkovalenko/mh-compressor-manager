@@ -193,6 +193,17 @@ echo "  Копирование файлов документации из кор
 cp "README.md" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.md не найден в корне"
 cp "LICENSE" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/LICENSE"
 
+# Копирование дополнительных директорий (man, completion, translations)
+echo "  Копирование дополнительных директорий..."
+for dir in man completion translations; do
+    if [ -d "$dir" ]; then
+        cp -r "$dir" "${BUILD_DIR}/"
+        echo "    ✓ ${dir}/ скопирована"
+    else
+        echo "    ⚠️ ${dir}/ не найдена"
+    fi
+done
+
 # Удаляем артефакты сборки
 rm -rf "${BUILD_DIR}/build"
 rm -f "${BUILD_DIR}/CMakeCache.txt"
