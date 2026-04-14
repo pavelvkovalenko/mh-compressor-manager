@@ -178,29 +178,18 @@ BUILD_DIR="${TEMP_DIR}/${PROJECT_NAME}-${VERSION}"
 
 mkdir -p "${BUILD_DIR}"
 
-if [ ! -d "src" ]; then
-    echo -e "${RED}✗ Ошибка: Директория 'src' не найдена!${NC}"
-    rm -rf "${TEMP_DIR}"
-    exit 1
-fi
-
-# Копирование исходных файлов из src/
-echo "  Копирование исходных файлов..."
-cp -r src/* "${BUILD_DIR}/"
-
-# Копирование файлов из корня проекта
-echo "  Копирование файлов документации из корня..."
-cp "README.md" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.md не найден в корне"
+# Копируем ВЕСЬ проект целиком (сохраняем структуру)
+echo "  Копирование всего проекта..."
+cp -r src/ "${BUILD_DIR}/src/"
+cp "README.md" "${BUILD_DIR}/" 2>/dev/null || echo "  ⚠️ README.md не найден"
 cp "LICENSE" "${BUILD_DIR}/" 2>/dev/null || touch "${BUILD_DIR}/LICENSE"
+cp "CONTRIBUTING.md" "${BUILD_DIR}/" 2>/dev/null || true
 
-# Копирование дополнительных директорий (man, completion, translations)
-echo "  Копирование дополнительных директорий..."
+# Копирование дополнительных директорий
 for dir in man completion translations; do
     if [ -d "$dir" ]; then
         cp -r "$dir" "${BUILD_DIR}/"
         echo "    ✓ ${dir}/ скопирована"
-    else
-        echo "    ⚠️ ${dir}/ не найдена"
     fi
 done
 
@@ -236,6 +225,11 @@ else
     _generate_config > "${BUILD_DIR}/compressor-manager.conf"
 fi
 
+# Полная конфигурация (справочник)
+if [ -f "src/compressor-manager.conf.full" ]; then
+    cp "src/compressor-manager.conf.full" "${BUILD_DIR}/"
+fi
+
 # Генерация mh-compressor-manager.service
 _generate_service() {
     cat << 'SVC'
@@ -268,7 +262,7 @@ tar -czf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" \
 
 # Проверка структуры архива
 echo "  Проверка структуры архива..."
-_REQUIRED_FILES=("CMakeLists.txt" "compressor-manager.conf" "mh-compressor-manager.service" "LICENSE")
+_REQUIRED_FILES=("src/CMakeLists.txt" "compressor-manager.conf" "mh-compressor-manager.service" "LICENSE")
 
 for req in "${_REQUIRED_FILES[@]}"; do
     if ! tar -tzf "${RPM_BUILD_ROOT}/SOURCES/${SOURCE_TAR}" | grep -q "${req}"; then
