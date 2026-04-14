@@ -81,6 +81,50 @@ Maximum compression:
 mh-compressor-manager --gzip-level 9 --brotli-level 11
 .fi
 .RE
+.SH "SYSTEMD MANAGEMENT"
+Enable and start the service:
+.RS
+.nf
+sudo systemctl enable mh-compressor-manager
+sudo systemctl start mh-compressor-manager
+.fi
+.RE
+Check service status:
+.RS
+.nf
+sudo systemctl status mh-compressor-manager
+.fi
+.RE
+Restart the service:
+.RS
+.nf
+sudo systemctl restart mh-compressor-manager
+.fi
+.RE
+View recent logs (last 50 lines):
+.RS
+.nf
+journalctl -u mh-compressor-manager --no-pager -n 50
+.fi
+.RE
+View logs in real time:
+.RS
+.nf
+journalctl -u mh-compressor-manager -f
+.fi
+.RE
+View only errors:
+.RS
+.nf
+journalctl -u mh-compressor-manager -p err --no-pager
+.fi
+.RE
+View logs for a specific time range:
+.RS
+.nf
+journalctl -u mh-compressor-manager --since "1 hour ago" --no-pager
+.fi
+.RE
 .SH "SEE ALSO"
 .BR gzip (1),
 .BR brotli (1),

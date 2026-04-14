@@ -81,6 +81,50 @@ mh-compressor-manager --dry-run
 mh-compressor-manager --gzip-level 9 --brotli-level 11
 .fi
 .RE
+.SH "УПРАВЛЕНИЕ ЧЕРЕЗ SYSTEMD"
+Включение и запуск службы:
+.RS
+.nf
+sudo systemctl enable mh-compressor-manager
+sudo systemctl start mh-compressor-manager
+.fi
+.RE
+Проверка статуса службы:
+.RS
+.nf
+sudo systemctl status mh-compressor-manager
+.fi
+.RE
+Перезапуск службы:
+.RS
+.nf
+sudo systemctl restart mh-compressor-manager
+.fi
+.RE
+Просмотр последних записей журнала (50 строк):
+.RS
+.nf
+journalctl -u mh-compressor-manager --no-pager -n 50
+.fi
+.RE
+Просмотр журнала в реальном времени:
+.RS
+.nf
+journalctl -u mh-compressor-manager -f
+.fi
+.RE
+Только сообщения об ошибках:
+.RS
+.nf
+journalctl -u mh-compressor-manager -p err --no-pager
+.fi
+.RE
+Журнал за определённый период:
+.RS
+.nf
+journalctl -u mh-compressor-manager --since "1 hour ago" --no-pager
+.fi
+.RE
 .SH "СМОТРИТЕ ТАКЖЕ"
 .BR gzip (1),
 .BR brotli (1),
