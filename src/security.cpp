@@ -205,9 +205,13 @@ bool drop_privileges(const std::string& username, const std::vector<std::string>
     }
 
     // Настраиваем capabilities ДО сброса UID — после setuid cap_set_proc вернёт EPERM
-    // PR_SET_KEEPCAPS сохраняет capabilities при setuid, но нам это не нужно —
-    // мы устанавливаем их ДО setuid пока ещё root
+    // PR_SET_KEEPCAPS сохраняет capabilities при последующем setuid()
 #if HAVE_LIBCAP
+    if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) != 0) {
+        Logger::error(_("Failed to set PR_SET_KEEPCAPS: %s — capabilities will be lost after setuid"), strerror(errno));
+        return false;
+    }
+
     cap_t caps = cap_init();  // Создаем пустую структуру capabilities
     if (caps == NULL) {
         Logger::error(_("Failed to initialize capabilities structure: %s — aborting privilege drop"), strerror(errno));

@@ -59,6 +59,34 @@
 - **security.cpp**: `cap_set_proc` перенесён ДО `setuid()` — ранее вызов после setuid возвращал EPERM silently, capabilities не устанавливались
 - **monitor.cpp**: Bounds check для inotify buffer — проверка `i + sizeof(inotify_event) <= len` перед cast указателя
 
+## [1.0.462] — 2026-04-14
+
+### Критические исправления
+- **security.cpp**: добавлен `prctl(PR_SET_KEEPCAPS, 1)` перед `cap_set_proc()` — без этого `setuid()` очищал effective capabilities, процесс терял `CAP_DAC_OVERRIDE` и `CAP_DAC_READ_SEARCH`
+- **main.cpp**: сравнение mtime теперь использует nanosecond precision (`st_mtim.tv_nsec`) на Linux — устранены ложные срабатывания race condition в пределах одной секунды
+- **memory_pool.h**: `_mm_prefetch` обёрнут в `#ifdef __x86_64__` для совместимости с ARM
+- **compressor.cpp**: `BrotliEncoderState` теперь через `unique_ptr` с custom deleter (RAII) — устранена утечка при раннем return
+- **numa_utils.cpp**: добавлена проверка `numa_all_nodes_ptr` на nullptr перед использованием
+
+### Документация
+- Обновлены все версии до 1.0.462
+- SPEC: Version 1.0.88 → 1.0.462, добавлен changelog
+- Добавлены подразделы раздела 3 в содержание TECH_SPEC
+- Добавлен раздел 6.3 (bash completion) в TECH_SPEC
+
+### Bash completion
+- Добавлен файл `completion/mh-compressor-manager`
+- Интеграция в CMakeLists.txt, _local-install.sh, SPEC
+
+### Man-страницы
+- Добавлены `man/en/man1/mh-compressor-manager.1` и `man/ru/man1/mh-compressor-manager.1`
+- Интеграция в CMakeLists.txt, _local-install.sh, SPEC
+
+### RPM сборка
+- Исправлена структура tarball (полная структура проекта с src/, man/, completion/, translations/)
+- Версия RPM теперь берётся из CMakeLists.txt (не из SPEC)
+- Удалён несуществующий README.html из %doc
+
 ## [1.0.88] — 2026-04-11
 
 ### Исправления безопасности

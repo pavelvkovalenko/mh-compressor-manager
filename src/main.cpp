@@ -507,7 +507,15 @@ void compress_task(const fs::path& path) {
                     g_metrics.failed_tasks++;
                     return;
                 }
-                if (post_stat.st_mtime != st.st_mtime) {
+                // Проверяем mtime с nanosecond precision (Linux) или секундами (другие POSIX)
+                bool mtime_changed = false;
+#if defined(__linux__) && (defined(_POSIX_SOURCE) || defined(_GNU_SOURCE))
+                mtime_changed = (post_stat.st_mtim.tv_sec != st.st_mtim.tv_sec ||
+                                 post_stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec);
+#else
+                mtime_changed = (post_stat.st_mtime != st.st_mtime);
+#endif
+                if (mtime_changed) {
                     // Файл изменён во время чтения — отменяем сжатие
                     Logger::debug(_("Race condition: file %s modified during read (mtime changed), compression cancelled"), path.string().c_str());
                     buffer_pool().release_raw(buffer);
@@ -690,7 +698,15 @@ void compress_task(const fs::path& path) {
                     g_metrics.failed_tasks++;
                     return;
                 }
-                if (post_stat.st_mtime != st.st_mtime) {
+                // Проверяем mtime с nanosecond precision
+                bool stream_mtime_changed = false;
+#if defined(__linux__) && (defined(_POSIX_SOURCE) || defined(_GNU_SOURCE))
+                stream_mtime_changed = (post_stat.st_mtim.tv_sec != st.st_mtim.tv_sec ||
+                                        post_stat.st_mtim.tv_nsec != st.st_mtim.tv_nsec);
+#else
+                stream_mtime_changed = (post_stat.st_mtime != st.st_mtime);
+#endif
+                if (stream_mtime_changed) {
                     Logger::debug(_("Race condition: streaming file %s modified during compression (mtime changed), discarding results"), path.string().c_str());
                     // Файл изменён — удаляем записанные сжатые копии (они содержат устаревшие данные)
                     Compressor::safe_remove_compressed(path);
