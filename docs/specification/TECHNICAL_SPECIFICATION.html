@@ -854,11 +854,6 @@ brotli_level=11
 <td>Высокий</td>
 </tr>
 <tr>
-<td><code>--min-compress-size &lt;N&gt;</code></td>
-<td>Алиас для <code>--min-size</code> (переопределяет <code>min_compress_size</code>)</td>
-<td>Высокий</td>
-</tr>
-<tr>
 <td><code>--debug</code></td>
 <td>Режим отладочного логирования (переопределяет <code>debug</code>)</td>
 <td>Высокий</td>
@@ -3538,7 +3533,7 @@ nginx отдаёт для style.css.br:  Last-Modified: Sun, 11 Apr 2026 08:00:0
 <li>[ ] Удалить <code>OPTIMAL_COMPRESS_SIZE</code> (объединено с <code>MIN_COMPRESS_SIZE</code>)</li>
 <li>[ ] Реализовать проверку <code>should_compress(file_size)</code> до начала сжатия</li>
 <li>[ ] Валидация: при значении &lt; 256 — использовать умолчание (256) с предупреждением</li>
-<li>[ ] Добавить CLI аргументы <code>--min-size</code> и <code>--min-compress-size</code> (алиасы)</li>
+<li>[ ] Добавить CLI аргумент <code>--min-size</code></li>
 <li>[ ] Добавить логирование на уровне <code>DEBUG</code> для пропущенных файлов</li>
 <li>[ ] Добавить счётчики <code>files_skipped_small</code> и <code>bytes_skipped_small</code></li>
 <li>[ ] Обновить документацию конфигурационного файла</li>
