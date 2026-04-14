@@ -9,7 +9,7 @@ _mh_compressor_manager() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     opts="--config --dir --ext --gzip-level --brotli-level \
-          --min-size --min-compress-size --dry-run --debug \
+          --min-size --dry-run --debug \
           --help --version --process-without-ext"
 
     case "${prev}" in
@@ -33,8 +33,13 @@ _mh_compressor_manager() {
             COMPREPLY=( $(compgen -W "txt js css svg json html htm map" -- "${cur}") )
             return 0
             ;;
-        --min-size|--min-compress-size)
+        --min-size)
             COMPREPLY=( $(compgen -W "256 512 1024 2048 4096 8192" -- "${cur}") )
+            return 0
+            ;;
+        --dry-run|--debug|--help|--version|--process-without-ext)
+            # Флаги без аргументов — не предлагаем повторно
+            COMPREPLY=()
             return 0
             ;;
     esac

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: mh-compressor-manager 1.0.443\n"
+"Project-Id-Version: mh-compressor-manager 1.0.446\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-04-13 20:30+0300\n"
 "PO-Revision-Date: 2026-04-12\n"
@@ -1526,10 +1526,6 @@ msgstr "  --brotli-level <N> Уровень сжатия Brotli (1-11)\n"
 #: /home/kane/Projects/mh-compressor-manager/src/config.cpp:109
 msgid "  --min-size <N>    Min file size for compression (default 256, min 256)\n"
 msgstr "  --min-size <N>    Мин. размер файла для сжатия (по умолч. 256, мин. 256)\n"
-
-#: /home/kane/Projects/mh-compressor-manager/src/config.cpp:110
-msgid "  --min-compress-size <N>  Alias for --min-size\n"
-msgstr "  --min-compress-size <N>  Алиас для --min-size\n"
 
 #: /home/kane/Projects/mh-compressor-manager/src/config.cpp:111
 msgid "  --dry-run         Dry run mode\n"

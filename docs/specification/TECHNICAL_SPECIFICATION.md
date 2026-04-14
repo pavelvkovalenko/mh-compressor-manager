@@ -732,7 +732,6 @@ brotli_level=11
 | `--gzip-level <N>` | Уровень сжатия Gzip | Высокий |
 | `--brotli-level <N>` | Уровень сжатия Brotli | Высокий |
 | `--min-size <N>` | Минимальный размер файла для сжатия (переопределяет `min_compress_size`) | Высокий |
-| `--min-compress-size <N>` | Алиас для `--min-size` (переопределяет `min_compress_size`) | Высокий |
 | `--debug` | Режим отладочного логирования (переопределяет `debug`) | Высокий |
 | `--dry-run` | Режим проверки (показать планы без действий) | — |
 | `--help`, `-h` | Вывод справки | — |
@@ -785,9 +784,6 @@ MH-COMPRESSOR-MANAGER(1)       General Commands Manual      MH-COMPRESSOR-MANAGE
 
        --min-size <N>
               Минимальный размер файла для сжатия в байтах (по умолчанию 256, минимум 256)
-
-       --min-compress-size <N>
-              Алиас для --min-size
 
        --dry-run
               Режим проверки (показать планы без реального сжатия)
@@ -2195,7 +2191,7 @@ BrotliEncoderCompressStream(state.enc.get(), ...);
 - [ ] Удалить `OPTIMAL_COMPRESS_SIZE` (объединено с `MIN_COMPRESS_SIZE`)
 - [ ] Реализовать проверку `should_compress(file_size)` до начала сжатия
 - [ ] Валидация: при значении < 256 — использовать умолчание (256) с предупреждением
-- [ ] Добавить CLI аргументы `--min-size` и `--min-compress-size` (алиасы)
+- [ ] Добавить CLI аргумент `--min-size`
 - [ ] Добавить логирование на уровне `DEBUG` для пропущенных файлов
 - [ ] Добавить счётчики `files_skipped_small` и `bytes_skipped_small`
 - [ ] Обновить документацию конфигурационного файла
