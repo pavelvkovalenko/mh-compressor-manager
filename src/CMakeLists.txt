@@ -162,19 +162,6 @@ else()
 endif()
 
 # ============================================================================
-# Gettext — локализация (i18n, ТЗ §22)
-# ============================================================================
-find_package(Gettext QUIET)
-if(Gettext_FOUND AND GETTEXT_MSGFMT_EXECUTABLE)
-    message(STATUS "Gettext found — localization enabled")
-    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_GETTEXT)
-    target_link_libraries(${PROJECT_NAME} PRIVATE intl)
-else()
-    message(STATUS "Gettext NOT found — localization disabled, English only")
-    # Fallback: макрос _() возвращает строку как есть (определено в i18n.h)
-endif()
-
-# ============================================================================
 # Исходные файлы
 # ============================================================================
 set(SOURCES
@@ -208,6 +195,19 @@ set(HEADERS
 # Создание исполняемого файла
 # ============================================================================
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+
+# ============================================================================
+# Gettext — локализация (i18n, ТЗ §22)
+# ============================================================================
+find_package(Gettext QUIET)
+if(Gettext_FOUND AND GETTEXT_MSGFMT_EXECUTABLE)
+    message(STATUS "Gettext found — localization enabled")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_GETTEXT)
+    target_link_libraries(${PROJECT_NAME} PRIVATE intl)
+else()
+    message(STATUS "Gettext NOT found — localization disabled, English only")
+    # Fallback: макрос _() возвращает строку как есть (определено в i18n.h)
+endif()
 
 # ============================================================================
 # Подключение заголовочных файлов зависимостей
