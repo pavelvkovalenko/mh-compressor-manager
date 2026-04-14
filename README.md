@@ -4,7 +4,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.450-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.451-blue.svg)
 ![C++ Standard](https://img.shields.io/badge/C%2B%2B-23-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux%20(Fedora%2038%2B)-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -532,7 +532,7 @@ SOFTWARE.
 | Параметр | Значение |
 |----------|----------|
 | **Проект** | mh-compressor-manager |
-| **Версия** | 1.0.450 |
+| **Версия** | 1.0.451 |
 | **Стандарт** | C++23 |
 | **Платформа** | Linux (Fedora 43+, Fedora 38+, CentOS, Ubuntu) |
 | **Компилятор** | GCC 13+ или Clang 16+ |
@@ -557,7 +557,7 @@ SOFTWARE.
 
 <div align="center">
 
-**mh-compressor-manager v1.0.450** | Документация соответствует ТЗ версия 3.4
+**mh-compressor-manager v1.0.451** | Документация соответствует ТЗ версия 3.4
 
 © 2026 MediaHive.ru, владелец: ООО ОКБ "Улей", автор: Коваленко Павел. Лицензия MIT.
 
