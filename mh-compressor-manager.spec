@@ -95,7 +95,6 @@ fi
 # Bash completion (ТЗ §6.3)
 /usr/share/bash-completion/completions/mh-compressor-manager
 %doc README.md
-%doc README.html
 %license LICENSE
 
 %changelog
