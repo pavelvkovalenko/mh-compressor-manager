@@ -250,28 +250,16 @@ public:
     // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: без этого буферы из кэша утекают, т.к.
     // allocated_set_.erase(buffer) вызывается при помещении в кэш, и
     // деструктор пула их НЕ освободит.
-    // Для NUMA-систем проверяем numa_allocated_ чтобы использовать правильное освобождение.
+    // NUMA-память (numa_alloc_onnode) совместима с free() на Linux —
+    // libc перехватывает mmap-based выделения и корректно освобождает их.
     static size_t cleanup_thread_cache() {
         auto& cache = get_thread_cache();
         if (cache.empty()) return 0;
         for (auto* buf : cache) {
 #if defined(_MSC_VER)
             _aligned_free(buf);
-#elif HAVE_NUMA
-            // На POSIX проверяем была ли память выделена через NUMA
-            {
-                std::unique_lock<std::mutex> lock(mutex_);
-                if (numa_allocated_.count(buf)) {
-                    // NUMA-память — используем numa_free
-                    NumaUtils::free_on_node(buf, 0);
-                    numa_allocated_.erase(buf);
-                    continue;
-                }
-            }
-            // Обычная память — free()
-            free(buf);
 #else
-            // Без NUMA: posix_memalign освобождается через free()
+            // posix_memalign и NUMA-память (mmap) освобождаются через free()
             free(buf);
 #endif
         }
