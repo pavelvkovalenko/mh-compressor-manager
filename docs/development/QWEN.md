@@ -213,6 +213,49 @@ audit\check_context_changes.bat <timestamp>
 **Пример триггера:** При изменении `PROJECT_VERSION_PATCH` в CMakeLists.txt с 431 на 434 —
 обнови все таблицы, статусы, списки файлов и версии в разделе 21.
 
+## Правило: Подсчёт коммитов и обновление PROJECT_VERSION_PATCH перед пушем
+
+**Перед КАЖДЫМ пушем в ветку `main` — ОБЯЗАТЕЛЬНО:**
+
+1. **Определи текущий PROJECT_VERSION_PATCH на GitHub (origin/main):**
+   ```bash
+   git fetch origin
+   git show origin/main:src/CMakeLists.txt | grep PROJECT_VERSION_PATCH
+   ```
+   Это — **базовое число** (количество уже запушенных коммитов).
+
+2. **Посчитай количество локальных коммитов ahead of origin/main:**
+   ```bash
+   git rev-list --count origin/main..HEAD
+   ```
+   Это — **количество новых коммитов**, которые будут запушены.
+
+3. **Рассчитай новую версию:**
+   ```
+   PROJECT_VERSION_PATCH = (базовое число с GitHub) + (локальные коммиты)
+   ```
+
+4. **Обнови файлы перед пушем:**
+   - `src/CMakeLists.txt`: `set(PROJECT_VERSION_PATCH <рассчитанное_число>)`
+   - `README.md`: бейдж, таблица параметров, футер
+   - `translations/ru.po`: `Project-Id-Version`
+   - `docs/specification/TECHNICAL_SPECIFICATION.md`: раздел 21.1
+
+5. **Если изменения уже содержат коммит с версией — используй `git commit --amend` или создай дополнительный коммит с обновлением версии.**
+
+**Пример расчёта:**
+```
+GitHub (origin/main): PROJECT_VERSION_PATCH = 434
+Локальные коммиты ahead: 3 (commit1, commit2, commit3)
+Новая версия: 434 + 3 = 437
+→ Установить PROJECT_VERSION_PATCH = 437 перед push
+```
+
+**Исключение:** Если пушится только обновление версии (без других изменений) — достаточно одного коммита.
+
+**Важно:** PROJECT_VERSION_PATCH = количество закрытых PR (запушенных коммитов в main).
+Это число должно **всегда совпадать** с реальным количеством коммитов в ветке main на GitHub.
+
 ## Правило: Обязательная проверка ссылок при изменении документации
 
 **При ЛЮБОМ изменении файлов `.md` (добавление, редактирование, удаление разделов) — ОБЯЗАТЕЛЬНО:**
