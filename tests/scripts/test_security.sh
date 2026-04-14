@@ -14,7 +14,7 @@ TOTAL=0
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 check() {
     TOTAL=$((TOTAL + 1))
-    if eval "$1"; then
+    if bash -c "$1" 2>/dev/null; then
         PASS=$((PASS + 1))
         echo "  ✅ PASS [$TOTAL]: $2"
     else

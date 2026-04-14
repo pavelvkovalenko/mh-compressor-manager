@@ -9,10 +9,15 @@ sleep 1
 sudo rm -rf "$BASEDIR"
 sudo mkdir -p "$BASEDIR"
 
-echo "=== Генерация 100 файлов JS (500KB-2MB) ==="
+echo "=== Генерация 100 файлов JS (500KB-2MB, текстовый контент) ==="
+# Генерируем реалистичный JS-контент который хорошо сжимается
+JS_CONTENT='var app = { name: "TestApp", version: "1.0.0", config: { debug: false, logLevel: "info", maxRetries: 3, timeout: 5000 }, init: function() { console.log("App initialized"); this.loadData(); this.bindEvents(); }, loadData: function() { fetch("/api/data").then(r => r.json()).then(d => { this.data = d; this.render(); }); }, bindEvents: function() { document.addEventListener("click", (e) => { if (e.target.matches(".btn")) { this.handleClick(e); } }); }, handleClick: function(e) { console.log("Button clicked:", e.target.id); }, render: function() { const el = document.getElementById("root"); if (el) { el.innerHTML = "<h1>" + this.data.title + "</h1><p>" + this.data.description + "</p>"; } } }; document.addEventListener("DOMContentLoaded", () => app.init());'
+
 for i in $(seq 1 100); do
     size=$((500000 + RANDOM % 1500000))
-    dd if=/dev/urandom of="$BASEDIR/app_${i}.js" bs=$size count=1 2>/dev/null
+    # Повторяем контент нужное количество раз для достижения размера
+    repeats=$((size / ${#JS_CONTENT} + 1))
+    for r in $(seq 1 $repeats); do echo "$JS_CONTENT"; done | head -c "$size" > "$BASEDIR/app_${i}.js"
 done
 echo "Создано $(ls "$BASEDIR" | wc -l) файлов, размер: $(du -sh "$BASEDIR" | cut -f1)"
 

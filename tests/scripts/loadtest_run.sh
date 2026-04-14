@@ -9,7 +9,7 @@ PASS=0; FAIL=0; TOTAL=0
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 check() {
     TOTAL=$((TOTAL + 1))
-    if eval "$1"; then
+    if bash -c "$1" 2>/dev/null; then
         PASS=$((PASS + 1)); echo "  ✅ PASS: $2"
     else
         FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $2"
@@ -26,36 +26,52 @@ sleep 1
 sudo rm -rf "$BASEDIR"
 sudo mkdir -p "$BASEDIR"
 
-# ЭТАП 2: Генерация ~1.2GB данных
-log "=== ЭТАП 2: Генерация тестовых данных ==="
+# ЭТАП 2: Генерация ~1.2GB текстовых данных (реалистичный веб-контент)
+log "=== ЭТАП 2: Генерация тестовых данных (текстовый контент) ==="
+
+# Шаблоны реалистичного контента
+HTML_TPL='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Test Page</title><link rel="stylesheet" href="style.css"></head><body><div class="container"><h1>Welcome to Test Page</h1><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.</p></div></body></html>'
+CSS_TPL='* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fff; } .container { max-width: 1200px; margin: 0 auto; padding: 20px; } h1 { font-size: 2em; margin-bottom: 1em; color: #222; } p { margin-bottom: 1em; } .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; }'
+JS_TPL='(function() { "use strict"; var App = { init: function() { console.log("App initialized"); this.loadData(); }, loadData: function() { fetch("/api/data").then(r => r.json()).then(d => this.render(d)); }, render: function(data) { var el = document.getElementById("root"); if (el) el.innerHTML = JSON.stringify(data); } }; document.addEventListener("DOMContentLoaded", function() { App.init(); }); })();'
+JSON_TPL='{"id":1,"name":"Test Entry","description":"This is a test entry for load testing with repeated text data to ensure good compression ratios","tags":["test","load","compression"],"metadata":{"created":"2026-04-14T12:00:00Z","version":"1.0","status":"active"}}'
+SVG_TPL='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80" fill="#007bff" stroke="#333" stroke-width="2"/><text x="50" y="55" text-anchor="middle" fill="#fff" font-family="Arial" font-size="14">Test SVG</text></svg>'
+TXT_TPL='2026-04-14 12:00:00 [INFO] Request processed: GET /api/data?id=12345 status=200 duration=42ms client=192.168.1.100'
+
+gen_text() {
+    local tpl="$1" count_kb="$2"
+    local tpl_len=${#tpl}
+    local total_chars=$((count_kb * 1024))
+    local repeats=$((total_chars / tpl_len + 1))
+    for i in $(seq 1 $repeats); do echo "$tpl"; done | head -c "$total_chars"
+}
 
 for i in $(seq 1 100); do
-    dd if=/dev/urandom of="$BASEDIR/page_${i}.html" bs=1024 count=$((400 + RANDOM % 200)) 2>/dev/null
+    gen_text "$HTML_TPL" $((400 + RANDOM % 200)) > "$BASEDIR/page_${i}.html"
 done
 log "  100 HTML файлов созданы"
 
 for i in $(seq 1 80); do
-    dd if=/dev/urandom of="$BASEDIR/style_${i}.css" bs=1024 count=$((400 + RANDOM % 200)) 2>/dev/null
+    gen_text "$CSS_TPL" $((400 + RANDOM % 200)) > "$BASEDIR/style_${i}.css"
 done
 log "  80 CSS файлов созданы"
 
 for i in $(seq 1 80); do
-    dd if=/dev/urandom of="$BASEDIR/script_${i}.js" bs=1024 count=$((400 + RANDOM % 200)) 2>/dev/null
+    gen_text "$JS_TPL" $((400 + RANDOM % 200)) > "$BASEDIR/script_${i}.js"
 done
 log "  80 JS файлов созданы"
 
 for i in $(seq 1 80); do
-    dd if=/dev/urandom of="$BASEDIR/data_${i}.json" bs=1024 count=$((400 + RANDOM % 200)) 2>/dev/null
+    gen_text "$JSON_TPL" $((400 + RANDOM % 200)) > "$BASEDIR/data_${i}.json"
 done
 log "  80 JSON файлов созданы"
 
 for i in $(seq 1 200); do
-    dd if=/dev/urandom of="$BASEDIR/log_${i}.txt" bs=1024 count=$((4000 + RANDOM % 2000)) 2>/dev/null
+    gen_text "$TXT_TPL" $((4000 + RANDOM % 2000)) > "$BASEDIR/log_${i}.txt"
 done
 log "  200 TXT файлов созданы"
 
 for i in $(seq 1 20); do
-    dd if=/dev/urandom of="$BASEDIR/image_${i}.svg" bs=1024 count=$((800 + RANDOM % 400)) 2>/dev/null
+    gen_text "$SVG_TPL" $((800 + RANDOM % 400)) > "$BASEDIR/image_${i}.svg"
 done
 log "  20 SVG файлов созданы"
 
