@@ -100,22 +100,22 @@ Config load_config(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: mh-compressor-manager [options]\n"
-                      << "  --config <path>   Config file path\n"
-                      << "  --dir <path>      Target directory (override)\n"
-                      << "  --ext <list>      Extensions (override)\n"
-                      << "  --gzip-level <N>  Gzip level (1-9)\n"
-                      << "  --brotli-level <N> Brotli level (1-11)\n"
-                      << "  --min-size <N>    Min file size for compression (default 256, min 256)\n"
-                      << "  --min-compress-size <N>  Alias for --min-size\n"
-                      << "  --dry-run         Dry run mode\n"
-                      << "  --debug           Debug logging mode\n"
-                      << "  --version         Show version\n"
-                      << "  --process-without-ext  Process files without extensions\n";
+            std::cout << _("Usage: mh-compressor-manager [options]\n")
+                      << _("  --config <path>   Config file path\n")
+                      << _("  --dir <path>      Target directory (override)\n")
+                      << _("  --ext <list>      Extensions (override)\n")
+                      << _("  --gzip-level <N>  Gzip level (1-9)\n")
+                      << _("  --brotli-level <N> Brotli level (1-11)\n")
+                      << _("  --min-size <N>    Min file size for compression (default 256, min 256)\n")
+                      << _("  --min-compress-size <N>  Alias for --min-size\n")
+                      << _("  --dry-run         Dry run mode\n")
+                      << _("  --debug           Debug logging mode\n")
+                      << _("  --version         Show version\n")
+                      << _("  --process-without-ext  Process files without extensions\n");
             exit(0);
         }
         if (arg == "--version" || arg == "-v") {
-            std::cout << "mh-compressor-manager v" << MH_COMPRESSOR_MANAGER_VERSION << "\n";
+            std::cout << _("mh-compressor-manager v") << MH_COMPRESSOR_MANAGER_VERSION << "\n";
             exit(0);
         }
         if (arg == "--config" && i + 1 < argc) cfg.config_path = argv[++i];
