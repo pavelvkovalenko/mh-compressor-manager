@@ -1,0 +1,46 @@
+# bash completion for mh-compressor-manager(1)
+# Установлен в: /usr/share/bash-completion/completions/mh-compressor-manager
+# ТЗ §6.3
+
+_mh_compressor_manager() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    opts="--config --dir --ext --gzip-level --brotli-level \
+          --min-size --min-compress-size --dry-run --debug \
+          --help --version --process-without-ext"
+
+    case "${prev}" in
+        --config)
+            COMPREPLY=( $(compgen -f -- "${cur}") )
+            return 0
+            ;;
+        --dir)
+            COMPREPLY=( $(compgen -d -- "${cur}") )
+            return 0
+            ;;
+        --gzip-level)
+            COMPREPLY=( $(compgen -W "1 2 3 4 5 6 7 8 9" -- "${cur}") )
+            return 0
+            ;;
+        --brotli-level)
+            COMPREPLY=( $(compgen -W "1 2 3 4 5 6 7 8 9 10 11" -- "${cur}") )
+            return 0
+            ;;
+        --ext)
+            COMPREPLY=( $(compgen -W "txt js css svg json html htm map" -- "${cur}") )
+            return 0
+            ;;
+        --min-size|--min-compress-size)
+            COMPREPLY=( $(compgen -W "256 512 1024 2048 4096 8192" -- "${cur}") )
+            return 0
+            ;;
+    esac
+
+    COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+    return 0
+}
+
+complete -F _mh_compressor_manager mh-compressor-manager

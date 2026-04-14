@@ -63,6 +63,10 @@ install -m 644 ../man/en/man1/mh-compressor-manager.1 %{buildroot}/%{_mandir}/ma
 mkdir -p %{buildroot}/%{_datadir}/man/ru/man1
 install -m 644 ../man/ru/man1/mh-compressor-manager.1 %{buildroot}/%{_datadir}/man/ru/man1/
 
+# Bash completion (ТЗ §6.3)
+mkdir -p %{buildroot}/%{_datadir}/bash-completion/completions
+install -m 644 ../completion/mh-compressor-manager %{buildroot}/%{_datadir}/bash-completion/completions/
+
 %post
 if [ $1 -eq 1 ]; then
     /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
@@ -88,6 +92,8 @@ fi
 # Man-страницы (ТЗ §6.2)
 /usr/share/man/man1/mh-compressor-manager.1*
 /usr/share/man/ru/man1/mh-compressor-manager.1*
+# Bash completion (ТЗ §6.3)
+/usr/share/bash-completion/completions/mh-compressor-manager
 %doc README.md
 %doc README.html
 %license LICENSE

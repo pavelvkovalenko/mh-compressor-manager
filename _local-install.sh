@@ -56,7 +56,14 @@ fi
 # Обновить кэш man-db
 sudo mandb 2>/dev/null || true
 
-# 6. Перезагрузка демонов systemd
+# 6. Установка bash completion (ТЗ §6.3)
+if [[ -f "../completion/mh-compressor-manager" ]]; then
+    sudo mkdir -p /usr/share/bash-completion/completions
+    sudo cp ../completion/mh-compressor-manager /usr/share/bash-completion/completions/
+    sudo chmod 644 /usr/share/bash-completion/completions/mh-compressor-manager
+fi
+
+# 7. Перезагрузка демонов systemd
 sudo systemctl daemon-reload
 
 

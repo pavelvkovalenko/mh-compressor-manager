@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================================
 set(PROJECT_VERSION_MAJOR 1)
 set(PROJECT_VERSION_MINOR 0)
-set(PROJECT_VERSION_PATCH 444)  # Количество закрытых PR (обновлять при мерже)
+set(PROJECT_VERSION_PATCH 445)  # Количество закрытых PR (обновлять при мерже)
 set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
 
 project(mh-compressor-manager
@@ -380,6 +380,15 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../man/ru/man1/mh-compressor-manager.1
     DESTINATION /usr/share/man/ru/man1
     PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
     RENAME mh-compressor-manager.1
+)
+
+# ============================================================================
+# Bash completion (ТЗ §6.3)
+# ============================================================================
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../completion/mh-compressor-manager
+    DESTINATION /usr/share/bash-completion/completions
+    PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    RENAME mh-compressor-manager
 )
 
 # ============================================================================
